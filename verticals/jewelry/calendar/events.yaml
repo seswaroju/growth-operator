@@ -1,0 +1,10 @@
+events:
+  - {key: dhanteras,        date: 2026-11-06, campaign_window_days: 10}
+  - {key: diwali,           date: 2026-11-08, campaign_window_days: 7}
+  - {key: akshaya_tritiya,  date: 2027-05-09, campaign_window_days: 10}
+  - {key: karva_chauth,     date: 2026-10-29, campaign_window_days: 7}
+  - {key: wedding_season_w, date: 2026-11-15, campaign_window_days: 45, kind: season}
+  - {key: wedding_season_s, date: 2027-01-14, campaign_window_days: 60, kind: season}
+  - {key: valentines,       date: 2027-02-14, campaign_window_days: 7}
+  - {key: mothers_day,      date: 2027-05-09, campaign_window_days: 7}
+recurrence: {lunar_calendar_source: drik_panchang}   # yearly refresh job; dates re-verified by ops agent

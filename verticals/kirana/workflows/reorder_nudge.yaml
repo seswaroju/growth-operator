@@ -1,0 +1,11 @@
+workflow: reorder_nudge
+version: 1
+trigger: {schedule: {cron: "0 10 * * 2", timezone: tenant}}     # tuesdays 10:00
+guards: [consent_valid(marketing), not_suppressed, within_send_window, touch_cap(1, 7d)]
+concurrency: {key: "subject.contact_id", policy: drop}
+steps:
+  - agent_task: {archetype: nurture, task: reorder_nudge, timeout: 2m}
+  - wait: {for: reply, timeout: 48h}
+  - branch:
+      cases: [{when: "wait.result == 'reply'", steps: [{emit: {event: lead.reengaged}}]}]
+      default: []

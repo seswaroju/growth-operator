@@ -1,0 +1,19 @@
+steps:
+  - id: price_sheet
+    after_core: business_profile
+    title: "Upload your price list"
+    ingestion_sources: [photo, csv, xlsx]
+    extraction_hints: kirana_price_sheet_v1
+    min_items: 50
+    help: "A photo of your rate register works. Anu will read it; you confirm."
+  - id: delivery_setup
+    after_core: price_sheet
+    fields: [delivery_available, delivery_radius_km, delivery_fee_minor, free_delivery_above_minor, order_confirm_threshold_minor]
+  - id: staples_confirm
+    after_core: delivery_setup
+    title: "Your top 50 staples"
+    action: confirm_top_items_with_aliases
+  - id: test_conversation
+    after_core: policies
+    scenarios: [hinglish_list_order, ambiguous_size_clarify, restricted_item_flag, reorder_usual]
+    pass_requirement: owner_confirms_each

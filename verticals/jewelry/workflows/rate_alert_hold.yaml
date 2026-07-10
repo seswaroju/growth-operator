@@ -1,0 +1,15 @@
+workflow: rate_alert_hold
+version: 1
+trigger: {event: {type: rate.stale, condition: "payload.source in ['ibja_gold','ibja_silver']"}}
+guards: []
+steps:
+  - set: {vars: {quoting_paused: true}}       # pricing engine already fails closed; this drives comms
+  - agent_task: {archetype: ops, task: rate_watch, timeout: 5m}   # attempt refresh, diagnose
+  - branch:
+      cases:
+        - when: "vars.refresh_ok == true"
+          steps: [{emit: {event: rate.recovered}}]
+      default:
+        - agent_task: {archetype: planner, task: owner_alert, timeout: 1m,
+                       input_map: {message_template: rate_stale_owner_alert}}
+        - wait: {for: event, timeout: 24h}    # rate.updated

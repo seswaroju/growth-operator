@@ -1,0 +1,28 @@
+strategy_key: static_list_v1
+engine: rules_v1
+input_schema:
+  type: object
+  properties:
+    lines: {type: array, minItems: 1, items: {type: object,
+            properties: {item_id: {type: string}, qty: {type: number, exclusiveMinimum: 0}},
+            required: [item_id, qty]}}
+    delivery: {type: boolean, default: false}
+    distance_km: {type: number, minimum: 0}
+  required: [lines]
+rate_sources: []
+rules:
+  stages:
+    - id: line_totals
+      formula: "map(inputs.lines, l, round(item(l.item_id).mrp_minor * l.qty, 'half_even') - offer_discount(l))"
+    - {id: subtotal, formula: "sum(stage.line_totals)"}
+    - id: delivery_fee
+      formula: "inputs.delivery && stage.subtotal < params.free_delivery_above_minor ? params.delivery_fee_minor : 0"
+      guards: ["!inputs.delivery || inputs.distance_km <= params.delivery_radius_km"]
+      guard_error: delivery_out_of_radius
+    - {id: total, formula: "stage.subtotal + stage.delivery_fee"}
+  offers:                                # overlay table, tenant-editable via UI
+    kinds: [pct_off, flat_off, slab, bogo]
+    slab_example: {min_qty: 5, pct: 5}
+  breakdown_labels: {delivery_fee: "Delivery", line: "{title} × {qty}"}
+tax_note: "MRP is tax-inclusive in India; gst_scheme slot affects invoicing only, not customer totals."
+golden_cases: evals/pricing_golden.yaml

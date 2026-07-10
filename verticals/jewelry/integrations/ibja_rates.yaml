@@ -1,0 +1,5 @@
+integration: ibja_rates
+kind: rate_source_bundle           # no MCP server; consumed by core rate ingestion
+sources_ref: pricing/strategy.yaml#rate_sources
+fallback: {manual_entry: {roles: [owner], tier: 2, bounds: {max_step_pct: 10},
+           note: "Owner-entered rate is audited and expires in 24h like any snapshot"}}

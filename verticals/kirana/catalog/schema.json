@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gop:pack:kirana:catalog:1",
+  "type": "object",
+  "properties": {
+    "brand":      {"type": "string", "x-index": true, "x-search": true},
+    "pack_size":  {"type": "number", "exclusiveMinimum": 0},
+    "unit":       {"enum": ["kg","g","l","ml","pc","dozen"], "x-unit": true},
+    "mrp_minor":  {"type": "integer", "minimum": 0},
+    "category":   {"enum": ["staples","snacks","dairy","beverages","personal_care","household","spices","frozen","other"],
+                   "x-index": true, "x-search": true},
+    "veg_flag":   {"type": "boolean"},
+    "barcode":    {"type": "string", "pattern": "^[0-9]{8,14}$"},
+    "hsn":        {"type": "string"},
+    "aliases":    {"type": "array", "items": {"type": "string"}, "x-search": true,
+                   "description": "vernacular names: atta/aata/పిండి"},
+    "restricted": {"type": "boolean", "default": false,
+                   "description": "medicines, tobacco, liquor — agent never auto-confirms"},
+    "low_stock_threshold": {"type": "integer", "minimum": 0}
+  },
+  "required": ["pack_size","unit","mrp_minor","category"],
+  "search_projection": ["brand","category","aliases"],
+  "identity_keys": [["barcode"], ["brand","pack_size","unit"]]
+}

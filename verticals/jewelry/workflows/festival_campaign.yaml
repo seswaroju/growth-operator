@@ -1,0 +1,18 @@
+workflow: festival_campaign
+version: 2
+trigger:
+  event: {type: calendar.window_opened, condition: "payload.pack == 'jewelry'"}
+guards: [flag_on(campaigns_enabled), budget_ok]
+steps:
+  - agent_task: {archetype: campaigner, task: festival_campaign, timeout: 10m,
+                 input_map: {festival: trigger.payload.key, window_days: trigger.payload.campaign_window_days}}
+      # produces: segment proposal + template + schedule as a campaign draft
+  - human_task: {kind: approval, assignee: role:owner, timeout: 48h,
+                 escalation: [remind_24h], payload: campaign_draft}   # tier 3 via policy engine anyway
+  - agent_task: {archetype: campaigner, task: execute_approved, timeout: 30m}
+  - wait: {for: duration, timeout: 72h}
+  - agent_task: {archetype: planner, task: campaign_report, timeout: 5m}
+compensation:
+  on_failure:
+    - agent_task: {archetype: planner, task: campaign_halt_report, timeout: 2m}
+  alert: owner_whatsapp

@@ -1,0 +1,49 @@
+bindings:
+  - archetype: concierge
+    persona_default: "Anu"
+    tasks:
+      - {task: order_intake, intents: [order_list, item_question, availability, price_check],
+         prompt_layer: {ref: prompts/concierge.md#order, version: "1.x"}}
+      - {task: order_confirm, intents: [confirmation, modification],
+         prompt_layer: {ref: prompts/concierge.md#confirm, version: "1.x"}}
+    tool_grants:
+      - {name: catalog.search, rate_limit: {per_min: 120}}
+      - {name: pricing.compute, params_constraints: {strategy: {enum: [static_list_v1]}}}
+      - {name: orders.draft_write}
+      - {name: messages.send, params_constraints: {conversation_scope: assigned_only}}
+      - {name: payments.link_create, params_constraints: {max_minor: 2000000}}
+    tier_defaults:
+      - {rule_key: reply_standard, applies_to: action.message.send, condition: "true", tier: 1,
+         description: "Order chat replies"}
+      - {rule_key: big_order, applies_to: action.order.confirm,
+         condition: "amount_minor >= slot('order_confirm_threshold_minor')", tier: 2,
+         description: "Confirming orders above your threshold"}
+      - {rule_key: restricted_items, applies_to: action.order.confirm,
+         condition: "attributes.contains_restricted == true", tier: 2,
+         description: "Orders containing flagged items (medicines etc.)"}
+    kpis: [orders_auto_parsed_pct, parse_error_rate, basket_size_minor, order_to_paid_pct]
+    budgets: {tokens_day: 250000, sends_day: 400}
+  - archetype: nurture
+    persona_default: "Anu"                # same persona, different task — kirana is one-voice
+    tasks:
+      - {task: reorder_nudge, intents: [], prompt_layer: {ref: prompts/nurture.md#reorder, version: "1.x"}}
+    tool_grants:
+      - {name: crm.read}
+      - {name: messages.send, params_constraints: {template_class: [reorder]}}
+    tier_defaults:
+      - {rule_key: reorder, applies_to: action.message.send, condition: "true", tier: 1,
+         description: "Weekly staples reminder (max 1/week)"}
+    kpis: [reorder_conversion_pct]
+  - archetype: ops
+    persona_default: "Anu"
+    tasks:
+      - {task: price_sheet_ingest, intents: [], prompt_layer: {ref: prompts/ops.md#ingest, version: "1.x"}}
+      - {task: stock_flags, intents: [], prompt_layer: {ref: prompts/ops.md#stock, version: "1.x"}}
+    tool_grants: [{name: ingestion.review}, {name: catalog.write}]
+    tier_defaults:
+      - {rule_key: catalog_write, applies_to: action.catalog.write, condition: "true", tier: 1,
+         description: "Price/stock updates from your sheets"}
+    kpis: [sheet_rows_processed, price_update_lag_h]
+planner:
+  contact_frequency_cap: {max_msgs_per_contact_per_day: 2, exempt: [active_order, transactional]}
+  digest: {time_local: "21:00", channel: whatsapp_owner}

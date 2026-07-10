@@ -1,0 +1,6 @@
+integration: razorpay_links
+mcp_server: go-billing-razorpay
+credential_schema: {type: object, properties: {key_id: {type: string}, key_secret: {type: string, x-secret: true}},
+                    required: [key_id, key_secret]}
+scopes: [payment_links.create, payment_links.read]
+usage: {cod_supported: true, link_expiry_hours: 24}

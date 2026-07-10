@@ -1,0 +1,12 @@
+suite: kirana.pricing_golden
+pass_bar: {exact: 1.0}
+fixtures: {params: {delivery_fee_minor: 2000, free_delivery_above_minor: 50000, delivery_radius_km: 3}}
+cases:
+  - {id: kpg-01, inputs: {lines: [{item: atta5kg_27000, qty: 2}], delivery: true, distance_km: 1.2},
+     expect: {subtotal: 54000, delivery_fee: 0, total: 54000, note: "free delivery threshold met"}}
+  - {id: kpg-02, inputs: {lines: [{item: maggi_1400, qty: 3}], delivery: true, distance_km: 2.0},
+     expect: {subtotal: 4200, delivery_fee: 2000, total: 6200}}
+  - {id: kpg-03, inputs: {lines: [{item: atta5kg_27000, qty: 6}]},
+     expect: {slab_5pct_applied: true, subtotal: 153900}}
+  - {id: kpg-04, inputs: {delivery: true, distance_km: 7.5}, expect_error: delivery_out_of_radius}
+n_total: 60

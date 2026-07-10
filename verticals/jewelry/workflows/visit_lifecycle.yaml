@@ -1,0 +1,17 @@
+workflow: visit_lifecycle
+version: 1
+trigger: {event: {type: appointment.created, condition: "payload.kind == 'store_visit'"}}
+guards: [not_suppressed]
+concurrency: {key: "subject.appointment_id", policy: replace}
+steps:
+  - wait: {for: duration, timeout: "until(subject.starts_at - 24h)"}
+  - agent_task: {archetype: concierge, task: visit_reminder, timeout: 2m}   # tier 1 templated
+  - wait: {for: duration, timeout: "until(subject.starts_at + 4h)"}
+  - agent_task: {archetype: planner, task: attribution_confirm_request, timeout: 2m}
+      # owner 1-tap: did they visit? feeds attributions
+  - wait: {for: duration, timeout: 48h}
+  - branch:
+      cases:
+        - when: "subject.attribution.visited == true"
+          steps: [{agent_task: {archetype: concierge, task: post_visit_followup, timeout: 2m}}]
+      default: [{agent_task: {archetype: nurture, task: nudge, timeout: 2m}}]

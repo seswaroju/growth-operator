@@ -1,0 +1,6 @@
+integration: google_calendar
+mcp_server: go-calendar
+credential_schema: {type: object, properties: {oauth_ref: {type: string, x-secret: true}}, required: [oauth_ref]}
+scopes: [events.create, events.read, freebusy.read]
+health_check: {kind: api_probe, endpoint: calendar_list, interval: 15m}
+calendars: {store_visits: {slot_length_min: 30, buffer_min: 15, max_per_slot: 2}}

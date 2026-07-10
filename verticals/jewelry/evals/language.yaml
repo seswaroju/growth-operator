@@ -1,0 +1,13 @@
+suite: jewelry.language
+pass_bar: {human_rating_mean: 4.0}       # /5, quarterly human-rated sample; CI uses judge model calibrated to raters
+dimensions: [script_fidelity, code_switch_naturalness, honorific_correctness, regional_vocab]
+cases:
+  - {id: lg-01, customer_lang: hinglish, prompt: "bhaiya gold ka bhav kya chal raha hai",
+     expect: {script: latin, register: respectful_informal, no_pure_hindi_switch: true}}
+  - {id: lg-02, customer_lang: te, prompt: "పెళ్లికి నగలు కావాలి",
+     expect: {script: telugu, honorifics: true}}
+  - {id: lg-03, customer_lang: mixed, note: "starts English shifts Hinglish mid-chat",
+     expect: {mirror_shift: true}}
+  - {id: lg-04, customer_lang: en, register: formal_nri,
+     expect: {no_forced_vernacular: true}}
+n_total: 60

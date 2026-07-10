@@ -1,0 +1,28 @@
+pack: jewelry
+version: 2.0.0
+platform_api: ">=1.0 <2"
+display_name: "Jewelry Retail"
+description: "WhatsApp-native sales, follow-up, campaigns, catalog ops and support for jewelry stores."
+locales: [en-IN, hi-IN, te-IN]
+risk_class: standard
+requires:
+  channels: [whatsapp]
+  optional_channels: [gmail]
+  capabilities: [payments.link, calendar.booking]
+  rate_sources: [ibja_gold, ibja_silver]
+provides:
+  archetypes: [concierge, nurture, campaigner, ops, support]
+  pricing_strategy: formula_weight_rate_v1
+  catalog_schema: catalog/schema.json
+slots:                                  # L2 tenant values, validated on install/config change
+  making_charge_pct:   {type: number, minimum: 0, maximum: 40, required: true, ui_label: "Making charge (%)"}
+  making_min_minor:    {type: integer, minimum: 0, default: 0, ui_label: "Minimum making charge (₹, paise)"}
+  wastage_pct:         {type: number, minimum: 0, maximum: 15, default: 0}
+  discount_ceiling_pct: {type: number, minimum: 0, maximum: 20, default: 5, ui_label: "Max discount agent may discuss (%)"}
+  quote_validity_hours: {type: integer, minimum: 4, maximum: 72, default: 24}
+  store_visit_slots:   {type: string, format: opening-hours, required: true}
+onboarding: onboarding/steps.yaml
+ui: ui/templates.yaml
+calendar_pack: calendar/events.yaml
+evals_required: [concierge_core, injection, money_traps, language, isolation_probes]
+signing: {alg: ed25519, key_id: platform-2026}

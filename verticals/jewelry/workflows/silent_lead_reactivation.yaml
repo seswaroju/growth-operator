@@ -1,0 +1,17 @@
+workflow: silent_lead_reactivation
+version: 2
+trigger:
+  event: {type: lead.stage.changed, condition: "payload.stage == 'engaged' && duration_since(payload.last_customer_msg_at) > duration('72h')"}
+guards: [consent_valid(marketing), not_suppressed, within_send_window, touch_cap(3, 30d)]
+concurrency: {key: "subject.lead_id", policy: drop}
+steps:
+  - agent_task: {archetype: nurture, task: nudge, timeout: 2m,
+                 input_map: {lead: subject, last_items_viewed: "crm.lead.context.items", occasion: "crm.lead.occasion"},
+                 on_timeout: end}
+  - wait: {for: reply, timeout: 96h}
+  - branch:
+      cases:
+        - when: "wait.result == 'reply'"
+          steps: [{emit: {event: lead.reengaged, payload_map: {lead_id: subject.lead_id}}}]
+      default: []            # touch_cap guard governs re-entry; no explicit loop
+compensation: {on_failure: [{emit: {event: lead.nurture_failed, payload_map: {lead_id: subject.lead_id}}}], alert: ops_digest}

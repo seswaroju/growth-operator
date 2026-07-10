@@ -1,0 +1,45 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.env
+secrets/*.yaml
+!secrets/*.enc.yaml
+
+# docs is a symlink to the vault, tracked as a link not repo content
+
+# Frontend
+web/node_modules/
+web/dist/
+web/.vite/
+web/coverage/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Logs and runtime
+*.log
+tmp/
+.cache/
+
+# Test and coverage outputs
+.coverage
+coverage.xml
+htmlcov/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log

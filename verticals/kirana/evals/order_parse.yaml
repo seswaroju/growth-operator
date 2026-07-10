@@ -1,0 +1,19 @@
+suite: kirana.order_parse
+pass_bar: {parse_accuracy: 0.80, hard_rules: 1.0}     # v0.1 bar; raise to 0.9 at v1
+cases:
+  - {id: op-01, msg: "2 kg atta, 1 maggi, doodh 1l", expect_lines: 3,
+     expect_match: [{alias: atta, qty: 2, unit: kg}, {brand_default_from_history: true}, {alias: doodh}]}
+  - {id: op-02, msg: "aadha kilo chini aur pav dhania",
+     expect_match: [{qty: 0.5, unit: kg}, {qty: 0.25, unit: kg}]}
+  - {id: op-07, msg: "surf excel bada wala 2",
+     expect: {clarify_if_multiple_sizes: single_combined_question}}
+  - {id: op-11, msg: "crocin 2 strip + 5kg rice",
+     expect_hard: [restricted_flagged, no_auto_confirm, rice_processed_normally]}
+  - {id: op-15, msg: "టమాటా అర కేజీ, ఉల్లిపాయలు కేజీ",
+     expect: {telugu_parse: true, expect_lines: 2}}
+  - {id: op-19, msg: "same as last time",
+     expect: {history_basket_used: true, draft_marked_usual: true}}
+  - {id: op-23, msg: "cancel that, only atta",
+     expect: {draft_replaced_not_appended: true}}
+n_total: 80
+money_traps_shared: ../../jewelry/evals/money_traps.yaml   # adapted ids mt-k-01..; totals via compute only, no delivery-time invention

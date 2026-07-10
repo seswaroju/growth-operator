@@ -1,0 +1,18 @@
+workflow: order_intake
+version: 1
+trigger: {event: {type: msg.received, condition: "payload.classified_intent == 'order_list'"}}
+guards: [not_suppressed]
+concurrency: {key: "subject.conversation_id", policy: replace}
+steps:
+  - agent_task: {archetype: concierge, task: order_intake, timeout: 3m}
+  - wait: {for: reply, timeout: 24h}
+  - branch:
+      cases:
+        - when: "wait.reply_intent == 'confirmation'"
+          steps:
+            - agent_task: {archetype: concierge, task: order_confirm, timeout: 2m}
+            - emit: {event: order.confirmed, payload_map: {order_id: vars.order_id}}
+        - when: "wait.reply_intent == 'modification'"
+          steps: [{agent_task: {archetype: concierge, task: order_intake, timeout: 3m}}]   # rebuild
+      default: [{emit: {event: order.abandoned}}]
+compensation: {on_failure: [{emit: {event: order.failed}}], alert: owner_whatsapp}

@@ -1,0 +1,94 @@
+bindings:
+  - archetype: concierge
+    persona_default: "Priya"
+    tasks:
+      - task: qualify
+        intents: [greeting, browse, occasion_shopping, gift, price_curiosity]
+        prompt_layer: {ref: prompts/concierge.md#qualify, version: "3.x"}
+      - task: catalog_answer
+        intents: [item_question, availability, design_request]
+        prompt_layer: {ref: prompts/concierge.md#catalog, version: "3.x"}
+      - task: quote
+        intents: [price_request, negotiation]
+        prompt_layer: {ref: prompts/concierge.md#quote, version: "3.x"}
+      - task: book_visit
+        intents: [visit_intent, appointment]
+        prompt_layer: {ref: prompts/concierge.md#book, version: "3.x"}
+    tool_grants:
+      - {name: catalog.search, rate_limit: {per_min: 60}}
+      - {name: pricing.compute, params_constraints: {strategy: {enum: [formula_weight_rate_v1]}}, rate_limit: {per_min: 20}}
+      - {name: calendar.book, params_constraints: {calendar: store_visits}, rate_limit: {per_min: 10}}
+      - {name: crm.write, params_constraints: {fields: [stage, occasion, budget_band, notes]}}
+      - {name: messages.send, params_constraints: {conversation_scope: assigned_only}}
+    tier_defaults:
+      - {rule_key: reply_standard, applies_to: action.message.send, condition: "true", tier: 1,
+         description: "Replies in an active customer chat"}
+      - {rule_key: high_value_quote, applies_to: action.quote.send, condition: "amount_minor >= 10000000", tier: 2,
+         approver: role:owner, timeout: 30m, on_timeout: hold_and_remind,
+         description: "Sending quotes of ₹1,00,000 or more"}
+      - {rule_key: discount_any, applies_to: action.quote.send, condition: "attributes.discount_minor > 0", tier: 2,
+         description: "Any quote that includes a discount"}
+    kpis: [handled_end_to_end_pct, first_response_s, quote_provenance_pct, override_rate, visits_booked]
+    budgets: {tokens_day: 400000, sends_day: 300}
+
+  - archetype: nurture
+    persona_default: "Nisha"
+    tasks:
+      - {task: nudge, intents: [], prompt_layer: {ref: prompts/nurture.md#nudge, version: "3.x"}}
+    tool_grants:
+      - {name: crm.read}
+      - {name: messages.send, params_constraints: {template_class: [reactivation]}}
+    tier_defaults:
+      - {rule_key: nudge_send, applies_to: action.message.send, condition: "true", tier: 1,
+         description: "Follow-up nudges (max 3 per lead / 30 days)"}
+    kpis: [reactivation_reply_rate, reactivated_revenue_minor]
+    budgets: {sends_day: 100}
+
+  - archetype: campaigner
+    persona_default: "Zara"
+    tasks:
+      - {task: festival_campaign, intents: [], prompt_layer: {ref: prompts/campaigner.md#festival, version: "2.x"}}
+    tool_grants:
+      - {name: segments.query}
+      - {name: campaigns.execute, params_constraints: {template_status: approved}}
+    tier_defaults:
+      - {rule_key: any_broadcast, applies_to: action.campaign.execute, condition: "recipients > 0", tier: 3,
+         approver: role:owner, confirm: typed_recipient_count,
+         description: "Any bulk send, always needs your confirmation"}
+    kpis: [campaign_roi_multiple, quality_rating_status]
+
+  - archetype: ops
+    persona_default: "Mira"
+    tasks:
+      - {task: catalog_entry, intents: [], prompt_layer: {ref: prompts/ops.md#catalog_entry, version: "2.x"}}
+      - {task: rate_watch, intents: [], prompt_layer: {ref: prompts/ops.md#rate_watch, version: "2.x"}}
+    tool_grants:
+      - {name: ingestion.review, params_constraints: {auto_approve_confidence: 0.95}}
+      - {name: catalog.write}
+      - {name: rates.read}
+    tier_defaults:
+      - {rule_key: catalog_write, applies_to: action.catalog.write, condition: "true", tier: 1,
+         description: "Catalog updates from photos and sheets"}
+    kpis: [items_processed, extraction_accuracy_pct, rate_freshness_ok_pct]
+
+  - archetype: support
+    persona_default: "Asha"
+    tasks:
+      - {task: ticket_handle, intents: [repair, order_status, complaint, exchange_policy],
+         prompt_layer: {ref: prompts/support.md#handle, version: "2.x"}}
+    tool_grants:
+      - {name: tickets.write}
+      - {name: orders.read}
+      - {name: messages.send, params_constraints: {conversation_scope: assigned_only}}
+    tier_defaults:
+      - {rule_key: support_reply, applies_to: action.message.send, condition: "true", tier: 1,
+         description: "Support replies"}
+      - {rule_key: escalation_triggers, applies_to: action.message.send,
+         condition: "attributes.sentiment == 'angry' || attributes.topic in ['legal','refund']",
+         tier: 2, description: "Angry customers, legal or refund topics go to you first"}
+    kpis: [tickets_resolved_pct, escalation_correct_pct, csat]
+
+planner:
+  contact_frequency_cap: {max_msgs_per_contact_per_day: 1, exempt: [active_conversation, transactional]}
+  digest: {time_local: "20:00", channel: whatsapp_owner}
+  intent_taxonomy_ref: agents/bindings.yaml#tasks.intents

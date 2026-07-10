@@ -1,0 +1,47 @@
+strategy_key: formula_weight_rate_v1
+engine: rules_v1
+input_schema:
+  type: object
+  properties:
+    item_id: {type: string}
+    purity: {enum: ["24K","22K","18K","14K","925","950"]}
+    net_weight_g: {type: number, exclusiveMinimum: 0}
+    stones: {type: array, items: {type: object, properties: {value_minor: {type: integer}}}}
+    requested_discount_minor: {type: integer, minimum: 0, default: 0}
+  required: [purity, net_weight_g]
+rate_sources:
+  - {key: ibja_gold, staleness_max: 24h, keys: ["24K","22K","18K","14K"],
+     fetch_spec: {kind: http, url: "https://ibjarates.com/api/latest", parser: jsonpath,
+                  map: {"24K": "$.gold999", "22K": "$.gold916", "18K": "$.gold750", "14K": "$.gold585"},
+                  unit: per_g_minor, bounds: {max_step_pct: 10}, schedule: "0 9,13,17 * * *"}}
+  - {key: ibja_silver, staleness_max: 24h, keys: ["925","950"],
+     fetch_spec: {kind: http, url: "https://ibjarates.com/api/latest", parser: jsonpath,
+                  map: {"925": "$.silver925", "950": "$.silver950"},
+                  unit: per_g_minor, bounds: {max_step_pct: 12}, schedule: "0 9,13,17 * * *"}}
+rules:
+  stages:
+    - id: metal_value
+      formula: "round(inputs.net_weight_g * rate(source_for(inputs.purity), key=inputs.purity).per_g_minor, 'half_even')"
+    - id: wastage
+      formula: "round(stage.metal_value * params.wastage_pct / 100, 'half_even')"
+    - id: making
+      formula: "max(round((stage.metal_value + stage.wastage) * params.making_pct / 100, 'half_even'), params.making_min_minor)"
+    - id: stones
+      formula: "sum(inputs.stones[].value_minor)"
+    - id: subtotal
+      formula: "stage.metal_value + stage.wastage + stage.making + stage.stones"
+    - id: discount
+      formula: "min(inputs.requested_discount_minor, round(stage.subtotal * params.discount_ceiling_pct / 100, 'down'))"
+      flags: {tier_2_if_nonzero: true}
+    - id: gst
+      formula: "tax_rule('in_gst_jewelry_3pct').apply(stage.subtotal - stage.discount)"
+    - id: total
+      formula: "stage.subtotal - stage.discount + stage.gst"
+  breakdown_labels:
+    metal_value: "{purity} {metal} · {net_weight_g}g × ₹{rate}/g"
+    making: "Making charges"
+    gst: "GST (3%)"
+tax_rules:
+  - {id: in_gst_jewelry_3pct, kind: pct, value: 3.0, jurisdiction: IN}
+quote_validity: {from_slot: quote_validity_hours, invalidate_on: [rate.updated]}
+golden_cases: evals/pricing_golden.yaml

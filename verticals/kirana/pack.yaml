@@ -1,0 +1,25 @@
+pack: kirana
+version: 0.1.0
+platform_api: ">=1.0 <2"
+display_name: "Kirana / Grocery"
+locales: [en-IN, hi-IN, te-IN]
+risk_class: standard
+requires:
+  channels: [whatsapp]
+  capabilities: [payments.link]
+  rate_sources: []
+provides:
+  archetypes: [concierge, nurture, ops]
+  pricing_strategy: static_list_v1
+  catalog_schema: catalog/schema.json
+slots:
+  order_confirm_threshold_minor: {type: integer, default: 200000, ui_label: "Orders above this need your OK (₹, paise)"}
+  delivery_available: {type: boolean, default: true}
+  delivery_radius_km: {type: number, default: 3, minimum: 0, maximum: 15}
+  delivery_fee_minor: {type: integer, default: 2000}
+  free_delivery_above_minor: {type: integer, default: 50000}
+  gst_scheme: {type: string, enum: [composition, regular], default: composition}
+onboarding: onboarding/steps.yaml
+ui: ui/templates.yaml
+evals_required: [order_parse, money_traps, injection, isolation_probes]
+signing: {alg: ed25519, key_id: platform-2026}

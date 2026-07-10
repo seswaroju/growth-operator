@@ -1,0 +1,22 @@
+steps:                                   # inserted between core steps per onboarding-flow.md
+  - id: rates_and_charges
+    after_core: business_profile
+    title: "Gold rates & charges"
+    fields: [making_charge_pct, making_min_minor, wastage_pct, discount_ceiling_pct, quote_validity_hours]
+    validations: [slots_schema]
+    help: "Priya uses these to compute exact quotes. She can never discount beyond your ceiling."
+  - id: catalog_seed
+    after_core: rates_and_charges
+    title: "Add your first pieces"
+    min_items: 10
+    ingestion_sources: [photo, csv, instagram_scrape]
+    extraction_hints: jewelry_weight_tag_v2
+    validations: [all_required_attributes, constraints]
+  - id: visit_slots
+    after_core: catalog_seed
+    title: "Store visit hours"
+    fields: [store_visit_slots]
+  - id: test_conversation
+    after_core: policies
+    scenarios: [browse_and_quote_under_1L, quote_over_1L_approval, discount_request, hinglish_greeting, book_visit]
+    pass_requirement: owner_confirms_each

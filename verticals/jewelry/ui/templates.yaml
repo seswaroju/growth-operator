@@ -1,0 +1,23 @@
+copy_slots:
+  catalog_noun: {en-IN: "designs", hi-IN: "designs", te-IN: "డిజైన్లు"}
+  visit_verb:   {en-IN: "visit the store", hi-IN: "showroom aayiye", te-IN: "స్టోర్‌కి రండి"}
+catalog_editor:
+  field_order: [media, title, category, metal, purity, gross_weight_g, net_weight_g, stone_details, huid, occasion, gender, made_to_order_days]
+  photo_first: true
+  confidence_highlight: true
+commitment_card:                         # quote render (WhatsApp + dashboard preview identical)
+  kind: quote
+  rows:
+    - {label_from: breakdown.metal_value.label, amount: breakdown.metal_value}
+    - {label: "Making charges", amount: breakdown.making}
+    - {label: "Stones", amount: breakdown.stones, hide_if_zero: true}
+    - {label: "Discount", amount: breakdown.discount, hide_if_zero: true, negative: true}
+    - {label: "GST (3%)", amount: breakdown.gst}
+  total_row: {label: "Total", amount: breakdown.total, emphasize: true}
+  footer: "Valid till {valid_until_local} · {purity} hallmarked{huid_suffix}"
+dashboard_widgets:
+  - {kpi: visits_booked, viz: number_trend, title: "Store visits booked"}
+  - {kpi: attributed_revenue_minor, viz: money_trend, title: "Attributed sales"}
+  - {kpi: handled_end_to_end_pct, viz: gauge, target: 70}
+  - {kpi: rate_freshness_ok_pct, viz: status, alert_below: 100}
+approval_preview: {render: commitment_card, context_lines: 6}

@@ -1,0 +1,43 @@
+suite: jewelry.concierge_core
+pass_bar: {rubric_mean: 0.95, hard_rules: 1.0}
+judge: rubric_llm_v2 + deterministic_checks
+cases:                                   # 150 total; representative sample below, full set generated from transcript corpus + authored edges
+  - id: cc-001
+    setup: {catalog_fixture: srila_30, rates_fixture: fresh}
+    conversation:
+      - customer: "Hi, looking for engagement rings"
+    expect:
+      rubric: [warm_greeting, occasion_ack, discovery_question_budget_or_style, no_list_dump]
+      hard: [no_unledgered_figures, only_returned_items_mentioned]
+  - id: cc-014
+    conversation:
+      - customer: "22K chain 25 grams price?"
+    expect:
+      tools: [{name: catalog.search}, {name: pricing.compute, params_contains: {purity: "22K"}}]
+      hard: [figure_matches_tool_result_exactly, validity_stated]
+  - id: cc-027
+    setup: {rates_fixture: stale}
+    conversation:
+      - customer: "necklace price batao"
+    expect:
+      hard: [no_figure_stated, stale_rate_flow_language, followup_task_created]
+  - id: cc-041
+    conversation:
+      - customer: "final price? 10% discount karo"
+    expect:
+      tools: [{name: pricing.compute, params_contains: {requested_discount_minor: ">0"}}]
+      hard: [no_discount_promised_before_compute, capped_amount_presented_if_capped]
+      rubric: [two_round_negotiation_then_visit_offer]
+  - id: cc-063
+    conversation:
+      - customer: "is this hallmarked?"
+    setup: {item_fixture: {huid: null}}
+    expect: {hard: [no_hallmark_claim, owner_confirmation_deferral]}
+  - id: cc-088
+    conversation:
+      - customer: "can you deliver by Friday?"
+    setup: {item_fixture: {made_to_order_days: 12}}
+    expect: {hard: [no_exact_date_commitment, estimate_language_with_buffer, tier2_path_if_pressed]}
+generation:
+  from_corpus: {source: srila_transcripts_anon, sampler: stratified_by_intent, n: 100}
+  authored_edges: 50

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  UV_VERSION: "0.5"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run mypy core
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run pytest tests/unit -v
+
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: growth_operator
+          POSTGRES_PASSWORD: growth_operator
+          POSTGRES_DB: growth_operator
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U growth_operator -d growth_operator"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - run: uv run alembic upgrade head
+
+  # Placeholder — fails the build once real isolation tests exist and are skipped.
+  # Wired for real in MVP-097 (isolation suite + nightly synthetic e2e).
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --frozen
+      - name: Fail if isolation suite is missing
+        run: |
+          if [ -z "$(find tests/isolation -name 'test_*.py' 2>/dev/null)" ]; then
+            echo "::error::tests/isolation has no tests yet — expected until MVP-097 lands. Placeholder passes until then."
+          fi
+
+  # Placeholder — fails the build once real eval suites exist and are skipped.
+  # Wired for real in MVP-095/MVP-096 (eval harness + CI gates).
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "eval harness not wired yet — see MVP-095/MVP-096"

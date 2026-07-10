@@ -1,0 +1,7 @@
+integration: whatsapp_business
+mcp_server: go-whatsapp
+credential_schema: {type: object, properties: {waba_id: {type: string}, phone_number_id: {type: string},
+                    access_token: {type: string, x-secret: true}}, required: [waba_id, phone_number_id, access_token]}
+scopes: [messages.send, messages.receive, templates.manage]
+templates_namespace: kirana_v1
+health_check: {kind: api_probe, endpoint: phone_number_status, interval: 5m}

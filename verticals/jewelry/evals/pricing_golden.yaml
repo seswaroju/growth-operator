@@ -1,0 +1,17 @@
+suite: jewelry.pricing_golden          # deterministic engine tests, not LLM
+pass_bar: {exact: 1.0}
+fixtures: {rates: {ibja_gold: {"22K": 732000, "18K": 599000}, ibja_silver: {"925": 9500}},   # minor units per g
+           params: {making_pct: 8, making_min_minor: 50000, wastage_pct: 0, discount_ceiling_pct: 5}}
+cases:
+  - {id: pg-001, inputs: {purity: "22K", net_weight_g: 12.4, stones: []},
+     expect: {metal_value: 9076800, making: 726144, gst: 294088, total: 10097032}}
+  - {id: pg-002, inputs: {purity: "22K", net_weight_g: 0.5},
+     expect: {making: 50000, note: "making_min floor applies"}}
+  - {id: pg-014, inputs: {purity: "18K", net_weight_g: 8.0, requested_discount_minor: 1000000},
+     expect: {discount: 239600, note: "capped at 5% of subtotal, not the requested 10L paise"}}
+  - {id: pg-031, inputs: {purity: "925", net_weight_g: 210.0},
+     expect: {rate_source: ibja_silver}}
+  - {id: pg-055, inputs: {purity: "22K", net_weight_g: 12.4}, fixtures_override: {rates_age: 25h},
+     expect_error: stale_rate}
+  # ...200 total incl. rounding-residue asserts on every case
+rounding_property: "sum(breakdown_lines) == total exactly, all cases"

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gop:pack:jewelry:catalog:2",
+  "type": "object",
+  "properties": {
+    "category":  {"enum": ["ring","chain","necklace","bangle","earring","bracelet","pendant","coin","set"],
+                  "x-index": true, "x-search": true},
+    "metal":     {"enum": ["gold","silver","platinum"], "x-index": true, "x-search": true},
+    "purity":    {"enum": ["24K","22K","18K","14K","925","950"], "x-index": true, "x-search": true},
+    "gross_weight_g": {"type": "number", "exclusiveMinimum": 0, "x-index": true, "x-index-type": "numeric", "x-unit": "g"},
+    "net_weight_g":   {"type": "number", "exclusiveMinimum": 0, "x-unit": "g"},
+    "stone_details": {"type": "array", "items": {"type": "object",
+        "properties": {"type": {"type": "string"}, "carat": {"type": "number"},
+                       "value_minor": {"type": "integer", "minimum": 0},
+                       "certified": {"type": "boolean"}},
+        "required": ["type","value_minor"]}},
+    "huid":      {"type": "string", "pattern": "^[A-Z0-9]{6}$", "x-pii": false},
+    "gender":    {"enum": ["women","men","kids","unisex"], "x-index": true},
+    "occasion":  {"type": "array", "items": {"enum": ["wedding","engagement","daily","festive","gift","office"]},
+                  "x-index": true, "x-search": true},
+    "design_style": {"type": "string", "x-search": true},
+    "size":      {"type": "string"},
+    "made_to_order_days": {"type": "integer", "minimum": 1, "maximum": 60}
+  },
+  "required": ["category","metal","purity","gross_weight_g","net_weight_g"],
+  "constraints": [
+    {"cel": "attributes.net_weight_g <= attributes.gross_weight_g",
+     "message": "net weight cannot exceed gross weight"},
+    {"cel": "attributes.metal != 'gold' || attributes.purity in ['24K','22K','18K','14K']",
+     "message": "gold purity must be a karat value"}
+  ],
+  "search_projection": ["category","metal","purity","occasion","design_style"],
+  "identity_keys": [["huid"], ["sku"]]
+}

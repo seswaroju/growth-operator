@@ -1,0 +1,18 @@
+copy_slots:
+  catalog_noun: {en-IN: "items", hi-IN: "saamaan", te-IN: "సరుకులు"}
+  visit_verb: {en-IN: "pickup from store", hi-IN: "dukaan se le lijiye", te-IN: "స్టోర్ నుండి తీసుకోండి"}
+catalog_editor:
+  field_order: [title, brand, pack_size, unit, mrp_minor, category, aliases, barcode, restricted, low_stock_threshold]
+  photo_first: false
+  barcode_scan: true
+commitment_card:
+  kind: order_draft
+  rows_from: breakdown.line_totals
+  extra_rows: [{label: "Delivery", amount: breakdown.delivery_fee, hide_if_zero: true}]
+  total_row: {label: "Total", amount: breakdown.total, emphasize: true}
+  footer: "{payment_mode_line}"
+dashboard_widgets:
+  - {kpi: orders_auto_parsed_pct, viz: gauge, target: 80}
+  - {kpi: basket_size_minor, viz: money_trend, title: "Average basket"}
+  - {kpi: reorder_conversion_pct, viz: number_trend}
+approval_preview: {render: commitment_card, context_lines: 4}
