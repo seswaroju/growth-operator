@@ -1,0 +1,69 @@
+# Blockers
+
+Unresolved problems. Update in place as status changes; move to a strikethrough "Resolved" section (with date + commit) rather than deleting, so the history stays visible.
+
+---
+
+### ~~1. Docker Compose env var prefix mismatch~~ — RESOLVED 2026-07-22
+
+- **Severity:** Medium (latent — not yet triggered by any running code)
+- **Owner:** Engineering (founder)
+- **Description:** `infra/docker/docker-compose.dev.yml` sets `DATABASE_URL` / `REDIS_URL` on the `api`/`worker`/`scheduler` services. `core/common/config.py`'s `Settings` reads `GROWTH_OPERATOR_DATABASE_URL` / `GROWTH_OPERATOR_REDIS_URL` (env_prefix). Containers will silently fall back to `Settings` defaults (`@localhost`) instead of the `postgres`/`redis` service hostnames.
+- **Resolution (2026-07-22):** Renamed both vars to `GROWTH_OPERATOR_DATABASE_URL` / `GROWTH_OPERATOR_REDIS_URL` on all three services in `docker-compose.dev.yml` (branch `feature/mvp-011-otp-auth`, not yet committed). Static verification only — the containers still have not been booted against a live Docker daemon (see #2), so the end-to-end connection has not been exercised.
+
+### ~~2. `make dev` / `alembic upgrade head` never verified against a live Docker daemon~~ — RESOLVED 2026-07-22
+
+- **Severity:** Medium
+- **Owner:** Founder
+- **Description:** Earlier Claude Code sessions could not reach a Docker daemon, so all verification was static and migration 001 / the auth routes were only checked via offline SQL + TestClient up to the pre-DB path.
+- **Resolution (2026-07-22):** Founder installed OrbStack + Docker Desktop. Daemon reachable (server 29.6.2, compose v5.3.1). Brought up `postgres` + `redis` (both healthy, ports 5432/6379). Verified: `alembic upgrade head` applies migration 001; `alembic downgrade base` drops all tables and `upgrade head` recreates them (down-migration proven); the three identity tables have the expected columns/indexes/CHECKs. Added `tests/integration/test_auth_flow.py` (skips without a DB) exercising the full request→verify→token flow against the live DB — **48 tests pass** (45 unit + 3 integration). MVP-011's live-DB acceptance is now met.
+- **Still outstanding (tracked elsewhere, not this blocker):** the full `make dev` boot of the *app* containers (api/worker/scheduler images) hasn't been run — only the data services. And "OTP to founder's real inbox in staging" still needs a real email provider (TODO #2) + a deployed staging env.
+
+### 3. Meta WABA (WhatsApp Business API) verification not started / status unknown
+
+- **Severity:** High — longest lead-time item in the entire MVP plan; blocks MVP-031..037 and the Week-1 exit demo
+- **Owner:** Founder
+- **Description:** Per `docs/25-implementation-starter-kit/02-week-1-plan.md`, WABA verification submission should start Day 1, in parallel with code. A decision is required first: Srila's existing number vs. a new number for Priya (porting freezes the number for days).
+- **Next action:** Founder decides the number question, then submits Meta verification immediately.
+
+### 4. Missing dependencies for planned modules
+
+- **Severity:** Low (not yet needed)
+- **Owner:** Engineering
+- **Description:** `langgraph` (named in `docs/25-implementation-starter-kit/06-backend-plan.md` as the `core/runtime` stack choice) and `jsonschema` (needed for Draft-2020-12 catalog/pack attribute validation, `core/catalog`, pack verification) are not in `pyproject.toml`.
+- **Next action:** Add `langgraph` before MVP-055; add `jsonschema` before MVP-042/046.
+
+### 5. IBJA gold-rate source undecided
+
+- **Severity:** Medium — needed by MVP-051 (Week 2 Day 4 per plan)
+- **Owner:** Founder
+- **Description:** Open question: scrape vs. paid API vs. manual-first. `fetch_spec` currently assumes an API exists; manual-entry is the documented hedge.
+- **Next action:** Founder decides; manual-first can unblock MVP-051 without waiting on an API integration decision.
+
+### 6. Razorpay account entity undecided
+
+- **Severity:** Medium — needed before payment links (MVP-053/054 area)
+- **Owner:** Founder + counsel
+- **Description:** Personal account vs. new company entity; ties to an open founder-IP legal question.
+- **Next action:** Founder + counsel decide before payment-link work starts.
+
+### 7. React 18 (spec) vs. React 19 (as scaffolded) unresolved
+
+- **Severity:** Low
+- **Owner:** Founder / Engineering
+- **Description:** `docs/25-implementation-starter-kit/06-backend-plan.md` specifies React 18; `npm create vite@latest` installed React 19.2.7 (latest at scaffold time) into `web/package.json`.
+- **Next action:** Decide to pin `web/` to React 18 or update the authoritative doc to React 19.
+
+### 8. Data residency (Hetzner EU vs. India VPS) undecided
+
+- **Severity:** Low for pilot scale (documented exception acceptable); becomes higher severity before scaling
+- **Owner:** Founder
+- **Description:** DPDP posture question; not blocking for pilot tenants.
+- **Next action:** Decide before MVP-098 (production infra) / before scaling past pilot tenants.
+
+### 9. Git commit identity auto-detected, not explicitly configured
+
+- **Severity:** Low
+- **Owner:** Founder
+- **Description:** The initial commit (`cf7536e`) used an auto-detected identity (`Sri Eswaroju <srila@Sris-Mac-mini.local>`) because no global git user.name/user.email is set.
+- **Next action:** Run `git config --global user.name` / `user.email` if a different commit identity is wanted; otherwise no action needed.

@@ -1,5 +1,11 @@
 # Growth Operator Implementation Audit
 
+> **Historical snapshot — 2026-07-10, do not treat as current.** This reflects the repo at
+> the initial scaffold commit (`cf7536e`), before MVP-011. For current status see
+> [status.html](status.html), [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md),
+> [CURRENT_TASK.md](CURRENT_TASK.md), and [BLOCKERS.md](BLOCKERS.md). Kept unedited as a
+> point-in-time record per CLAUDE.md §24.5.
+
 ## Audit metadata
 
 - **Date:** 2026-07-10

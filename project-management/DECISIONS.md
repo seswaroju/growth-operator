@@ -1,0 +1,98 @@
+# Founder Decisions
+
+Records technical/product decisions the founder has explicitly approved. Append new entries; do not edit past entries (add a superseding entry if a decision changes, and reference the old one).
+
+---
+
+### 2026-07-10 — Implementation repo is a separate directory from the doc vault
+
+**Decision:** Product code lives in `/Users/srila/AI-Growth-Operator/growth-operator/`, a directory separate from `/Users/srila/AI-Growth-Operator/Growth-Operator-Vault/` (the Obsidian doc vault). The code repo's `docs/` is a symlink to the vault, read-only, never modified by implementation work.
+
+**Context:** Initial scaffold work was about to happen inside/alongside the vault; founder explicitly asked for a separate directory for "project implementation code etc." Keeps the vault as pure source-of-truth documentation and the code repo as a clean, independently-versioned artifact.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-10 — New GitHub repo, not an existing one
+
+**Decision:** Push the implementation repo to a newly created GitHub repository rather than an existing remote.
+
+**Context:** No remote existed yet. Founder chose "create a new GitHub repo" over "push to an existing repo URL" when asked.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-10 — Repo name and visibility: `growth-operator`, private
+
+**Decision:** The GitHub repository is named `growth-operator` and is **private**.
+
+**Context:** Matches the local directory name; private visibility chosen as the default-safe option for an unreleased product, over a public alternative.
+
+**Decided by:** founder
+
+**Result:** Repo created and pushed at `https://github.com/seswaroju/growth-operator`, initial commit `cf7536e`.
+
+---
+
+### 2026-07-22 — WABA number: use Srila's existing WhatsApp number
+
+**Decision:** Meta WhatsApp Business API verification will use Srila's existing WhatsApp number (not a new number for Priya).
+
+**Context:** Blocker #3 — longest lead-time item in the MVP plan; blocks MVP-031..037 and the Week-1 exit demo. Porting a new number freezes it for days, so the existing number avoids that delay. Founder chose the existing number when asked.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-22 — Identity tables (migration 001) are global; `users` has no `tenant_id`
+
+**Decision:** Migration 001 (`users, sessions, otp_challenges`) creates **global** identity tables. `users` has **no** `tenant_id` column and no FK to `organizations`; no RLS is applied to any of the three tables. Org membership is modeled separately by `user_orgs` in migration 002 (MVP-014).
+
+**Context:** Conflict between authoritative docs — v1 `docs/06-database/schema.sql` defines `users.tenant_id NOT NULL REFERENCES organizations(id)` (single-org users), while `docs/25-implementation-starter-kit/09-database-migration-order.md` orders identity (001) before orgs (002) and introduces a `user_orgs` many-to-many table, and `CURRENT_TASK.md` notes users/sessions are global. A `NOT NULL` FK to `organizations` cannot exist in 001 (that table is created in 002), and `user_orgs` supersedes a single-org `users.tenant_id`. Resolved in favor of global users + `user_orgs` membership, which is the more implementation-proximate (migration-order) design and lets 001 run standalone. The v1 `users.tenant_id` column is superseded.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-22 — Dependency: add `argon2-cffi` for OTP/token hashing
+
+**Decision:** Add `argon2-cffi>=23.1` to `pyproject.toml` dependencies. Used to hash OTP codes (`otp_challenges.code_hash`) and session tokens (`sessions.token_hash`) at rest.
+
+**Context:** MVP-011 and `docs/25-implementation-starter-kit/13-auth-rbac-approval-audit.md` explicitly specify argon2 hashing. Only `python-jose[cryptography]` (JWT signing) was present; no password-hashing library existed. Per CLAUDE.md §9 the dependency is required by the approved ticket. Purpose: memory-hard hashing of low-entropy secrets at rest. No license/operational concern (MIT/LGPL, pure-Python wheel with C extension).
+
+**Decided by:** founder
+
+---
+
+### 2026-07-22 — Interim OTP channel is email (phone kept behind a flag); defer Meta
+
+**Decision:** While Meta WABA verification is deferred (too long a testing lead-time), the OTP channel switches to **email** for the interim. Email **replaces** phone as the login identifier for now; the phone-OTP code path is **retained behind a config flag** (`GROWTH_OPERATOR_OTP_CHANNEL`, default `email`), not deleted. The broader "replace Meta with a third-party API" direction applies to the WhatsApp **conversation channel** (MVP-031+, not yet in scope) and is tracked for later; real Meta integration is planned once verification completes.
+
+**Context:** This deviates from `docs/25-implementation-starter-kit/13-auth-rbac-approval-audit.md`, which specifies Phone OTP. Rationale: unblock end-to-end OTP testing without waiting on Meta. Implementation: `otp_challenges` generalized to `(channel, identifier)`; `users.phone` made nullable with a CHECK that phone or email is present; migration 001 edited in place (unapplied/uncommitted). Real email/SMS sending remains a gated external side effect (§10.4) — dev echo covers local testing; a real provider adapter + credentials + approval are needed before staging sends. All add-backs tracked in [TODO.md](TODO.md).
+
+**Decided by:** founder
+
+---
+
+### 2026-07-22 — Clarification: Meta WABA is pending API access, not deferred
+
+**Decision/clarification:** Supersedes the "defer Meta" framing in the 2026-07-22 interim-OTP entry above. Meta WhatsApp is **on the critical path and actively wanted** — it is blocked only on Meta granting API access (verification in flight), not postponed by choice. Email OTP is a **bridge** so owner login works while access is pending, not a permanent replacement. When access lands: build the Meta adapter (MVP-031..037), point OTP delivery at WhatsApp, and restore phone OTP.
+
+**Context:** Founder corrected the wording — "Meta WABA is not deferred but need to wait till I get the API access." Records (TODO.md #1, config.py, status.*) updated to "pending API access / bridge" language.
+
+**Decided by:** founder
+
+---
+
+## Open — not yet decided (tracked here for visibility, do not treat as approved)
+
+These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder decisions" and are **not yet resolved**. Move to a dated entry above once the founder actually decides:
+
+- IBJA gold-rate source: scrape vs. paid API vs. manual-first
+- Owner approval channel: WhatsApp-only vs. + PWA push
+- Razorpay account entity: personal vs. new company
+- Data residency: Hetzner EU vs. India VPS
+- React 18 (per spec) vs. React 19 (as scaffolded)
+- Judge model choice for eval harness (cost vs. calibration)
