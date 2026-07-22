@@ -67,3 +67,10 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder
 - **Description:** The initial commit (`cf7536e`) used an auto-detected identity (`Sri Eswaroju <srila@Sris-Mac-mini.local>`) because no global git user.name/user.email is set.
 - **Next action:** Run `git config --global user.name` / `user.email` if a different commit identity is wanted; otherwise no action needed.
+
+### 10. MVP-009 staging cannot be applied (scaffold only)
+
+- **Severity:** High — P0 ticket; staging is needed before Week-1 D5 so WhatsApp tickets test against it.
+- **Owner:** Founder
+- **Description:** MVP-009 Terraform (`infra/terraform/staging/`) + `deploy-staging.yml` are written but **un-applied**. Blocked on: a Hetzner Cloud account + API token; a domain + DNS provider (`api.staging.<domain>`); the data-residency decision (see #8 — Hetzner EU vs India VPS); and Meta WhatsApp test-number access (pending, tied to #3). terraform is also not installed locally, so the scaffold is not `fmt`/`plan`-validated.
+- **Next action:** Founder creates the Hetzner token, picks a domain + residency, sets repo secrets (`STAGING_HOST`, `STAGING_SSH_KEY`, vars `STAGING_ENABLED`/`STAGING_DOMAIN`); then `terraform plan` review before any apply (§8/§10.5 — provisioning needs explicit approval).

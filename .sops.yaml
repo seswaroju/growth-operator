@@ -1,0 +1,14 @@
+# SOPS configuration (MVP-008). Encrypts secrets/<env>.enc.yaml with age.
+#
+# SETUP (founder, one-time — keys are NOT committed):
+#   1. brew install sops age
+#   2. age-keygen -o ~/.config/sops/age/keys.txt          # prints the PUBLIC recipient
+#   3. paste the public key (age1...) below, replacing the placeholder
+#   4. keep keys.txt secret; store an offline backup (per the ticket rollout note)
+#
+# The placeholder below is NOT a real key — encryption will refuse to run until replaced.
+creation_rules:
+  - path_regex: secrets/.*\.enc\.yaml$
+    encrypted_regex: "^(.*)$"
+    age: >-
+      age1REPLACE_WITH_FOUNDER_PUBLIC_KEY_0000000000000000000000000000000000

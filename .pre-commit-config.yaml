@@ -1,0 +1,22 @@
+# Pre-commit hooks (MVP-008 + repo hygiene). Install once: `uv run pre-commit install`.
+# The gitleaks hook satisfies "plaintext secret in commit blocked by pre-commit".
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Detect hardcoded secrets
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: arch-guards
+        name: architecture guards (MVP-010)
+        entry: uv run python scripts/guards.py
+        language: system
+        pass_filenames: false
