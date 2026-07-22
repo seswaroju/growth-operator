@@ -1,0 +1,2279 @@
+<meta charset="utf-8" />
+<title>Growth Operator — Build Status</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script type="application/json" id="embedded-status">{
+  "meta": {
+    "product": "Growth Operator",
+    "wedge": "Detect WhatsApp leads who go silent after a price quote, diagnose WHY they ghosted, prescribe an owner-approved recovery message, and log recovered revenue.",
+    "generated": "2026-07-22",
+    "source_commit": "cf7536e + uncommitted branch feature/mvp-011-otp-auth (MVP-011 auth)",
+    "repo": "/Users/srila/AI-Growth-Operator/growth-operator",
+    "vault": "/Users/srila/AI-Growth-Operator/Growth-Operator-Vault (code repo docs/ is a symlink to this)",
+    "grounding_note": "Statuses are evidenced against the actual code tree; depth (tables, events, tickets, spec refs) is sourced from the Obsidian vault. PROGRESS since 2026-07-21 (branch feature/mvp-011-otp-auth, uncommitted): migration 001 (users, sessions, otp_challenges) now exists; two auth routes are live (POST /v1/auth/otp and /v1/auth/otp/verify); argon2 hashing + JWT issue; the OTP channel is an INTERIM email path (phone kept behind a flag) while Meta WhatsApp API access is pending; a gated EmailOtpDelivery (SMTP) adapter is written but OFF by default; a preview email-OTP login page exists in web/. Verified via 48 backend tests (45 unit + 3 live-DB integration) + frontend build; the live-DB path is now VERIFIED against Postgres 16 (OrbStack): migration 001 up+down+re-up round-trip and the full request->verify->token flow both pass. Still true: no LLM SDK is a dependency; the core wedge mechanic (ghost detection -> diagnosis -> recovery -> attribution) is entirely unbuilt and the diagnosis differentiator is absent from code AND vault design; the jewellery pack is still only declarative YAML/markdown that no loader reads.",
+    "diagnosis_gap_note": "The wedge's differentiator — diagnosing WHY a lead ghosted — is absent from code AND from the vault design. The vault's own recovery spec (32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md) and workflow (silent_lead_reactivation.yaml) go straight from a 72h-silence trigger to 'compose ONE nudge or SKIP' with NO reason inference. So diagnosis must be designed first, then built.",
+    "scoring": "Rollup % is computed in status.html from leaf statuses: DONE=1, PARTIAL=0.5, NOT_STARTED/BLOCKED/UNCERTAIN=0. DEFERRED leaves are excluded from numerator and denominator so future scope never dilutes the wedge %.",
+    "status_legend": [
+      "DONE",
+      "PARTIAL",
+      "NOT_STARTED",
+      "BLOCKED",
+      "DEFERRED",
+      "UNCERTAIN"
+    ],
+    "ticket_map_source": "25-implementation-starter-kit/09-database-migration-order.md, 11-event-bus-topics.md, and tickets/MVP-*.md"
+  },
+  "tracks": [
+    {
+      "id": "A",
+      "name": "Core Wedge (the MVP — the only thing that must ship)",
+      "track": "wedge",
+      "status": "NOT_STARTED",
+      "notes": "Entire wedge mechanic is unbuilt in code. The diagnosis step (the differentiator) is absent even from the vault design — the recovery playbook composes one generic nudge with no reason inference.",
+      "children": [
+        {
+          "id": "A1",
+          "name": "Ghost detection",
+          "status": "NOT_STARTED",
+          "what_exists": "A declarative silence-trigger spec only (silent_lead_reactivation.yaml + the recovery playbook).",
+          "what_is_missing": "Everything executable: no event system, no message store, no scheduler logic, no lead-stage model.",
+          "children": [
+            {
+              "id": "A1.1",
+              "name": "Price-reveal event capture",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml",
+                "core/events/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing in code. The vault names the exact event to emit (quote.created.v1) but no producer exists.",
+              "what_is_missing": [
+                "A `quote.created.v1` event emitted by pricing when a figure is committed — this is the silence anchor the whole wedge measures from",
+                "`conversations` + `messages` tables to hold the thread (migration 005 messaging)",
+                "A `leads` row transitioning to stage=quoted (migration 011 CRM)"
+              ],
+              "dependencies": [
+                "B2 (events)",
+                "B3.2 (inbound webhook)",
+                "A1.4 (lead-stage model)",
+                "A4.1 (ledger emits the figure)"
+              ],
+              "next_action": "Define and emit `quote.created.v1` whenever a price is committed to a lead. Wire it to flip the lead to stage=quoted with a timestamp.",
+              "tickets": [
+                "MVP-050 · Pricing migration + rules_v1 engine (quotes)",
+                "MVP-019 · Messaging migration",
+                "MVP-023 · CRM migration (leads)"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/11-event-bus-topics.md → quote.created.v1",
+                "36-diagrams/12-send-path-figure-gate.md",
+                "36-diagrams/10-inbound-message-e2e.md"
+              ],
+              "notes": "The wedge is 'silent AFTER a price quote'. The existing workflow triggers on generic 'engaged' silence, which is a weaker signal than quote.created."
+            },
+            {
+              "id": "A1.2",
+              "name": "Silence timer / threshold",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml",
+                "core/scheduler.py (sleep-loop placeholder)",
+                "core/workflows/__init__.py (empty stub)"
+              ],
+              "what_exists": "Declarative threshold + cadence: 72h trigger, then 7d gentler touch, then 30d dormant pool; touch cap 3/30d. Design only.",
+              "what_is_missing": [
+                "A scheduled evaluator that finds leads at stage=quoted with no inbound reply for 72h — core/scheduler.py only sleeps",
+                "The workflow engine to run silent_lead_reactivation (core/workflows is empty)",
+                "The guard library the workflow references: touch_cap(3,30d), consent_valid, within_send_window (quiet hours), not_suppressed"
+              ],
+              "dependencies": [
+                "B6.2 (workflow engine)",
+                "B2.2 (consumer framework)",
+                "A1.1"
+              ],
+              "next_action": "Ship the smallest silence evaluator: a background job querying quoted-and-silent leads past threshold and flagging them ghosted. A full DSL engine can wait.",
+              "tickets": [
+                "MVP-072 · Workflow DSL parser + guard library",
+                "MVP-074 · Jewelry workflows live + calendar",
+                "MVP-026 · Consumer framework"
+              ],
+              "spec_refs": [
+                "21-platform/workflow-engine.md",
+                "36-diagrams/22-workflow-engine-execution.md",
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md"
+              ],
+              "notes": "72h is the vault default; validate against real ghost-rate data (Track D) before hard-coding."
+            },
+            {
+              "id": "A1.3",
+              "name": "Ghost classification (ghost vs explicit-no vs still-open)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml"
+              ],
+              "what_exists": "Nothing. Neither the workflow nor the playbook distinguishes an explicit 'no' or a complaint thread from a true silent ghost.",
+              "what_is_missing": [
+                "Rules to separate true silence from explicit decline / purchased-elsewhere / still-negotiating",
+                "A read of the last inbound message intent (decline keywords, complaint signals) so recovery never fires on a 'no'"
+              ],
+              "dependencies": [
+                "A1.1",
+                "B4.2 (nano-class classifier)"
+              ],
+              "next_action": "Rules-first: gate recovery on last-inbound intent before adding any classifier.",
+              "tickets": [
+                "(wedge-specific — no existing vault ticket; the playbook only states 'never nudge a complaint thread')"
+              ],
+              "spec_refs": [
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md → Don'ts: never nudge a complaint thread"
+              ],
+              "notes": "Firing recovery on someone who already declined is the fastest way to burn owner trust and WhatsApp quality rating."
+            },
+            {
+              "id": "A1.4",
+              "name": "Lead + lead-stage model",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "migrations/versions/ (empty)",
+                "core/__init__ tree has no crm module"
+              ],
+              "what_exists": "Nothing in code. Lead/stage is referenced only by workflow YAML payloads (lead.stage_changed).",
+              "what_is_missing": [
+                "A `leads` table with a stage lifecycle (new → engaged → quoted → ghosted → reengaged/lost)",
+                "The CRM migration 011 (leads, appointments, orders, attributions, segments) with RLS applied",
+                "`lead.stage_changed.v1` / `lead.reengaged.v1` events (crm → workflows)"
+              ],
+              "dependencies": [
+                "B5.3 (migrations)",
+                "B2 (events)"
+              ],
+              "next_action": "Write migration 011 (CRM) — or a trimmed wedge subset (leads + attributions) — as the first real migration. It carries the stage the whole wedge keys on.",
+              "tickets": [
+                "MVP-023 · CRM migration"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/09-database-migration-order.md → 011 crm",
+                "36-diagrams/28-er-messaging-crm.md"
+              ],
+              "notes": "Vault ordering puts identity/orgs first (001-003); for a wedge spike you can pull CRM forward."
+            }
+          ]
+        },
+        {
+          "id": "A2",
+          "name": "Ghost diagnosis (infer WHY they ghosted)",
+          "status": "NOT_STARTED",
+          "what_exists": "Nothing — and this is the wedge's differentiator, absent from code AND vault design.",
+          "what_is_missing": "The reason taxonomy, the LLM call, the diagnosis prompt, and the context inputs.",
+          "notes": "THE central gap. The vault treats recovery as a single generic nudge (compose or SKIP). No repo artifact mentions rate-anxiety / sticker-shock / comparison-shopping / trust-hesitation. Diagnosis is net-new product design, not a coding task hiding in the backlog.",
+          "children": [
+            {
+              "id": "A2.1",
+              "name": "Reason taxonomy (rate anxiety / sticker shock / comparison / trust)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "(no repo or vault artifact — grep for 'diagnos|sticker|rate anxiety' returns nothing)"
+              ],
+              "what_exists": "Nothing. The four-reason taxonomy exists only in your wedge brief.",
+              "what_is_missing": [
+                "A written, versioned taxonomy of ghost reasons with definitions",
+                "The observable signals in a transcript that map to each reason",
+                "A mapping from reason → attribution bucket and → recovery playbook move"
+              ],
+              "dependencies": [
+                "D3 (staff interviews)",
+                "D1 (real ghost logs)"
+              ],
+              "next_action": "Write the taxonomy down first (a markdown/YAML enum). Cheap, and it anchors both the diagnosis prompt (A2.3) and attribution (A4).",
+              "tickets": [
+                "(wedge-specific — new)"
+              ],
+              "spec_refs": [
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md (NOTE: has no diagnosis step)",
+                "09-prompts/prompt-library.md",
+                "26-customer-discovery/pain-ranking-scorecard.md"
+              ],
+              "notes": "Validate against Track D so the reasons are observed, not invented."
+            },
+            {
+              "id": "A2.2",
+              "name": "LLM diagnosis call (frontier model)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "pyproject.toml (no anthropic/openai/LLM SDK dependency)",
+                "core/runtime/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing. There is no LLM client dependency in the project at all.",
+              "what_is_missing": [
+                "An Anthropic SDK dependency (add to pyproject.toml)",
+                "A diagnose(conversation, quote) → {reason, confidence, rationale} function on a frontier Claude model",
+                "model_routes wiring so diagnosis routes to the frontier tier (migration 015)"
+              ],
+              "dependencies": [
+                "B4.1 (frontier model)",
+                "A2.1",
+                "A2.4"
+              ],
+              "next_action": "Add the Anthropic SDK and prototype diagnose() offline against exported real ghost transcripts before any live plumbing exists.",
+              "tickets": [
+                "MVP-055 · Executor skeleton + checkpoints",
+                "MVP-058 · Prompt registry tables + API"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md",
+                "04-agents/core-agents.md → nurture (Nisha)",
+                "claude-api skill for model ids/pricing"
+              ],
+              "notes": "Lowest-cost highest-signal build: diagnosis can be validated on a CSV export before WhatsApp/events/auth exist."
+            },
+            {
+              "id": "A2.3",
+              "name": "Diagnosis prompt + inputs schema",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/prompts/nurture.md (recovery-writer only, not diagnosis)",
+                "core/prompts/__init__.py (empty stub)"
+              ],
+              "what_exists": "A nurture 'nudge' prompt exists, but it writes the recovery message — it does not diagnose a reason.",
+              "what_is_missing": [
+                "A dedicated diagnosis prompt that outputs a reason from the taxonomy with confidence",
+                "A defined input schema (what context the prompt receives)",
+                "Prompt registry storage (prompt_layers, migration 010)"
+              ],
+              "dependencies": [
+                "A2.1",
+                "A2.2"
+              ],
+              "next_action": "Author diagnosis prompt v0; test on real exported transcripts; iterate before wiring.",
+              "tickets": [
+                "MVP-058 · Prompt registry tables + API"
+              ],
+              "spec_refs": [
+                "09-prompts/prompt-library.md",
+                "09-prompts/prompt-standards.md",
+                "verticals/jewelry/prompts/nurture.md"
+              ],
+              "notes": "nurture.md is genuinely useful for A3 (recovery), not A2 (diagnosis) — do not conflate."
+            },
+            {
+              "id": "A2.4",
+              "name": "Diagnosis inputs (conversation history, quote details, timing)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/channels/whatsapp/__init__.py (empty stub)",
+                "migrations/versions/ (empty — no messages/conversations)"
+              ],
+              "what_exists": "Nothing. There is no conversation/message storage to draw context from.",
+              "what_is_missing": [
+                "Persisted conversation history (messages, migration 005)",
+                "The quote figure + breakdown (quotes / committed_figures_ledger, migration 013)",
+                "Timing signals: quote time, last reply, silence duration"
+              ],
+              "dependencies": [
+                "A1.4",
+                "B3.2",
+                "A4.1"
+              ],
+              "next_action": "For an offline prototype, a JSON/CSV export of real Srila transcripts is enough to build and test diagnosis before the live store exists.",
+              "tickets": [
+                "MVP-019 · Messaging migration",
+                "MVP-050 · Pricing migration (quotes/ledger)"
+              ],
+              "spec_refs": [
+                "36-diagrams/10-inbound-message-e2e.md",
+                "36-diagrams/11-pricing-compute-provenance.md"
+              ],
+              "notes": "Decouple diagnosis quality from messaging plumbing by prototyping on exported data."
+            }
+          ]
+        },
+        {
+          "id": "A3",
+          "name": "Recovery prescription (reason-specific message + jewellery playbook)",
+          "status": "PARTIAL",
+          "what_exists": "The most-designed part of the wedge: a nurture nudge prompt with a price guardrail, plus a full operational recovery playbook and jewellery domain knowledge.",
+          "what_is_missing": "Reason-conditioned generation, and any runtime that actually produces a message.",
+          "notes": "Well-designed but generic (one nudge, not reason-specific) and nothing executes it.",
+          "children": [
+            {
+              "id": "A3.1",
+              "name": "Reason-specific message generation",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/prompts/nurture.md",
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md"
+              ],
+              "what_exists": "A generic re-engagement nudge (warm, one genuine hook, max 2 sentences, references the actual item, 'SKIP' with reason if no hook). Cadence 72h → 7d → 30d.",
+              "what_is_missing": [
+                "Branching by diagnosed reason: comparison-shopper → value/trust anchor; sticker-shock → price-lock / advance-booking / scheme; rate-anxiety → rate-hold",
+                "Today it is one-size-fits-all with no link to A2"
+              ],
+              "dependencies": [
+                "A2 (diagnosis)",
+                "A3.4 (runtime)"
+              ],
+              "next_action": "Extend the single nudge into reason-conditioned variants once the taxonomy (A2.1) exists.",
+              "tickets": [
+                "MVP-058 · Prompt registry",
+                "MVP-074 · Jewelry workflows live"
+              ],
+              "spec_refs": [
+                "verticals/jewelry/prompts/nurture.md",
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md"
+              ],
+              "notes": "The prompt quality bar here is already high; the gap is conditioning it on a reason."
+            },
+            {
+              "id": "A3.2",
+              "name": "Jewellery playbook (price-lock/advance-booking, making-charge objections, festival timing, scheme conversion)",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/pack.md",
+                "verticals/jewelry/workflows/rate_alert_hold.yaml",
+                "verticals/jewelry/workflows/festival_campaign.yaml",
+                "verticals/jewelry/prompts/concierge.md"
+              ],
+              "what_exists": "Deep domain knowledge encoded declaratively: pricing formula, making-charge slots, rate-alert-hold, festival calendar, hallmark/GST compliance lines, and 10 operational playbooks in 32-jewelry-mvp-playbooks/.",
+              "what_is_missing": [
+                "A reason → playbook-move table (e.g. sticker-shock → advance-booking/price-lock; rate-anxiety → rate hold)",
+                "Any code that executes a playbook move"
+              ],
+              "dependencies": [
+                "A2.1",
+                "A3.4",
+                "B6.3 (pack loader)"
+              ],
+              "next_action": "Draft the reason → move mapping; the raw material already exists across the playbooks.",
+              "tickets": [
+                "MVP-044 · Pack seeding: policies/workflows/prompt layers",
+                "MVP-074 · Jewelry workflows live"
+              ],
+              "spec_refs": [
+                "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md",
+                "32-jewelry-mvp-playbooks/old-customer-reactivation-playbook.md",
+                "32-jewelry-mvp-playbooks/bridal-lead-playbook.md",
+                "verticals/jewelry/workflows/rate_alert_hold.yaml"
+              ],
+              "notes": "Unusually complete raw playbook material; just not wired to a diagnosis."
+            },
+            {
+              "id": "A3.3",
+              "name": "Price-mention guardrail (ledger-figure requirement)",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/prompts/nurture.md (\"any price mention requires a ledger figure — omit prices in nudges\")",
+                "verticals/jewelry/prompts/concierge.md (\"never state untooled prices\")"
+              ],
+              "what_exists": "The invariant is written into the prompts and the playbook ('nudges never contain figures; ledger makes this structural').",
+              "what_is_missing": [
+                "A ledger to check against (committed_figures_ledger, migration 013)",
+                "A send-path figure gate that rejects any outbound price not backed by a ledger figure"
+              ],
+              "dependencies": [
+                "A4.1 (ledger)",
+                "B1 (approval/send gate)"
+              ],
+              "next_action": "Enforce at the send gate once the ledger exists — a guardrail that only lives in a prompt is not a guardrail.",
+              "tickets": [
+                "MVP-050 · Pricing migration (ledger)",
+                "MVP-065 · Policy engine"
+              ],
+              "spec_refs": [
+                "36-diagrams/12-send-path-figure-gate.md",
+                "36-diagrams/11-pricing-compute-provenance.md",
+                "21-platform/pricing-engine-abstraction.md"
+              ],
+              "notes": "This is a headline safety property for a jewellery product; worth doing properly."
+            },
+            {
+              "id": "A3.4",
+              "name": "Message generation runtime",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/runtime/__init__.py (empty stub)",
+                "core/prompts/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing executable.",
+              "what_is_missing": [
+                "The runtime that composes prompt layers, calls the model, and returns a draft for approval (agent_runs/agent_steps, migration 015)"
+              ],
+              "dependencies": [
+                "B6.1 (agent runtime)",
+                "B4 (LLM tiering)"
+              ],
+              "next_action": "For the wedge, a thin compose→call→draft function beats standing up LangGraph.",
+              "tickets": [
+                "MVP-055 · Executor skeleton + checkpoints",
+                "MVP-058 · Prompt registry"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md",
+                "36-diagrams/06-agent-run-execution.md"
+              ],
+              "notes": "Do not over-build orchestration for a single-step generation."
+            }
+          ]
+        },
+        {
+          "id": "A4",
+          "name": "Revenue attribution (committed-figures ledger)",
+          "status": "NOT_STARTED",
+          "what_exists": "A precise, honest-by-construction attribution model exists as vault docs; the guardrail intent is in prompts.",
+          "what_is_missing": "The ledger table, the attribution linkage, the owner-confirm loop, and any export — all unbuilt.",
+          "children": [
+            {
+              "id": "A4.1",
+              "name": "Committed-figures ledger (append-only, owner-signed, deal-level)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "migrations/versions/ (empty)",
+                "25-implementation-starter-kit/09-database-migration-order.md → 013 committed_figures_ledger"
+              ],
+              "what_exists": "Nothing in code. The table is specced in migration 013 but not written.",
+              "what_is_missing": [
+                "An append-only, owner-signed, deal-level committed_figures_ledger (migration 013) with RLS",
+                "The write path that records a committed figure when the owner approves"
+              ],
+              "dependencies": [
+                "B5.3 (migrations)",
+                "B5.2 (RLS helper — exists)"
+              ],
+              "next_action": "Write the ledger migration; it is BOTH the attribution source of truth AND the backing store for the price guardrail (A3.3).",
+              "tickets": [
+                "MVP-050 · Pricing migration + rules_v1 engine"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/09-database-migration-order.md → 013 pricing",
+                "36-diagrams/29-er-catalog-pricing-ledger.md",
+                "21-platform/pricing-engine-abstraction.md"
+              ],
+              "notes": "High leverage: one table unblocks both attribution and the price-safety invariant."
+            },
+            {
+              "id": "A4.2",
+              "name": "'Recovered = X' definition",
+              "status": "PARTIAL",
+              "evidence": [
+                "30-roi-measurement/revenue-attribution-model.md",
+                "30-roi-measurement/roi-metrics-definition.md",
+                "30-roi-measurement/follow-up-revenue-tracking.md"
+              ],
+              "what_exists": "A strong, defensible model: attribution classes direct / assisted / campaign / channel-ref; headline uses direct+assisted; 14-day assist window; owner confirms every rupee; deliberately undercounts.",
+              "what_is_missing": [
+                "One code-enforceable definition of 'recovered' specific to the ghost→recovery path (which reengagements convert, dedupe against organic returns)",
+                "Encoding that definition as the ledger/attribution derivation rule"
+              ],
+              "dependencies": [
+                "A4.1",
+                "A4.3"
+              ],
+              "next_action": "Adopt the vault model's direct+assisted definition, scoped to leads that were ghosted then recovered.",
+              "tickets": [
+                "MVP-086 · Money page + ROI + attribution confirm",
+                "MVP-105/106 · ref-code + baseline"
+              ],
+              "spec_refs": [
+                "30-roi-measurement/revenue-attribution-model.md",
+                "36-diagrams/35-roi-attribution-flow.md"
+              ],
+              "notes": "The model already prefers a defensible 3× to an inflatable 8× — keep that discipline."
+            },
+            {
+              "id": "A4.3",
+              "name": "Attribution linkage (ghost → recovery msg → reengagement → deal)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml (emits lead.reengaged — spec only)",
+                "core/events/__init__.py (empty stub)"
+              ],
+              "what_exists": "A lead.reengaged event is emitted only in YAML that nothing runs.",
+              "what_is_missing": [
+                "The causal chain persisted as events: quote.created → lead.ghosted → recovery.sent → lead.reengaged → attribution.confirmed",
+                "The `attributions` table (migration 011 crm)",
+                "The owner-confirm loop: attribution.confirm_requested / attribution.confirmed events (one-tap owner testimony)"
+              ],
+              "dependencies": [
+                "B2 (events)",
+                "A1",
+                "A4.1"
+              ],
+              "next_action": "Model the chain as typed events keyed by lead_id so 'recovered' is a query, not a guess.",
+              "tickets": [
+                "MVP-023 · CRM migration (attributions)",
+                "MVP-086 · Money page + attribution confirm"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/11-event-bus-topics.md → attribution.confirm_requested/confirmed.v1, lead.reengaged.v1",
+                "36-diagrams/35-roi-attribution-flow.md"
+              ],
+              "notes": "This chain IS the future data moat (see B2.4)."
+            },
+            {
+              "id": "A4.4",
+              "name": "Export / owner money view",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "30-roi-measurement/roi-dashboard-spec.md"
+              ],
+              "what_exists": "A money-page/ROI-dashboard spec exists in the vault; no code.",
+              "what_is_missing": [
+                "An owner-facing view/export of recovered figures (the 'money page')",
+                "Before/after baseline card (MVP-106)"
+              ],
+              "dependencies": [
+                "A4.1",
+                "A4.3"
+              ],
+              "next_action": "Defer until the ledger and linkage produce real rows; then a CSV export or simple view is trivial.",
+              "tickets": [
+                "MVP-086 · Money page + ROI + attribution confirm",
+                "MVP-106 · Baseline"
+              ],
+              "spec_refs": [
+                "30-roi-measurement/roi-dashboard-spec.md",
+                "30-roi-measurement/before-after-comparison-template.md"
+              ],
+              "notes": "Lowest priority within A4."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "B",
+      "name": "Foundations (cross-cutting, required for the wedge)",
+      "track": "foundations",
+      "status": "PARTIAL",
+      "notes": "Only the plumbing that carries zero business logic is done (config, errors, migration framework, RLS). Every foundation the wedge rides on (events, approvals, WhatsApp, LLM, real tables, runtime) is a stub. Tables/tickets below are from the vault migration order.",
+      "children": [
+        {
+          "id": "B1",
+          "name": "Approval-first / audit-before-act",
+          "status": "NOT_STARTED",
+          "what_exists": "Prompt-level tier defaults in the pack; cel-python installed for future rule evaluation.",
+          "what_is_missing": "The approval gate, queue, execution tokens, and the append-only audit log — all unbuilt.",
+          "children": [
+            {
+              "id": "B1.1",
+              "name": "Approval gate on every external action (incl. chat replies)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/approvals/__init__.py (empty stub)",
+                "verticals/jewelry/pack.md (tier defaults: replies T1, quotes ≥₹1L T2)"
+              ],
+              "what_exists": "Tier policy is declared in the pack (which actions need approval), but nothing enforces it.",
+              "what_is_missing": [
+                "A single gate every outbound action passes through before send",
+                "approval_policies + approvals tables (migration 014)",
+                "approval.requested / resolved / expired events"
+              ],
+              "dependencies": [
+                "B1.4 (audit)",
+                "B3.3 (send path)"
+              ],
+              "next_action": "Build the gate as the sole choke point for all sends; the wedge's recovery message must not send without it.",
+              "tickets": [
+                "MVP-065 · Policy engine"
+              ],
+              "spec_refs": [
+                "21-platform/approval-policy-engine.md",
+                "36-diagrams/08-approval-lifecycle.md",
+                "36-diagrams/09-quote-approval-send.md",
+                "25-implementation-starter-kit/13-auth-rbac-approval-audit.md"
+              ],
+              "notes": "Stated product non-negotiable: approval on EVERY external action."
+            },
+            {
+              "id": "B1.2",
+              "name": "Approval queue + owner notification",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/approvals/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing.",
+              "what_is_missing": [
+                "A queue/store of pending drafts the owner can approve/edit/reject",
+                "The owner notification channel (WhatsApp interactive per current decision)"
+              ],
+              "dependencies": [
+                "B1.1"
+              ],
+              "next_action": "For the wedge pilot, surface the queue via WhatsApp interactive to the owner.",
+              "tickets": [
+                "MVP-065 · Policy engine"
+              ],
+              "spec_refs": [
+                "37-architecture-decisions/ADR-CANDIDATE-004-owner-approval-notification.md",
+                "23-operations/admin-console.md"
+              ],
+              "notes": "Approval channel (WhatsApp-only vs +PWA push) is an open founder decision."
+            },
+            {
+              "id": "B1.3",
+              "name": "Execution token issuance",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/approvals/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing (cel-python available for policy rules).",
+              "what_is_missing": [
+                "Short-lived execution tokens authorising a tier≥1 action after approval (execution_token_jti, migration 014)"
+              ],
+              "dependencies": [
+                "B1.1",
+                "B1.4"
+              ],
+              "next_action": "Can be simplified for the wedge; a signed approval record may suffice at pilot scale.",
+              "tickets": [
+                "MVP-065 · Policy engine"
+              ],
+              "spec_refs": [
+                "21-platform/tool-permission-model.md",
+                "36-diagrams/07-mediation-check-chain.md"
+              ],
+              "notes": "Do not over-engineer token machinery before a second action type exists."
+            },
+            {
+              "id": "B1.4",
+              "name": "Audit log (append-only, log-then-act)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/audit/__init__.py (empty stub)",
+                "25-implementation-starter-kit/09-database-migration-order.md → 006 audit"
+              ],
+              "what_exists": "Nothing in code.",
+              "what_is_missing": [
+                "audit_log (append-only + trigger) and dedupe_consumer tables (migration 006)",
+                "The hard invariant: no send happens without a prior audit record"
+              ],
+              "dependencies": [
+                "B5.3 (migrations)"
+              ],
+              "next_action": "Land the audit chain writer before any live send path exists.",
+              "tickets": [
+                "MVP-024 · Audit chain writer"
+              ],
+              "spec_refs": [
+                "21-platform/audit-logging.md",
+                "36-diagrams/26-audit-chain-anchoring.md"
+              ],
+              "notes": "Also the seed of B2.4 (structured event instrumentation)."
+            }
+          ]
+        },
+        {
+          "id": "B2",
+          "name": "Event instrumentation (context → decision → action → outcome)",
+          "status": "NOT_STARTED",
+          "what_exists": "Event names + topics are fully specced in the vault; redis is an installed dependency.",
+          "what_is_missing": "The outbox, consumer, typed catalog, and structured logging — all unbuilt.",
+          "children": [
+            {
+              "id": "B2.1",
+              "name": "Event outbox (transactional)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/events/__init__.py (empty stub)",
+                "25-implementation-starter-kit/09-database-migration-order.md → 007 events"
+              ],
+              "what_exists": "Nothing (redis>=5.2 covers the future Streams client).",
+              "what_is_missing": [
+                "event_outbox table (migration 007) + transactional emit API",
+                "CloudEvents envelope, outbox-published only"
+              ],
+              "dependencies": [
+                "B5.3 (migrations)"
+              ],
+              "next_action": "Land the outbox as the wedge's event backbone.",
+              "tickets": [
+                "MVP-025 · Outbox emit + publisher"
+              ],
+              "spec_refs": [
+                "36-diagrams/13-events-transactional-outbox.md",
+                "25-implementation-starter-kit/11-event-bus-topics.md"
+              ],
+              "notes": "Everything downstream fans out through this."
+            },
+            {
+              "id": "B2.2",
+              "name": "Consumer / stream framework",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/worker.py (sleep-loop placeholder)"
+              ],
+              "what_exists": "core/worker.py exists but only sleeps to keep the container alive.",
+              "what_is_missing": [
+                "A Redis Streams consumer with consumer groups per service",
+                "Idempotency via a dedupe table (dedupe_consumer)",
+                "Retry / DLQ"
+              ],
+              "dependencies": [
+                "B2.1"
+              ],
+              "next_action": "Build a minimal consumer that processes quote.created / lead.ghosted / recovery events.",
+              "tickets": [
+                "MVP-026 · Consumer framework",
+                "MVP-027 · Consumer idempotency dedupe"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/12-background-jobs.md"
+              ],
+              "notes": "Keep it minimal for the wedge; DLQ can wait."
+            },
+            {
+              "id": "B2.3",
+              "name": "Typed event catalog",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml (references lead.stage_changed, lead.reengaged)",
+                "25-implementation-starter-kit/11-event-bus-topics.md (full registry)"
+              ],
+              "what_exists": "The full topic registry is specced in the vault; no code catalog exists.",
+              "what_is_missing": [
+                "The wedge event set as typed code: quote.created.v1, lead.stage_changed.v1, lead.reengaged.v1, msg.received/sent/failed.v1, approval.requested/resolved.v1, attribution.confirm_requested/confirmed.v1"
+              ],
+              "dependencies": [
+                "B2.1"
+              ],
+              "next_action": "Define the wedge event subset explicitly — it doubles as the attribution schema (A4.3).",
+              "tickets": [
+                "MVP-025 · Outbox emit + publisher"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/11-event-bus-topics.md",
+                "07-api/events-webhooks.md"
+              ],
+              "notes": "Keep the catalog small and wedge-specific first."
+            },
+            {
+              "id": "B2.4",
+              "name": "Structured context→decision→action→outcome logging (data-moat seed)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/events/__init__.py (empty stub)",
+                "core/audit/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing (agent.action.v1 telemetry topic is specced).",
+              "what_is_missing": [
+                "Every ghost handled logged as a structured record: context seen → reason diagnosed → action taken → outcome observed",
+                "agent.action.v1 tool-call telemetry + audit-projection"
+              ],
+              "dependencies": [
+                "B1.4",
+                "B2.1",
+                "A2",
+                "A4.3"
+              ],
+              "next_action": "Design the record shape now so early pilot data is captured cleanly from message one.",
+              "tickets": [
+                "MVP-024 · Audit chain writer",
+                "MVP-025 · Outbox emit + publisher"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/11-event-bus-topics.md → agent.action.v1",
+                "36-diagrams/26-audit-chain-anchoring.md"
+              ],
+              "notes": "The compounding asset; cheap to define, expensive to backfill."
+            }
+          ]
+        },
+        {
+          "id": "B3",
+          "name": "WhatsApp channel",
+          "status": "PARTIAL",
+          "what_exists": "WABA verification is IN PROGRESS (founder started it, 2026-07-21). Integration config, template namespace, and quality-rating monitor specced.",
+          "what_is_missing": "All channel code, and completing the external WABA verification.",
+          "notes": "Config references a go-whatsapp MCP server abstraction, not raw Meta Cloud API as described in the wedge brief — reconcile this. Was BLOCKED; now PARTIAL because verification is underway.",
+          "children": [
+            {
+              "id": "B3.1",
+              "name": "Meta / WABA verification + connect",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/integrations/whatsapp.yaml",
+                "project-management/BLOCKERS.md (#3)"
+              ],
+              "what_exists": "WABA verification is IN PROGRESS (founder-reported, 2026-07-21). Credential schema, scopes, and health-check spec exist in whatsapp.yaml.",
+              "what_is_missing": [
+                "Verification to complete/approve on Meta's side",
+                "Number decision confirmed (Srila's existing number vs a new number) — see ADR-012",
+                "MVP-031 in code: WABA connect + webhook register"
+              ],
+              "dependencies": [],
+              "next_action": "Track verification to approval; confirm the number-strategy decision (ADR-012); then implement MVP-031.",
+              "tickets": [
+                "MVP-031 · WABA connect + webhook register"
+              ],
+              "spec_refs": [
+                "37-architecture-decisions/ADR-CANDIDATE-012-waba-number-strategy.md",
+                "34-risk-register/whatsapp-platform-risks.md",
+                "08-mcp/mcp-servers.md → go-whatsapp"
+              ],
+              "notes": "Longest lead-time item — good that it is moving. Still gates B3.2/B3.3 code."
+            },
+            {
+              "id": "B3.2",
+              "name": "Inbound webhook + normalizer",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/channels/whatsapp/__init__.py (empty stub)",
+                "25-implementation-starter-kit/09-database-migration-order.md → 005 messaging"
+              ],
+              "what_exists": "Nothing in code.",
+              "what_is_missing": [
+                "Webhook receiver with signature verification",
+                "Message normalizer → conversations/messages/webhook_events (migration 005)",
+                "msg.received.v1 emission",
+                "Dedupe of duplicate webhook deliveries"
+              ],
+              "dependencies": [
+                "B3.1",
+                "B5.3"
+              ],
+              "next_action": "Build once WABA is verified; until then, prototype the wedge on exported transcripts.",
+              "tickets": [
+                "MVP-032 · Webhook ingress + signature verify",
+                "MVP-033 · Message normalizer"
+              ],
+              "spec_refs": [
+                "36-diagrams/10-inbound-message-e2e.md"
+              ],
+              "notes": "Signature verification and dedupe are the correctness-critical parts."
+            },
+            {
+              "id": "B3.3",
+              "name": "Send path",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/channels/whatsapp/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing (httpx installed for Graph API calls).",
+              "what_is_missing": [
+                "Outbound send that only fires post-approval and post-audit",
+                "msg.sent.v1 / msg.failed.v1 delivery-state events"
+              ],
+              "dependencies": [
+                "B3.1",
+                "B1.1",
+                "B1.4"
+              ],
+              "next_action": "Wire send behind the approval gate; the recovery message is the first thing it sends.",
+              "tickets": [
+                "(send adapter — part of MVP-031/033 channel work)"
+              ],
+              "spec_refs": [
+                "36-diagrams/12-send-path-figure-gate.md"
+              ],
+              "notes": "Must not exist as an unguarded send."
+            },
+            {
+              "id": "B3.4",
+              "name": "24h window + template handling",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/integrations/whatsapp.yaml (templates_namespace: jewelry_v2, quality_rating_monitor)"
+              ],
+              "what_exists": "Template namespace and quality-rating monitor are specified declaratively.",
+              "what_is_missing": [
+                "Code that respects the 24h session window and falls back to approved templates outside it",
+                "Template registration/management with Meta"
+              ],
+              "dependencies": [
+                "B3.3"
+              ],
+              "next_action": "Recovery messages to ghosts will usually fall OUTSIDE the 24h window — template handling is not optional for this wedge.",
+              "tickets": [
+                "MVP-031 · WABA connect (templates)"
+              ],
+              "spec_refs": [
+                "34-risk-register/whatsapp-platform-risks.md",
+                "verticals/jewelry/integrations/whatsapp.yaml"
+              ],
+              "notes": "A ghost is by definition silent >24h; expect to need templates, not free-form session messages."
+            },
+            {
+              "id": "B3.5",
+              "name": "Suppression / consent",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/channels/whatsapp/__init__.py (empty stub)",
+                "verticals/jewelry/workflows/silent_lead_reactivation.yaml (guards: consent_valid, not_suppressed)"
+              ],
+              "what_exists": "Guard names appear in the workflow spec.",
+              "what_is_missing": [
+                "A suppressions table (migration 005) + consent check enforced fail-closed before any recovery send"
+              ],
+              "dependencies": [
+                "B3.3",
+                "B5.3"
+              ],
+              "next_action": "Enforce consent/suppression as a hard precondition of recovery sends.",
+              "tickets": [
+                "MVP-019 · Messaging migration (suppressions)"
+              ],
+              "spec_refs": [
+                "11-security/compliance.md",
+                "18-legal/legal-pack.md",
+                "32-jewelry-mvp-playbooks/old-customer-reactivation-playbook.md"
+              ],
+              "notes": "DPDP + WhatsApp policy exposure; treat as fail-closed."
+            }
+          ]
+        },
+        {
+          "id": "B4",
+          "name": "LLM tiering",
+          "status": "NOT_STARTED",
+          "what_exists": "Archetype tier defaults declared in the pack; nothing else.",
+          "what_is_missing": "No LLM SDK is even a dependency yet.",
+          "children": [
+            {
+              "id": "B4.1",
+              "name": "Frontier model for diagnosis",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "pyproject.toml (no LLM SDK)"
+              ],
+              "what_exists": "Nothing.",
+              "what_is_missing": [
+                "An Anthropic SDK dependency",
+                "A frontier-Claude call for the low-volume, high-value diagnosis (A2.2)"
+              ],
+              "dependencies": [],
+              "next_action": "Add the Anthropic SDK; use a frontier Claude model for diagnosis.",
+              "tickets": [
+                "MVP-055 · Executor skeleton"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md",
+                "claude-api skill for current model ids"
+              ],
+              "notes": "Diagnosis is where model quality pays off most."
+            },
+            {
+              "id": "B4.2",
+              "name": "Nano-class model for high-volume classification",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "pyproject.toml (no LLM SDK)"
+              ],
+              "what_exists": "Nothing.",
+              "what_is_missing": [
+                "A cheap/fast model for high-volume ghost-vs-not classification (A1.3)"
+              ],
+              "dependencies": [
+                "B4.1"
+              ],
+              "next_action": "Defer until volume justifies it; rules + one model is fine at pilot scale.",
+              "tickets": [
+                "MVP-055 · Executor skeleton"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md"
+              ],
+              "notes": "Premature tiering is a cost-optimisation you do not have volume for yet."
+            },
+            {
+              "id": "B4.3",
+              "name": "Model routing (model_routes)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "25-implementation-starter-kit/09-database-migration-order.md → 015 model_routes",
+                "verticals/jewelry/pack.yaml (archetypes declared, no model binding)"
+              ],
+              "what_exists": "Archetypes declared in pack.yaml but bound to no model.",
+              "what_is_missing": [
+                "A routing layer mapping task → model tier (model_routes, migration 015)"
+              ],
+              "dependencies": [
+                "B4.1",
+                "B4.2"
+              ],
+              "next_action": "Hard-code the two model choices for the wedge; a routing table is over-scope now.",
+              "tickets": [
+                "MVP-055 · Executor skeleton + checkpoints"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md",
+                "21-platform/prompt-registry.md"
+              ],
+              "notes": "Config, not infrastructure, at this stage."
+            }
+          ]
+        },
+        {
+          "id": "B5",
+          "name": "Data model & migrations",
+          "status": "PARTIAL",
+          "what_exists": "The framework and cross-cutting plumbing are genuinely done and clean.",
+          "what_is_missing": "Zero actual tables. All 18 specced migrations are outstanding.",
+          "children": [
+            {
+              "id": "B5.1",
+              "name": "Migration framework (Alembic async)",
+              "status": "DONE",
+              "evidence": [
+                "migrations/env.py (async, URL from typed settings, lock_timeout guard)",
+                "alembic.ini"
+              ],
+              "what_exists": "A working async Alembic setup that pulls the DB URL from typed settings and sets a bounded lock_timeout.",
+              "what_is_missing": "Nothing structural; it has no migrations to run yet.",
+              "dependencies": [],
+              "next_action": "Use it — write the first wedge migration (A1.4).",
+              "spec_refs": [
+                "implementation/db/migrations/README.md"
+              ],
+              "notes": "target_metadata is None (no ORM models registered), fine for hand-written migrations."
+            },
+            {
+              "id": "B5.2",
+              "name": "RLS helper (multi-tenant isolation)",
+              "status": "DONE",
+              "evidence": [
+                "migrations/lib/rls.py (apply_rls/drop_rls, fail-closed on missing org context)"
+              ],
+              "what_exists": "A correct, fail-closed RLS helper that enables+forces RLS and installs tenant policies.",
+              "what_is_missing": "Nothing in the helper — but no table uses it yet.",
+              "dependencies": [],
+              "next_action": "Call apply_rls() in the first org-scoped wedge migration.",
+              "spec_refs": [
+                "21-platform/multi-tenant-rls.md",
+                "36-diagrams/14-tenancy-rls-request-path.md"
+              ],
+              "notes": "Fail-closed design (NULL org context → no rows) is exactly right."
+            },
+            {
+              "id": "B5.3",
+              "name": "Actual migrations / tables",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "migrations/versions/ (empty directory)",
+                "25-implementation-starter-kit/09-database-migration-order.md (18 migrations specced)"
+              ],
+              "what_exists": "Nothing. Zero migrations; alembic history is empty.",
+              "what_is_missing": [
+                "Wedge-critical tables: leads/attributions (011), messages/conversations/suppressions (005), committed_figures_ledger/quotes (013), audit_log (006), event_outbox (007), approvals (014)",
+                "Each with apply_rls() in the same migration (CI catalog-check enforces this)"
+              ],
+              "dependencies": [
+                "B5.1",
+                "B5.2"
+              ],
+              "next_action": "Write the minimal wedge schema (leads + quote + ledger) first; do not port all 18 vault migrations up front.",
+              "tickets": [
+                "MVP-023 · CRM",
+                "MVP-019 · Messaging",
+                "MVP-050 · Pricing/ledger",
+                "MVP-024 · Audit",
+                "MVP-025 · Events",
+                "MVP-065 · Approvals"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/09-database-migration-order.md",
+                "06-database/er-diagram.md",
+                "06-database/schema-v2-notes.md"
+              ],
+              "notes": "This single gap blocks nearly every other wedge node."
+            },
+            {
+              "id": "B5.4",
+              "name": "Config loader (layered settings)",
+              "status": "DONE",
+              "evidence": [
+                "core/common/config.py (env > .env > SOPS-decrypted file > defaults)"
+              ],
+              "what_exists": "A clean layered pydantic-settings loader with a SOPS secrets source.",
+              "what_is_missing": "Nothing in the loader (note the docker-compose env prefix mismatch, BLOCKER #1).",
+              "dependencies": [],
+              "next_action": "None — but fix the docker-compose GROWTH_OPERATOR_ prefix before the first containerised DB connection.",
+              "spec_refs": [
+                "21-platform/core-platform.md"
+              ],
+              "notes": "Loader reads GROWTH_OPERATOR_* prefix; docker-compose sets unprefixed DATABASE_URL/REDIS_URL."
+            },
+            {
+              "id": "B5.5",
+              "name": "Error taxonomy",
+              "status": "DONE",
+              "evidence": [
+                "core/common/errors.py (189 lines, RFC7807 + 12 canonical codes)",
+                "core/api/main.py (handlers registered)"
+              ],
+              "what_exists": "An RFC7807 problem model with all canonical error codes, wired into the FastAPI app.",
+              "what_is_missing": "Nothing.",
+              "dependencies": [],
+              "next_action": "None.",
+              "spec_refs": [
+                "07-api/rest-api.md"
+              ],
+              "notes": "The single most-complete piece of real code in the repo."
+            }
+          ]
+        },
+        {
+          "id": "B6",
+          "name": "Orchestration & L0/L1/L2/L3 layer separation",
+          "status": "PARTIAL",
+          "what_exists": "The L1 jewellery pack is complete as declarative data; the app + dev-infra shells exist.",
+          "what_is_missing": "L0 runtime, workflow engine, pack loader, and L2/L3 runtime config/state — all absent.",
+          "children": [
+            {
+              "id": "B6.1",
+              "name": "Agent runtime / LangGraph (L0)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/runtime/__init__.py (empty stub)",
+                "pyproject.toml (langgraph NOT present)",
+                "project-management/BLOCKERS.md (#4)"
+              ],
+              "what_exists": "Nothing. langgraph is named in vault docs but is not a dependency.",
+              "what_is_missing": [
+                "Executor/planner/checkpointing runtime (agent_runs, agent_steps, agent_memory, migration 015)"
+              ],
+              "dependencies": [
+                "B4"
+              ],
+              "next_action": "For the wedge, skip LangGraph; a thin diagnose→prescribe→approve→send function is enough.",
+              "tickets": [
+                "MVP-055 · Executor skeleton + checkpoints"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md",
+                "36-diagrams/06-agent-run-execution.md",
+                "36-diagrams/21-planner-routing-decision-flow.md"
+              ],
+              "notes": "Resist building the general agent OS before the wedge earns it."
+            },
+            {
+              "id": "B6.2",
+              "name": "Workflow engine (DSL parser / guards / wait-resume)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/workflows/__init__.py (empty stub)",
+                "verticals/jewelry/workflows/*.yaml (4 DSL files, no parser)"
+              ],
+              "what_exists": "Four workflow DSL files exist (incl. silent_lead_reactivation); nothing parses or runs them.",
+              "what_is_missing": [
+                "A DSL parser, guard library (consent/suppression/send-window/touch-cap), wait/resume",
+                "workflow_definitions/runs/wait_subscriptions tables (migration 016)"
+              ],
+              "dependencies": [
+                "B2 (events)"
+              ],
+              "next_action": "For the wedge, a hard-coded ghost→recovery flow beats a general DSL engine; adopt the DSL later.",
+              "tickets": [
+                "MVP-072 · Workflow DSL parser + guard library",
+                "MVP-074 · Jewelry workflows live"
+              ],
+              "spec_refs": [
+                "21-platform/workflow-engine.md",
+                "36-diagrams/22-workflow-engine-execution.md",
+                "36-diagrams/23-jewelry-workflow-set-map.md"
+              ],
+              "notes": "pyyaml + cel-python are present to support this when it is time."
+            },
+            {
+              "id": "B6.3",
+              "name": "L1 jewellery pack (declarative)",
+              "status": "PARTIAL",
+              "evidence": [
+                "verticals/jewelry/ (27 files: pack.yaml, pack.md, prompts/, workflows/, evals/, pricing/, onboarding/, ui/, calendar/, integrations/)"
+              ],
+              "what_exists": "A complete, high-quality declarative pack: archetypes, catalog schema, pricing formula, workflows, prompts, evals, onboarding, UI templates, calendar.",
+              "what_is_missing": [
+                "No loader reads any of it (core/packs empty); it is inert data",
+                "Pack contract models + verifier + install pipeline (migration 008: packs, pack_installations, agent_archetypes seed)"
+              ],
+              "dependencies": [
+                "B6.6 (pack loader)"
+              ],
+              "next_action": "The wedge can hand-pick the few files it needs (nurture prompt, pricing formula) without a full loader.",
+              "tickets": [
+                "MVP-020 · Packs migration + archetype seed",
+                "MVP-038 · Pack contract models",
+                "MVP-041 · Jewelry install e2e",
+                "MVP-044 · Pack seeding"
+              ],
+              "spec_refs": [
+                "36-diagrams/16-pack-anatomy.md",
+                "36-diagrams/17-pack-install-pipeline.md",
+                "21-platform/vertical-adapter-layer.md"
+              ],
+              "notes": "The most valuable non-code asset in the repo — but don't build the whole loader for the wedge."
+            },
+            {
+              "id": "B6.4",
+              "name": "L2 tenant config (slots)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "verticals/jewelry/pack.yaml (slots schema: making_charge_pct, discount_ceiling_pct, quote_validity_hours, ...)"
+              ],
+              "what_exists": "A slot schema is declared with types/bounds/defaults.",
+              "what_is_missing": [
+                "Runtime that validates and stores per-tenant slot values on install/config (tenant_settings, migration 009)"
+              ],
+              "dependencies": [
+                "B6.6"
+              ],
+              "next_action": "For a single pilot (Srila), tenant slots can be a config constant, not a system.",
+              "tickets": [
+                "MVP-021 · Tenant settings service"
+              ],
+              "spec_refs": [
+                "21-platform/tenant-configuration.md",
+                "10-ui/config-driven-ui.md"
+              ],
+              "notes": "Multi-tenant config is over-scope for a one-store wedge validation."
+            },
+            {
+              "id": "B6.5",
+              "name": "L3 runtime state",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/runtime/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing.",
+              "what_is_missing": [
+                "Per-run agent state / memory / checkpoints (agent_memory, migration 015)"
+              ],
+              "dependencies": [
+                "B6.1"
+              ],
+              "next_action": "Defer; the wedge's per-ghost state fits in the lead/event rows.",
+              "tickets": [
+                "MVP-055 · Executor skeleton"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/08-agent-runtime-plan.md"
+              ],
+              "notes": "Do not build agent memory before there is an agent."
+            },
+            {
+              "id": "B6.6",
+              "name": "Pack loader / installer (core/packs)",
+              "status": "NOT_STARTED",
+              "evidence": [
+                "core/packs/__init__.py (empty stub)"
+              ],
+              "what_exists": "Nothing. No code reads verticals/jewelry.",
+              "what_is_missing": [
+                "A verifier/installer that loads pack data into the platform",
+                "jsonschema dependency (absent) for Draft-2020-12 pack/catalog validation"
+              ],
+              "dependencies": [
+                "B5.3"
+              ],
+              "next_action": "Defer for the wedge; load the two needed files directly.",
+              "tickets": [
+                "MVP-038 · Pack contract models",
+                "MVP-041 · Jewelry install e2e fixture"
+              ],
+              "spec_refs": [
+                "36-diagrams/17-pack-install-pipeline.md",
+                "36-diagrams/19-permission-manifest-compilation.md",
+                "implementation/prompts/claude-code/06-pack-loader.md"
+              ],
+              "notes": "jsonschema needed before this starts."
+            },
+            {
+              "id": "B6.7",
+              "name": "FastAPI app shell",
+              "status": "PARTIAL",
+              "evidence": [
+                "core/api/main.py (app object + error handlers, zero routes)"
+              ],
+              "what_exists": "A FastAPI app with the RFC7807 exception handler wired in.",
+              "what_is_missing": [
+                "Every route — there are no endpoints"
+              ],
+              "dependencies": [
+                "B5.3"
+              ],
+              "next_action": "Add the first wedge routes (e.g. approve/reject a recovery draft) when needed.",
+              "tickets": [
+                "MVP-007 · health/readiness",
+                "MVP-011 · first real routes"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/10-api-build-order.md",
+                "07-api/rest-api.md"
+              ],
+              "notes": "Correctly minimal for now."
+            },
+            {
+              "id": "B6.8",
+              "name": "Dev infra (docker-compose, CI, Makefile)",
+              "status": "PARTIAL",
+              "evidence": [
+                "infra/docker/docker-compose.dev.yml",
+                ".github/workflows/ci.yml",
+                "Makefile",
+                "project-management/BLOCKERS.md (#1, #2)"
+              ],
+              "what_exists": "A compose stack, a CI workflow, and a Makefile — all written.",
+              "what_is_missing": [
+                "Never verified against a live Docker daemon (BLOCKER #2)",
+                "Env-var prefix bug: compose sets DATABASE_URL/REDIS_URL, config wants GROWTH_OPERATOR_ prefix (BLOCKER #1)"
+              ],
+              "dependencies": [],
+              "next_action": "Fix the env-var prefix and run `make dev` once locally to clear BLOCKERS #1/#2 before the first live-DB ticket.",
+              "tickets": [
+                "MVP-002 · docker-compose",
+                "MVP-003 · CI"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/15-deployment-plan.md",
+                "12-devops/infrastructure.md"
+              ],
+              "notes": "Cheap to clear; blocks all live-DB work."
+            },
+            {
+              "id": "B6.9",
+              "name": "Frontend shell",
+              "status": "PARTIAL",
+              "evidence": [
+                "web/src/App.tsx (placeholder)",
+                "web/src/main.tsx",
+                "web/package.json (React 19, TanStack Router installed but unwired)"
+              ],
+              "what_exists": "A fresh Vite + React + TS + Tailwind scaffold.",
+              "what_is_missing": [
+                "Everything: no routes, no pages, no API client; App.tsx is a placeholder",
+                "TanStack Router installed but not wired"
+              ],
+              "dependencies": [
+                "B6.7"
+              ],
+              "next_action": "For the wedge, owner approval UX can live in WhatsApp interactive — a web UI is not required to validate.",
+              "tickets": [
+                "MVP-082 · Frontend shell + routing",
+                "MVP-086 · Money page"
+              ],
+              "spec_refs": [
+                "25-implementation-starter-kit/07-frontend-plan.md",
+                "10-ui/screens.md"
+              ],
+              "notes": "React 18 (spec) vs 19 (installed) is an unresolved deviation (BLOCKER #7)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "C",
+      "name": "Deferred — post-validation (OUT of MVP scope)",
+      "track": "deferred",
+      "status": "DEFERRED",
+      "notes": "The future, not a backlog. Rendered muted. Excluded from all completion math. Some already have declarative artifacts in the repo/vault (noted) — that does not pull them into scope.",
+      "children": [
+        {
+          "id": "C1",
+          "name": "Instagram content / reels / scheduling",
+          "status": "DEFERRED",
+          "evidence": [
+            "27-seo-aeo-geo-growth/ (extensive design)",
+            "37-architecture-decisions/ADR-CANDIDATE-006-instagram-boundary.md"
+          ],
+          "what_exists": "Extensive vault design; ADR explicitly bounds Instagram OUT (link-architecture only, no API).",
+          "what_is_missing": "Out of scope by decision.",
+          "next_action": "None — post-validation.",
+          "notes": "Do not let the volume of vault content here create urgency."
+        },
+        {
+          "id": "C2",
+          "name": "Unified multi-channel inbox beyond WhatsApp",
+          "status": "DEFERRED",
+          "evidence": [
+            "core/channels/__init__.py (mentions gmail/sms as future)"
+          ],
+          "what_exists": "Channel abstraction names other channels; none built.",
+          "what_is_missing": "Out of scope.",
+          "next_action": "None — post-validation.",
+          "notes": "WhatsApp is the only MVP channel."
+        },
+        {
+          "id": "C3",
+          "name": "Festival campaign automation",
+          "status": "DEFERRED",
+          "evidence": [
+            "verticals/jewelry/workflows/festival_campaign.yaml",
+            "verticals/jewelry/calendar/events.yaml",
+            "32-jewelry-mvp-playbooks/festival-campaign-playbook.md"
+          ],
+          "what_exists": "A festival_campaign workflow DSL, calendar pack, and playbook exist as data.",
+          "what_is_missing": "Out of scope for the wedge.",
+          "next_action": "None — post-validation.",
+          "notes": "Tempting because the artifact exists; still deferred."
+        },
+        {
+          "id": "C4",
+          "name": "Profit projection",
+          "status": "DEFERRED",
+          "evidence": [
+            "17-finance/financial-model.md"
+          ],
+          "what_exists": "Financial model doc only.",
+          "what_is_missing": "Out of scope.",
+          "next_action": "None — post-validation.",
+          "notes": ""
+        },
+        {
+          "id": "C5",
+          "name": "Growth-strategy engine",
+          "status": "DEFERRED",
+          "evidence": [
+            "15-marketing/acquisition-machine.md"
+          ],
+          "what_exists": "Strategy docs only; nothing built.",
+          "what_is_missing": "Out of scope.",
+          "next_action": "None — post-validation.",
+          "notes": ""
+        },
+        {
+          "id": "C6",
+          "name": "Kirana vertical",
+          "status": "DEFERRED",
+          "evidence": [
+            "verticals/kirana/ (16 files)",
+            "36-diagrams/18-kirana-modularity-proof.md"
+          ],
+          "what_exists": "A full kirana pack exists as declarative data (architecture proof only).",
+          "what_is_missing": "Out of scope as a pilot.",
+          "next_action": "None — post-validation.",
+          "notes": "Exists only to prove pack-swap architecture; not a pilot tenant."
+        },
+        {
+          "id": "C7",
+          "name": "US market",
+          "status": "DEFERRED",
+          "evidence": [],
+          "what_exists": "Nothing.",
+          "what_is_missing": "Out of scope.",
+          "next_action": "None — post-validation.",
+          "notes": "India / Srila pilot first."
+        }
+      ]
+    },
+    {
+      "id": "D",
+      "name": "Validation / Evidence (first-class, sits beside the build)",
+      "track": "validation",
+      "status": "NOT_STARTED",
+      "notes": "Field activities, not code — none leave repo artifacts, so all are NOT_STARTED by default. Hand-edit as you complete each. The vault has ready-made scripts for every one of these (spec_refs below). Right now this track matters MORE than the build, since you paused to validate.",
+      "children": [
+        {
+          "id": "D1",
+          "name": "Cold-traffic ghost-rate from last year's paid-campaign WhatsApp logs",
+          "status": "NOT_STARTED",
+          "evidence": [
+            "(no artifact in repo)"
+          ],
+          "what_exists": "Nothing recorded in the repo.",
+          "what_is_missing": [
+            "A measured ghost-rate: of paid-campaign WhatsApp leads that got a price, what % went silent?",
+            "The export itself (doubles as the diagnosis-prompt test set for A2)"
+          ],
+          "next_action": "Export last year's paid-campaign WhatsApp threads and count price-then-silence. Cheapest way to size the problem.",
+          "spec_refs": [
+            "30-roi-measurement/follow-up-revenue-tracking.md",
+            "30-roi-measurement/before-after-comparison-template.md",
+            "26-customer-discovery/backlog-evidence.md"
+          ],
+          "notes": "This single number tells you if the wedge is worth building at all."
+        },
+        {
+          "id": "D2",
+          "name": "Manual recovery test (recover N real ghosts by hand)",
+          "status": "NOT_STARTED",
+          "evidence": [
+            "(no artifact in repo)"
+          ],
+          "what_exists": "Nothing recorded.",
+          "what_is_missing": [
+            "A hand-run test: pick N real ghosts, manually diagnose + send a recovery message, count re-engagements",
+            "A record of reply-rate (playbook target ≥15%) and reply→visit"
+          ],
+          "next_action": "Do this with zero code — it validates the core causal claim before you build anything.",
+          "spec_refs": [
+            "32-jewelry-mvp-playbooks/missed-follow-up-recovery-playbook.md",
+            "26-customer-discovery/mvp-confirmation-signals.md",
+            "26-customer-discovery/mvp-invalidation-signals.md"
+          ],
+          "notes": "Highest-signal, lowest-cost experiment available right now. Also live-tests your diagnosis taxonomy (A2.1) by hand."
+        },
+        {
+          "id": "D3",
+          "name": "Staff interviews (do paid/stranger leads ghost more than referrals?)",
+          "status": "NOT_STARTED",
+          "evidence": [
+            "(no artifact in repo)"
+          ],
+          "what_exists": "Nothing recorded.",
+          "what_is_missing": [
+            "Tibarumal-tier staff interviews on ghost behaviour by lead source",
+            "Captured reasons staff observe (feeds the A2.1 taxonomy)"
+          ],
+          "next_action": "Run the interview script; capture whether cold/paid leads ghost more, and the reasons observed.",
+          "spec_refs": [
+            "26-customer-discovery/jewelry-owner-interview-script.md",
+            "26-customer-discovery/deep-interview-script.md",
+            "26-customer-discovery/pain-ranking-scorecard.md",
+            "26-customer-discovery/hypotheses-to-validate.md"
+          ],
+          "notes": "Qualitative grounding for the reason taxonomy."
+        },
+        {
+          "id": "D4",
+          "name": "Willingness-to-pay signal",
+          "status": "NOT_STARTED",
+          "evidence": [
+            "(no artifact in repo)"
+          ],
+          "what_exists": "Nothing recorded.",
+          "what_is_missing": [
+            "Evidence an owner will pay for recovered revenue (price point, commitment)"
+          ],
+          "next_action": "After a manual recovery win, test a concrete price against the recovered figure.",
+          "spec_refs": [
+            "26-customer-discovery/willingness-to-pay-scorecard.md",
+            "31-founder-sales/pricing-conversation-guide.md",
+            "03-product/pricing.md"
+          ],
+          "notes": "Pair WTP with a real recovered-₹ number for credibility."
+        },
+        {
+          "id": "D5",
+          "name": "Competitor demos (Zithara / Jwero)",
+          "status": "NOT_STARTED",
+          "evidence": [
+            "(no artifact in repo)"
+          ],
+          "what_exists": "Nothing recorded.",
+          "what_is_missing": [
+            "Hands-on demos of Zithara and Jwero to locate the wedge's differentiation",
+            "Specifically: does either do diagnosis-driven recovery? (your differentiator)"
+          ],
+          "next_action": "Book demos; check whether anyone already owns the 'diagnose the ghost' angle.",
+          "spec_refs": [
+            "02-market-research/competitive-landscape.md",
+            "02-market-research/gaps-and-moats.md"
+          ],
+          "notes": "Confirms nobody already owns the diagnosis angle."
+        }
+      ]
+    },
+    {
+      "id": "E",
+      "name": "Access & Identity (auth) — MVP-011",
+      "track": "identity",
+      "status": "PARTIAL",
+      "notes": "Foundational owner sign-in. Not part of the wedge mechanic but gates every authenticated flow. Built 2026-07-22 on branch feature/mvp-011-otp-auth (uncommitted); interim email-OTP channel while Meta WhatsApp API access is pending.",
+      "children": [
+        {
+          "id": "E1",
+          "name": "OTP auth logic (validation, argon2 hashing, challenge state machine, JWT)",
+          "status": "DONE",
+          "evidence": [
+            "core/tenancy/auth.py",
+            "tests/unit/test_auth_otp.py"
+          ],
+          "what_exists": "E.164 + email validation, channel dispatch, 6-digit code gen, argon2 hashing, Challenge state machine (5m expiry / <=5 attempts / 60s resend), JWT mint+decode (15m access / 30d refresh). 37 unit assertions pass.",
+          "what_is_missing": "Nothing for the pure logic.",
+          "dependencies": [],
+          "next_action": "None — stable; consumed by the routes.",
+          "tickets": [
+            "MVP-011"
+          ],
+          "spec_refs": [
+            "25-implementation-starter-kit/13-auth-rbac-approval-audit.md"
+          ],
+          "notes": "OTP failures use plain HTTP (401/422/429), not the closed canonical error taxonomy (CLAUDE.md §13)."
+        },
+        {
+          "id": "E2",
+          "name": "Migration 001 — users, sessions, otp_challenges (global, no RLS)",
+          "status": "DONE",
+          "evidence": [
+            "migrations/versions/ccd4ed78aeef_001_identity.py"
+          ],
+          "what_exists": "Global identity tables; users.phone nullable + CHECK(phone OR email); otp_challenges generalized to (channel, identifier). Offline SQL generation verified. Live: upgrade + downgrade base + re-upgrade verified against Postgres 16 (OrbStack); columns/indexes/CHECKs inspected.",
+          "what_is_missing": "Nothing outstanding — up/down round-trip verified live.",
+          "dependencies": [],
+          "next_action": "None — verified.",
+          "tickets": [
+            "MVP-011"
+          ],
+          "spec_refs": [
+            "25-implementation-starter-kit/09-database-migration-order.md"
+          ],
+          "notes": "Membership deferred to user_orgs (migration 002, MVP-014)."
+        },
+        {
+          "id": "E3",
+          "name": "Auth API — POST /v1/auth/otp, /v1/auth/otp/verify",
+          "status": "DONE",
+          "evidence": [
+            "core/tenancy/router.py",
+            "core/tenancy/repository.py",
+            "core/common/db.py",
+            "tests/integration/test_auth_flow.py"
+          ],
+          "what_exists": "Both routes live + in the OpenAPI schema; bad identifier -> 422; verify issues a session row + JWT pair. TestClient smoke passes up to the DB boundary. Live end-to-end verified: request->verify->token writes real users/sessions rows; wrong-code 401 and lockout 429 covered (3 integration tests).",
+          "what_is_missing": "Nothing outstanding.",
+          "dependencies": [],
+          "next_action": "None — verified.",
+          "tickets": [
+            "MVP-011"
+          ],
+          "spec_refs": [
+            "25-implementation-starter-kit/13-auth-rbac-approval-audit.md"
+          ],
+          "notes": ""
+        },
+        {
+          "id": "E4",
+          "name": "Interim email-OTP channel + delivery adapters",
+          "status": "PARTIAL",
+          "evidence": [
+            "core/tenancy/otp_delivery.py",
+            "core/common/config.py",
+            "tests/unit/test_otp_delivery.py"
+          ],
+          "what_exists": "OTP_CHANNEL flag (default email); DevEcho (dev-only, gated) + EmailOtpDelivery (SMTP, gated OFF by default) + Noop; startup fails on unsafe/half-configured delivery. 8 selection/guard tests pass.",
+          "what_is_missing": [
+            "A real email provider + credentials + founder approval to send in staging (OTP_EMAIL_ENABLED off)",
+            "Real Meta WhatsApp delivery (deferred)"
+          ],
+          "dependencies": [
+            "TODO #1 (Meta)",
+            "TODO #2 (email provider)"
+          ],
+          "next_action": "Pick an SMTP provider; set OTP_EMAIL_ENABLED + creds in staging.",
+          "tickets": [
+            "MVP-011 (interim)"
+          ],
+          "spec_refs": [
+            "project-management/TODO.md",
+            "project-management/DECISIONS.md"
+          ],
+          "notes": "External send stays gated per §10.4."
+        },
+        {
+          "id": "E5",
+          "name": "Owner login page (email-OTP UI) — MVP-082 preview slice",
+          "status": "PARTIAL",
+          "evidence": [
+            "web/src/App.tsx",
+            "web/src/api.ts"
+          ],
+          "what_exists": "A 2-step email-OTP login page (request code -> verify -> token) calling the real API contract, with a Simulate toggle so it runs with no backend. tsc + vite build + oxlint clean.",
+          "what_is_missing": [
+            "Full MVP-082: routing, session persistence, dashboard, design system, real backend wiring"
+          ],
+          "dependencies": [
+            "E3"
+          ],
+          "next_action": "Build out MVP-082 when scheduled.",
+          "tickets": [
+            "MVP-082 (preview slice only)"
+          ],
+          "spec_refs": [],
+          "notes": "Demo surface — runnable via `npm run dev` in web/."
+        }
+      ]
+    }
+  ]
+}</script>
+<style>
+  :root {
+    --ground: #FBF8F2;
+    --surface: #FFFFFF;
+    --surface-2: #F4EFE5;
+    --ink: #221D14;
+    --ink-soft: #5A5140;
+    --ink-faint: #8B8069;
+    --border: #E4DBC9;
+    --border-strong: #D2C6AC;
+    --accent: #A9791B;
+    --accent-soft: #C79A3A;
+    --accent-wash: #F6EDD6;
+
+    --done: #2E7D5B;      --done-wash: #E4F0EA;
+    --partial: #B7770F;   --partial-wash: #F7ECD6;
+    --notstarted: #7C7259;--notstarted-wash: #EFEADD;
+    --blocked: #BB3F29;   --blocked-wash: #F6E2DC;
+    --deferred: #A9A292;  --deferred-wash: #EFEDE7;
+    --uncertain: #6B5CA6; --uncertain-wash: #EAE6F4;
+
+    --shadow: 0 1px 2px rgba(40,32,12,.05), 0 6px 20px rgba(40,32,12,.06);
+    --radius: 9px;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #17140F;
+      --surface: #1F1B14;
+      --surface-2: #26211A;
+      --ink: #F1EADB;
+      --ink-soft: #B9AF98;
+      --ink-faint: #85795F;
+      --border: #332C22;
+      --border-strong: #453C2D;
+      --accent: #E6BC5C;
+      --accent-soft: #C79A3A;
+      --accent-wash: #2C2517;
+
+      --done: #56C38E;      --done-wash: #16281F;
+      --partial: #E0A93A;   --partial-wash: #2C2411;
+      --notstarted: #9B917A;--notstarted-wash: #23201A;
+      --blocked: #E4694E;   --blocked-wash: #2E1A14;
+      --deferred: #6C6656;  --deferred-wash: #201E18;
+      --uncertain: #A394DA; --uncertain-wash: #201C2C;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground:#FBF8F2;--surface:#FFF;--surface-2:#F4EFE5;--ink:#221D14;--ink-soft:#5A5140;--ink-faint:#8B8069;
+    --border:#E4DBC9;--border-strong:#D2C6AC;--accent:#A9791B;--accent-soft:#C79A3A;--accent-wash:#F6EDD6;
+    --done:#2E7D5B;--done-wash:#E4F0EA;--partial:#B7770F;--partial-wash:#F7ECD6;--notstarted:#7C7259;--notstarted-wash:#EFEADD;
+    --blocked:#BB3F29;--blocked-wash:#F6E2DC;--deferred:#A9A292;--deferred-wash:#EFEDE7;--uncertain:#6B5CA6;--uncertain-wash:#EAE6F4;
+  }
+  :root[data-theme="dark"] {
+    --ground:#17140F;--surface:#1F1B14;--surface-2:#26211A;--ink:#F1EADB;--ink-soft:#B9AF98;--ink-faint:#85795F;
+    --border:#332C22;--border-strong:#453C2D;--accent:#E6BC5C;--accent-soft:#C79A3A;--accent-wash:#2C2517;
+    --done:#56C38E;--done-wash:#16281F;--partial:#E0A93A;--partial-wash:#2C2411;--notstarted:#9B917A;--notstarted-wash:#23201A;
+    --blocked:#E4694E;--blocked-wash:#2E1A14;--deferred:#6C6656;--deferred-wash:#201E18;--uncertain:#A394DA;--uncertain-wash:#201C2C;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-size: 15px;
+  }
+  a { color: var(--accent); }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); }
+
+  /* ---------- Header ---------- */
+  header.top {
+    padding: 26px clamp(16px, 4vw, 40px) 20px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--ground) 100%);
+  }
+  .eyebrow {
+    font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin: 0 0 6px;
+  }
+  h1.title { margin: 0; font-size: clamp(22px, 3.4vw, 30px); font-weight: 680; letter-spacing: -.01em; text-wrap: balance; }
+  .sub { margin: 8px 0 0; color: var(--ink-soft); max-width: 74ch; font-size: 14px; }
+  .metaline { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--ink-faint); }
+  .metaline .mono { color: var(--ink-soft); }
+
+  /* ---------- Meters ---------- */
+  .meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 20px; }
+  .meter {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .meter.wedge { border-color: var(--accent-soft); }
+  .meter h3 { margin: 0; font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; display:flex; align-items:baseline; gap:8px; }
+  .meter .pct { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 6px 0 2px; }
+  .meter.wedge .pct { color: var(--accent); }
+  .meter .track { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+  .meter .fill { height: 100%; border-radius: 99px; background: var(--notstarted); transition: width .5s cubic-bezier(.2,.7,.3,1); }
+  .meter.wedge .fill { background: linear-gradient(90deg, var(--accent), var(--accent-soft)); }
+  .meter.val .fill { background: var(--uncertain); }
+  .meter .breakdown { margin-top: 9px; font-size: 11.5px; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .meter .tag { font-weight: 600; }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 12px clamp(16px, 4vw, 40px);
+    border-bottom: 1px solid var(--border); background: var(--ground);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+  .legend .li { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-soft); }
+  .dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .spacer { flex: 1 1 auto; }
+  .btn {
+    font: inherit; font-size: 12.5px; cursor: pointer; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px;
+    padding: 6px 11px; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent-soft); }
+  .btn[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .btn:focus-visible, .node:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+
+  /* ---------- Layout ---------- */
+  .app { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 0; align-items: start; }
+  .tree-wrap { padding: 14px clamp(12px, 2.5vw, 24px) 60px; min-height: 60vh; }
+  .detail-wrap { position: sticky; top: 52px; height: calc(100vh - 52px); overflow: auto; border-left: 1px solid var(--border); background: var(--surface); }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .detail-wrap { position: fixed; inset: auto 0 0 0; top: auto; height: 74vh; z-index: 40;
+      transform: translateY(101%); transition: transform .28s cubic-bezier(.2,.7,.3,1);
+      border-left: none; border-top: 1px solid var(--border-strong); border-radius: 16px 16px 0 0;
+      box-shadow: 0 -12px 40px rgba(0,0,0,.28); }
+    .detail-wrap.open { transform: translateY(0); }
+  }
+
+  /* ---------- Tree ---------- */
+  .track-group { margin-bottom: 20px; }
+  .track-head { display: flex; align-items: center; gap: 10px; padding: 4px 6px 8px; }
+  .track-head .name { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; color: var(--ink-soft); }
+  .track-head .rollup { font-size: 12px; color: var(--ink-faint); }
+
+  ul.tree, ul.tree ul { list-style: none; margin: 0; padding: 0; }
+  ul.tree ul { margin-left: 15px; border-left: 1px dashed var(--border-strong); padding-left: 4px; }
+  li.row { margin: 2px 0; }
+
+  .node {
+    display: grid; grid-template-columns: 20px 6px 1fr auto; align-items: center; gap: 8px;
+    width: 100%; text-align: left; font: inherit; cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
+    padding: 7px 9px 7px 4px; color: var(--ink);
+  }
+  .node:hover { background: var(--surface-2); }
+  .node.selected { background: var(--accent-wash); border-color: var(--accent-soft); }
+  .node.selected .nname { color: var(--ink); }
+  .caret { width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink-faint); transition: transform .16s ease; flex: none; }
+  .caret.open { transform: rotate(90deg); }
+  .caret.leaf { visibility: hidden; }
+  .stripe { width: 5px; height: 22px; border-radius: 99px; align-self: center; }
+  .nlabel { min-width: 0; }
+  .nname { font-size: 14px; font-weight: 550; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; }
+  .nid { font-size: 10.5px; color: var(--ink-faint); font-family: var(--mono); }
+  .nmiss { font-size: 12px; color: var(--ink-soft); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nmiss b { color: var(--blocked); font-weight: 600; }
+  .right { display: flex; align-items: center; gap: 8px; flex: none; }
+
+  .chip { font-size: 10.5px; font-weight: 650; letter-spacing: .03em; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; white-space: nowrap; }
+  .pctbadge { font-size: 12px; font-weight: 700; color: var(--ink-soft); min-width: 34px; text-align: right; }
+
+  .st-done      { color: var(--done); }        .bg-done      { background: var(--done-wash); color: var(--done); }
+  .st-partial   { color: var(--partial); }      .bg-partial   { background: var(--partial-wash); color: var(--partial); }
+  .st-notstarted{ color: var(--notstarted); }   .bg-notstarted{ background: var(--notstarted-wash); color: var(--notstarted); }
+  .st-blocked   { color: var(--blocked); }       .bg-blocked   { background: var(--blocked-wash); color: var(--blocked); }
+  .st-deferred  { color: var(--deferred); }      .bg-deferred  { background: var(--deferred-wash); color: var(--deferred); }
+  .st-uncertain { color: var(--uncertain); }     .bg-uncertain { background: var(--uncertain-wash); color: var(--uncertain); }
+
+  .fill-done{background:var(--done);} .fill-partial{background:var(--partial);} .fill-notstarted{background:var(--notstarted);}
+  .fill-blocked{background:var(--blocked);} .fill-deferred{background:var(--deferred);} .fill-uncertain{background:var(--uncertain);}
+
+  li.deferred > .node .nname { color: var(--ink-faint); }
+  li.deferred > .node { opacity: .72; }
+
+  li.hidden-gap { display: none; }
+
+  /* ---------- Detail panel ---------- */
+  .detail { padding: 22px clamp(16px, 2.4vw, 26px) 60px; }
+  .detail .close { display: none; }
+  @media (max-width: 860px) { .detail .close { display: inline-flex; } }
+  .d-empty { color: var(--ink-faint); font-size: 14px; padding: 40px 6px; text-align: center; }
+  .d-eyebrow { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; }
+  .d-title { font-size: 20px; font-weight: 680; margin: 6px 0 12px; letter-spacing: -.01em; text-wrap: balance; line-height: 1.25; }
+  .d-status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .d-rollup { font-size: 12.5px; color: var(--ink-soft); }
+  .d-rollup b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .block { margin: 0 0 14px; border-radius: 10px; }
+  .block h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 700; }
+  .block p { margin: 0; font-size: 14px; color: var(--ink); }
+
+  .miss {
+    background: var(--blocked-wash); border: 1px solid color-mix(in srgb, var(--blocked) 32%, transparent);
+    padding: 14px 15px; border-radius: 11px; margin: 4px 0 16px;
+  }
+  .miss h4 { color: var(--blocked); }
+  .miss p { color: var(--ink); font-size: 14.5px; }
+  .miss ul { margin: 2px 0 0; padding-left: 18px; }
+  .miss li { color: var(--ink); font-size: 14px; margin: 5px 0; padding-left: 2px; }
+  .miss li::marker { color: var(--blocked); }
+  .tickets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ticket { font-size: 12px; font-family: var(--mono); background: var(--accent-wash); border: 1px solid var(--accent-soft); color: var(--accent); border-radius: 6px; padding: 3px 8px; font-weight: 600; }
+
+  .next {
+    background: var(--accent-wash); border: 1px solid var(--accent-soft);
+    padding: 13px 15px; border-radius: 11px; margin: 4px 0 16px;
+  }
+  .next h4 { color: var(--accent); }
+  .next p { font-size: 14.5px; font-weight: 520; }
+
+  .evi { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .evi li { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; word-break: break-all; }
+  .deps { display: flex; flex-wrap: wrap; gap: 6px; }
+  .dep { font-size: 12px; font-family: var(--mono); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; color: var(--ink-soft); }
+  .notes { font-size: 13px; color: var(--ink-soft); font-style: italic; }
+  .src-badge { font-size: 11px; color: var(--ink-faint); font-family: var(--mono); }
+  .backdrop { display:none; }
+  @media (max-width:860px){ .backdrop.show{ display:block; position:fixed; inset:0; background:rgba(20,16,8,.4); z-index:35; } }
+</style>
+
+<header class="top">
+  <p class="eyebrow">Growth Operator · Wedge Build Status</p>
+  <h1 class="title" id="h-title">Ghost-recovery wedge — what exists, what's missing</h1>
+  <p class="sub" id="h-sub"></p>
+  <div class="metaline" id="h-meta"></div>
+  <div class="meters" id="meters"></div>
+</header>
+
+<div class="toolbar">
+  <div class="legend" id="legend"></div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-gaps" aria-pressed="false" title="Hide DONE / DEFERRED; show only open work">Gaps only</button>
+  <button class="btn" id="btn-expand">Expand all</button>
+  <button class="btn" id="btn-collapse">Collapse</button>
+  <button class="btn" id="btn-theme" title="Toggle light / dark">◐ Theme</button>
+</div>
+
+<div class="app">
+  <main class="tree-wrap"><div id="tree"></div></main>
+  <aside class="detail-wrap" id="detail-wrap">
+    <div class="detail" id="detail">
+      <div class="d-empty">Select any component on the left to see its status, the gap, and the next action.</div>
+    </div>
+  </aside>
+</div>
+<div class="backdrop" id="backdrop"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STATUS_META = {
+    DONE:       { cls: "done",       label: "Done" },
+    PARTIAL:    { cls: "partial",    label: "Partial" },
+    NOT_STARTED:{ cls: "notstarted", label: "Not started" },
+    BLOCKED:    { cls: "blocked",    label: "Blocked" },
+    DEFERRED:   { cls: "deferred",   label: "Deferred" },
+    UNCERTAIN:  { cls: "uncertain",  label: "Uncertain" }
+  };
+  var SCORE = { DONE: 1, PARTIAL: 0.5, NOT_STARTED: 0, BLOCKED: 0, UNCERTAIN: 0 };
+
+  var state = { data: null, byId: {}, selected: null, gapsOnly: false, source: "embedded snapshot" };
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"]/g, function(c){
+    return { "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]; }); }
+
+  function isDeferred(node){ return node.status === "DEFERRED"; }
+
+  // what_is_missing may be a string or an array of strings.
+  function missToText(m){ return Array.isArray(m) ? m.join(" · ") : (m || ""); }
+  function missToHtml(m){
+    if (Array.isArray(m)) return '<ul>'+m.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul>';
+    return '<p>'+esc(m)+'</p>';
+  }
+
+  // Roll up: returns {num, den, leaves} counting only non-deferred leaves.
+  function rollup(node){
+    if (!node.children || !node.children.length){
+      if (isDeferred(node)) return { num:0, den:0 };
+      return { num: SCORE[node.status] != null ? SCORE[node.status] : 0, den: 1 };
+    }
+    var num = 0, den = 0;
+    node.children.forEach(function(c){ var r = rollup(c); num += r.num; den += r.den; });
+    return { num: num, den: den };
+  }
+  function pctOf(node){ var r = rollup(node); return r.den ? Math.round(100 * r.num / r.den) : null; }
+
+  function countStatuses(node, acc){
+    acc = acc || {};
+    function walk(n){
+      if (!n.children || !n.children.length){ acc[n.status] = (acc[n.status]||0)+1; }
+      else n.children.forEach(walk);
+    }
+    walk(node);
+    return acc;
+  }
+
+  function index(node){ if(node.id) state.byId[node.id]=node; (node.children||[]).forEach(index); }
+
+  /* ---------------- Header + meters ---------------- */
+  function renderHeader(){
+    var m = state.data.meta || {};
+    document.getElementById("h-sub").textContent = m.wedge || "";
+    var meta = document.getElementById("h-meta");
+    meta.innerHTML =
+      '<span>Generated <span class="mono">'+esc(m.generated||"—")+'</span></span>'+
+      '<span>Source <span class="mono">'+esc(m.source_commit||"—")+'</span></span>'+
+      '<span class="src-badge" id="src-badge">data: '+esc(state.source)+'</span>';
+  }
+
+  function meterCard(cls, title, node, note){
+    var pct = pctOf(node);
+    var counts = countStatuses(node);
+    var parts = [];
+    ["DONE","PARTIAL","NOT_STARTED","BLOCKED","UNCERTAIN"].forEach(function(s){
+      if (counts[s]) parts.push('<span class="tag st-'+STATUS_META[s].cls+'">'+counts[s]+' '+STATUS_META[s].label+'</span>');
+    });
+    return '<div class="meter '+cls+'">'+
+      '<h3>'+esc(title)+'</h3>'+
+      '<div class="pct tnum">'+(pct==null?"—":pct+'%')+'</div>'+
+      '<div class="track"><div class="fill" style="width:'+(pct==null?0:pct)+'%"></div></div>'+
+      '<div class="breakdown">'+(parts.join('') || '<span>'+esc(note||"")+'</span>')+'</div>'+
+      '</div>';
+  }
+
+  function renderMeters(){
+    var tracks = {};
+    state.data.tracks.forEach(function(t){ tracks[t.track] = t; });
+    var html = "";
+    if (tracks.wedge)       html += meterCard("wedge", "Core Wedge (MVP)", tracks.wedge);
+    if (tracks.foundations) html += meterCard("found", "Foundations", tracks.foundations);
+    if (tracks.identity)    html += meterCard("found", "Access & Identity", tracks.identity);
+    if (tracks.validation)  html += meterCard("val", "Validation / Evidence", tracks.validation);
+    if (tracks.deferred){
+      var n = (tracks.deferred.children||[]).length;
+      html += '<div class="meter" style="opacity:.72"><h3>Deferred</h3>'+
+        '<div class="pct tnum" style="color:var(--deferred)">'+n+'</div>'+
+        '<div class="track"><div class="fill fill-deferred" style="width:100%"></div></div>'+
+        '<div class="breakdown"><span>Out of MVP scope · excluded from all %</span></div></div>';
+    }
+    document.getElementById("meters").innerHTML = html;
+  }
+
+  function renderLegend(){
+    var order = ["DONE","PARTIAL","NOT_STARTED","BLOCKED","UNCERTAIN","DEFERRED"];
+    document.getElementById("legend").innerHTML = order.map(function(s){
+      return '<span class="li"><span class="dot fill-'+STATUS_META[s].cls+'"></span>'+STATUS_META[s].label+'</span>';
+    }).join('');
+  }
+
+  /* ---------------- Tree ---------------- */
+  function chip(status){
+    var meta = STATUS_META[status] || { cls:"notstarted", label:status };
+    return '<span class="chip bg-'+meta.cls+'">'+esc(meta.label)+'</span>';
+  }
+
+  function nodeRow(node, depth){
+    var hasKids = node.children && node.children.length;
+    var meta = STATUS_META[node.status] || STATUS_META.NOT_STARTED;
+    var pct = hasKids ? pctOf(node) : null;
+    var right = hasKids
+      ? (pct==null ? '<span class="pctbadge tnum">—</span>' : '<span class="pctbadge tnum">'+pct+'%</span>')
+      : chip(node.status);
+
+    var missPreview = (!hasKids && node.what_is_missing && node.status!=="DONE" && node.status!=="DEFERRED")
+      ? '<div class="nmiss"><b>Missing:</b> '+esc(missToText(node.what_is_missing))+'</div>' : '';
+
+    var caretCls = hasKids ? "caret" + (depth < 1 ? " open" : "") : "caret leaf";
+    var openByDefault = depth < 1;
+
+    var li = document.createElement("li");
+    li.className = "row" + (isDeferred(node) ? " deferred" : "");
+    li.dataset.status = node.status;
+    li.dataset.leaf = hasKids ? "0" : "1";
+
+    var btn = document.createElement("button");
+    btn.className = "node";
+    btn.type = "button";
+    btn.setAttribute("aria-expanded", hasKids ? String(openByDefault) : "false");
+    btn.innerHTML =
+      '<span class="'+caretCls+'" aria-hidden="true">'+(hasKids ?
+        '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' : '')+'</span>'+
+      '<span class="stripe fill-'+meta.cls+'"></span>'+
+      '<span class="nlabel"><span class="nname">'+esc(node.name)+'</span> <span class="nid">'+esc(node.id||"")+'</span>'+missPreview+'</span>'+
+      '<span class="right">'+right+'</span>';
+
+    btn.addEventListener("click", function(e){
+      if (hasKids && !e.altKey){
+        var open = btn.getAttribute("aria-expanded") === "true";
+        setOpen(li, btn, !open);
+      }
+      select(node.id);
+    });
+    li.appendChild(btn);
+
+    if (hasKids){
+      var ul = document.createElement("ul");
+      node.children.forEach(function(c){ ul.appendChild(nodeRow(c, depth+1)); });
+      if (!openByDefault) ul.style.display = "none";
+      li.appendChild(ul);
+    }
+    return li;
+  }
+
+  function setOpen(li, btn, open){
+    var ul = li.querySelector(":scope > ul");
+    var caret = btn.querySelector(".caret");
+    if (!ul) return;
+    ul.style.display = open ? "" : "none";
+    btn.setAttribute("aria-expanded", String(open));
+    if (caret) caret.classList.toggle("open", open);
+  }
+
+  function renderTree(){
+    var root = document.getElementById("tree");
+    root.innerHTML = "";
+    state.data.tracks.forEach(function(track){
+      var grp = document.createElement("div");
+      grp.className = "track-group";
+      var pct = pctOf(track);
+      var head = document.createElement("div");
+      head.className = "track-head";
+      head.innerHTML = '<span class="stripe fill-'+(STATUS_META[track.status]||STATUS_META.NOT_STARTED).cls+'"></span>'+
+        '<span class="name">'+esc(track.name)+'</span>'+
+        '<span class="rollup tnum">'+(track.track==="deferred" ? "out of scope" : (pct==null?"—":pct+"% complete"))+'</span>';
+      grp.appendChild(head);
+      var ul = document.createElement("ul");
+      ul.className = "tree";
+      (track.children||[]).forEach(function(c){ ul.appendChild(nodeRow(c, 0)); });
+      grp.appendChild(ul);
+      root.appendChild(grp);
+    });
+    applyGaps();
+  }
+
+  /* ---------------- Detail ---------------- */
+  function block(title, html){ return '<div class="block"><h4>'+esc(title)+'</h4>'+html+'</div>'; }
+
+  function select(id){
+    var node = state.byId[id];
+    if (!node) return;
+    state.selected = id;
+    document.querySelectorAll(".node.selected").forEach(function(n){ n.classList.remove("selected"); });
+    // find the button for this node
+    var buttons = document.querySelectorAll(".node");
+    buttons.forEach(function(b){
+      var nid = b.querySelector(".nid");
+      if (nid && nid.textContent === id) b.classList.add("selected");
+    });
+
+    var hasKids = node.children && node.children.length;
+    var meta = STATUS_META[node.status] || STATUS_META.NOT_STARTED;
+    var pct = pctOf(node);
+    var r = rollup(node);
+    var html = '';
+    html += '<button class="btn close" id="d-close" style="float:right">✕ Close</button>';
+    html += '<div class="d-eyebrow">'+esc(node.id||"")+'</div>';
+    html += '<div class="d-title">'+esc(node.name)+'</div>';
+    html += '<div class="d-status-row">'+chip(node.status);
+    if (hasKids && pct != null){
+      html += '<span class="d-rollup">Rollup <b>'+pct+'%</b> · '+r.num+' / '+r.den+' non-deferred leaves</span>';
+    }
+    html += '</div>';
+
+    if (node.what_is_missing){
+      html += '<div class="miss"><h4>What’s missing</h4>'+missToHtml(node.what_is_missing)+'</div>';
+    }
+    if (node.next_action){
+      html += '<div class="next"><h4>Next action</h4><p>'+esc(node.next_action)+'</p></div>';
+    }
+    if (node.tickets && node.tickets.length){
+      html += block("Tickets", '<div class="tickets">'+node.tickets.map(function(t){ return '<span class="ticket">'+esc(t)+'</span>'; }).join('')+'</div>');
+    }
+    if (node.what_exists){
+      html += block("What exists", '<p>'+esc(node.what_exists)+'</p>');
+    }
+    if (node.evidence && node.evidence.length){
+      html += block("Evidence (in the repo)", '<ul class="evi">'+node.evidence.map(function(e){ return '<li>'+esc(e)+'</li>'; }).join('')+'</ul>');
+    }
+    if (node.spec_refs && node.spec_refs.length){
+      html += block("Vault spec references", '<ul class="evi">'+node.spec_refs.map(function(e){ return '<li>'+esc(e)+'</li>'; }).join('')+'</ul>');
+    }
+    if (node.dependencies && node.dependencies.length){
+      html += block("Dependencies", '<div class="deps">'+node.dependencies.map(function(d){ return '<span class="dep">'+esc(d)+'</span>'; }).join('')+'</div>');
+    }
+    if (node.notes){
+      html += block("Notes", '<p class="notes">'+esc(node.notes)+'</p>');
+    }
+
+    var d = document.getElementById("detail");
+    d.innerHTML = html;
+    document.getElementById("detail-wrap").classList.add("open");
+    document.getElementById("backdrop").classList.add("show");
+    var close = document.getElementById("d-close");
+    if (close) close.addEventListener("click", closeDetail);
+    if (window.matchMedia("(max-width:860px)").matches) d.scrollTop = 0;
+  }
+  function closeDetail(){
+    document.getElementById("detail-wrap").classList.remove("open");
+    document.getElementById("backdrop").classList.remove("show");
+  }
+
+  /* ---------------- Gaps filter ---------------- */
+  function applyGaps(){
+    var on = state.gapsOnly;
+    document.querySelectorAll("li.row").forEach(function(li){
+      var leaf = li.dataset.leaf === "1";
+      if (!on){ li.classList.remove("hidden-gap"); return; }
+      if (leaf){
+        var s = li.dataset.status;
+        var keep = (s === "PARTIAL" || s === "NOT_STARTED" || s === "BLOCKED" || s === "UNCERTAIN");
+        li.classList.toggle("hidden-gap", !keep);
+      } else {
+        li.classList.remove("hidden-gap");
+      }
+    });
+    // hide parent branches whose every leaf got filtered out
+    document.querySelectorAll("ul.tree > li.row").forEach(pruneEmpty);
+  }
+  function pruneEmpty(li){
+    var childUl = li.querySelector(":scope > ul");
+    if (!childUl) return;
+    childUl.querySelectorAll(":scope > li.row").forEach(pruneEmpty);
+    if (state.gapsOnly){
+      var anyVisible = Array.prototype.some.call(childUl.children, function(c){ return !c.classList.contains("hidden-gap"); });
+      if (!anyVisible && li.dataset.leaf === "0") li.classList.add("hidden-gap");
+    }
+  }
+
+  function expandAll(open){
+    document.querySelectorAll("li.row").forEach(function(li){
+      var btn = li.querySelector(":scope > .node");
+      if (btn && btn.getAttribute("aria-expanded") !== null && li.querySelector(":scope > ul")){
+        setOpen(li, btn, open);
+      }
+    });
+  }
+
+  /* ---------------- Theme ---------------- */
+  function toggleTheme(){
+    var cur = document.documentElement.getAttribute("data-theme");
+    var next = cur === "dark" ? "light" : (cur === "light" ? "dark" :
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark"));
+    document.documentElement.setAttribute("data-theme", next);
+  }
+
+  /* ---------------- Boot ---------------- */
+  function boot(data, source){
+    state.data = data; state.source = source; state.byId = {};
+    (data.tracks||[]).forEach(index);
+    renderHeader(); renderMeters(); renderLegend(); renderTree();
+  }
+
+  document.getElementById("btn-gaps").addEventListener("click", function(){
+    state.gapsOnly = !state.gapsOnly;
+    this.setAttribute("aria-pressed", String(state.gapsOnly));
+    if (state.gapsOnly) expandAll(true);
+    applyGaps();
+  });
+  document.getElementById("btn-expand").addEventListener("click", function(){ expandAll(true); });
+  document.getElementById("btn-collapse").addEventListener("click", function(){ expandAll(false); });
+  document.getElementById("btn-theme").addEventListener("click", toggleTheme);
+  document.getElementById("backdrop").addEventListener("click", closeDetail);
+
+  // 1) embedded data (always works on file://)
+  var embedded = JSON.parse(document.getElementById("embedded-status").textContent);
+  boot(embedded, "embedded snapshot");
+
+  // 2) try live status.json to override (works when served over http)
+  try {
+    fetch("status.json", { cache: "no-store" }).then(function(res){
+      if (!res.ok) throw 0;
+      return res.json();
+    }).then(function(live){
+      boot(live, "status.json (live)");
+    }).catch(function(){ /* keep embedded */ });
+  } catch (e) { /* file:// may throw synchronously; keep embedded */ }
+})();
+</script>

@@ -11,7 +11,7 @@ pre-commit scanning) is out of scope here — MVP-008.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import Field
@@ -55,6 +55,28 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0")
     otel_exporter_otlp_endpoint: str | None = Field(default=None)
     jwt_secret: str = Field(default="dev-only-insecure-secret")
+    # OTP delivery channel. INTERIM default is "email" as a bridge while Meta WhatsApp
+    # API access is pending (see project-management/TODO.md, DECISIONS.md 2026-07-22).
+    # Flip back to "phone" once real WhatsApp delivery is live — phone code path retained.
+    otp_channel: Literal["email", "phone"] = Field(default="email")
+    # Dev-only convenience (CLAUDE.md §10.3): echo the plaintext OTP to stderr so a
+    # developer can complete login without an SMS/WhatsApp provider. MUST stay False
+    # by default, only honoured when env == "dev", and startup fails outside dev if
+    # set (see core.tenancy.otp_delivery.assert_otp_config_safe). Never persisted,
+    # never returned from an API, never written to normal application logs.
+    otp_dev_echo: bool = Field(default=False)
+
+    # Real email OTP delivery (interim channel). OFF by default — turning it on is the
+    # act of authorising a real external side effect (§10.4), so it is the founder's
+    # explicit decision per environment. When enabled, all SMTP fields below must be set
+    # (validated at startup by assert_otp_delivery_config); otherwise startup fails.
+    # `smtp_password` is a secret — provide it via the SOPS secrets file, never in code.
+    otp_email_enabled: bool = Field(default=False)
+    smtp_host: str | None = Field(default=None)
+    smtp_port: int = Field(default=587)
+    smtp_username: str | None = Field(default=None)
+    smtp_password: str | None = Field(default=None)
+    smtp_from: str | None = Field(default=None, description="From address, e.g. no-reply@x.com")
 
     @classmethod
     def settings_customise_sources(
