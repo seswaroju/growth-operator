@@ -18,6 +18,9 @@ dependencies = [
     "argon2-cffi>=23.1",
     "opentelemetry-sdk>=1.28",
     "opentelemetry-instrumentation-fastapi>=0.49b0",
+    # asyncpg/redis/httpx instrumentation deferred until a tracing backend exists (MVP-006
+    # follow-up, TODO.md) — telemetry._instrument() imports them lazily/guarded, so adding
+    # the packages back is all that's needed to activate them.
     "opentelemetry-exporter-otlp>=1.28",
     "pyyaml>=6.0",
 ]
@@ -31,6 +34,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "types-pyyaml>=6.0",
+    "pre-commit>=4.0",
 ]
 
 [tool.ruff]
@@ -64,9 +68,17 @@ exclude = ["verticals/", "tests/"]
 module = "jose.*"
 ignore_missing_imports = true
 
+# OpenTelemetry contrib instrumentation packages ship incomplete stubs.
+[[tool.mypy.overrides]]
+module = "opentelemetry.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# importlib mode lets unit/ and integration/ hold same-named files (e.g. test_health.py)
+# without module-name collisions, and needs no __init__.py in the test tree.
+addopts = "--import-mode=importlib"
 
 [build-system]
 requires = ["hatchling"]

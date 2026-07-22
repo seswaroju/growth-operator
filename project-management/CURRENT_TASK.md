@@ -9,7 +9,13 @@ selects and approves the next ticket.
 
 ---
 
-## Ticket: MVP-011 · OTP auth endpoints
+## Active: MVP-006 – MVP-010 · platform foundations batch (founder-directed)
+
+**Status:** Completed — awaiting founder review (2026-07-22, branch `feature/mvp-006-010-platform-foundations`, off merged main). Founder directed implementing the leapfrogged 006–010 before continuing. Outcome: **007 + 010 DONE**, **006 + 008 PARTIAL**, **009 BLOCKED (scaffold only)**. Details in [MVP_STATUS.md](MVP_STATUS.md) + [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md); MVP-009 blocker recorded in [BLOCKERS.md](BLOCKERS.md) #10. Gates: ruff, mypy, arch guards, **69 pytest** all pass. Not yet committed — awaiting commit approval. Recommended next ticket: **MVP-012**.
+
+---
+
+## Prior: MVP-011 · OTP auth endpoints (merged to main `eeab4e2`)
 
 **Objective:** As a store owner, sign in with phone + OTP (no passwords). Implement `POST /v1/auth/otp` and `POST /v1/auth/otp/verify` per the auth spec: hashed codes, 5-minute expiry, ≤5 attempts, 60s resend throttle, dev-mode code log behind a flag. Verify issues a server-side session row + JWT (15m access / 30d refresh rotation, claims `sub, org_id, roles[]`).
 

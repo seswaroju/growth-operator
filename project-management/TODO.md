@@ -50,3 +50,20 @@ Created 2026-07-22 during MVP-011.
 
 - If a third-party BSP replaces Meta for the **conversation channel** (MVP-031+, not yet
   in scope), track swapping it back to the direct Meta adapter here when Meta is ready.
+
+## 5. MVP-006 completion (OTel) — partial, added 2026-07-22
+
+- **Done:** env-gated tracer/OTLP, FastAPI instrumentation, JSON logs + PII scrubber (tested).
+- **Deferred:** the `opentelemetry-instrumentation-{asyncpg,redis,httpx}` packages were
+  removed until a real tracing backend (Grafana Cloud) exists — re-add them to
+  `pyproject.toml` to activate the guarded instrumentors in `telemetry._instrument()`.
+- **Add back:** a tracing backend + the "one trace: webhook→consumer→send" continuity test
+  (blocked on MVP-032+ components existing), and wire `run_id` span attributes at MVP-055.
+
+## 6. MVP-008 completion (SOPS) — scaffold, added 2026-07-22
+
+- **Done:** `.sops.yaml`, gitleaks pre-commit config, `secrets/` README + fake example,
+  `decrypt-secrets.sh`, boot fail-closed (`assert_secrets_available`, tested).
+- **Founder step (§10.1):** `age-keygen`, paste the public key into `.sops.yaml`, create the
+  real `secrets/{dev,staging,prod}.enc.yaml`, and run `pre-commit install` so gitleaks blocks
+  plaintext-secret commits. Then set `GROWTH_OPERATOR_REQUIRE_SECRETS_FILE=true` in staging/prod.

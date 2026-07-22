@@ -1,0 +1,11 @@
+# Lint guard allowlist (MVP-010).
+#
+# Format:  <path-substring>::<token>   # justification (REQUIRED)
+#   A violation is excused when <path-substring> appears in the file path AND
+#   <token> appears in the flagged line. Every entry MUST carry a '# justification'
+#   comment — an entry without one FAILS the guards (guards.py load_allowlist).
+#
+# Example (kept commented; real entries go below, uncommented):
+#   core/insights/example.py::restaurant   # string appears in a doc URL, not industry logic
+#
+# (no active allowlist entries yet)

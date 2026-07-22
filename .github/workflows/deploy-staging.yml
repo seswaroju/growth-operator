@@ -1,0 +1,47 @@
+# Deploy to staging on merge to main (MVP-009) — SCAFFOLD / GATED.
+# Inert until the `staging` environment and its secrets (STAGING_HOST, STAGING_SSH_KEY)
+# are configured, and the staging VPS exists (infra/terraform/staging). See that README —
+# this ticket is BLOCKED on a Hetzner account, a domain, the residency decision, and Meta.
+name: Deploy staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging # provides the gate + secrets; job is skippable until it exists
+    # Guard: only run when the staging host secret is configured.
+    if: ${{ vars.STAGING_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy over SSH (migrations before container swap)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/growth-operator
+            git fetch --all && git reset --hard origin/main
+            eval "$(scripts/decrypt-secrets.sh staging)"
+            uv run alembic upgrade head
+            docker compose -f infra/docker/docker-compose.dev.yml up -d --build
+
+      - name: Smoke — readyz + version
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://api.${{ vars.STAGING_DOMAIN }}/readyz" >/dev/null; then
+              echo "staging ready"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::staging did not become ready in time"; exit 1

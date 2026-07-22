@@ -1,0 +1,13 @@
+# Import contract for the Rule Zero invariant (MVP-010). Enforced primarily by
+# scripts/guards.py (grep); this config lets the `import-linter` tool assert the same
+# thing structurally if/when it is added to the dev toolchain (`lint-imports`).
+[importlinter]
+root_package = core
+
+[importlinter:contract:core-not-verticals]
+name = core must not import verticals (Rule Zero)
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    verticals

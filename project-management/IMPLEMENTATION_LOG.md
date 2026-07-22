@@ -166,3 +166,34 @@ make -n dev / migrate / test / seed
 **Known issues / deferred:** app containers (api/worker/scheduler) not yet booted via full `make dev` (only data services); real email inbox delivery still needs a provider (TODO #2) + staging.
 
 **Next action:** founder reviews; then MVP-012 (sessions + JWT refresh/rotation).
+
+---
+
+## 2026-07-22 — MVP-006 – MVP-010 · platform foundations (the leapfrogged batch)
+
+**Context:** Founder directed implementing the tickets skipped after the scaffold, before continuing. Branch `feature/mvp-006-010-platform-foundations` off main (which now includes merged MVP-011, `eeab4e2`). Not yet committed — awaiting founder review.
+
+**MVP-007 · Health + readiness — DONE**
+- `core/api/health.py`: `/healthz` (liveness, no dep probes) + `/readyz` (pg + redis + alembic-head, 1s timeouts, 503 when not ready). Wired into app; compose api healthcheck → `/healthz`.
+- Tests: `tests/unit/test_health.py` (liveness), `tests/integration/test_health.py` (readyz 200 healthy; 503 when head mismatched). Verified live.
+
+**MVP-010 · Lint guards — DONE (P0)**
+- `scripts/guards.py`: core↛verticals, industry-nouns (core/ + web/src), float-money (`float(` near `*_minor`), send-call-sites (`messages.send` only under `core/channels/`). Allowlist with mandatory justification (`scripts/lint-allowlist.txt`). `scripts/lint.sh` wrapper; `.importlinter` contract; CI step added.
+- Tests: `tests/unit/test_lint_guards.py` — each guard red on its violation; repo clean; allowlist rules. Dropped generic "ring" from the denylist (false-positives on Tailwind `focus:ring`).
+
+**MVP-006 · OTel + structured logging — PARTIAL**
+- `core/common/telemetry.py`: env-gated tracer/OTLP + FastAPI/asyncpg/redis/httpx instrumentation; `ScrubbingJsonFormatter` masking E.164 + OTP codes (§10.2/§10.3); `org_id`/`trace_id` injection. No-op unless `OTEL_EXPORTER_OTLP_ENDPOINT` set (off in tests). Deps: `opentelemetry-instrumentation-{asyncpg,redis,httpx}`; mypy override for `opentelemetry.*`.
+- Tests: `tests/unit/test_telemetry.py` (scrubber + formatter). Full "one trace webhook→consumer→send" acceptance is blocked on those components (MVP-032+).
+
+**MVP-008 · Secrets via SOPS — PARTIAL (scaffold)**
+- `.sops.yaml` (placeholder recipient), `.pre-commit-config.yaml` (gitleaks + ruff + guards), `secrets/README.md` + `secrets/dev.example.yaml` (fake), `scripts/decrypt-secrets.sh` (fail-loud entrypoint). `config.py`: `require_secrets_file` + `assert_secrets_available` (boot fail-closed, wired into main). `.gitignore` protects plaintext/keys; `pre-commit` dev dep.
+- Tests: `tests/unit/test_secrets.py`. Real age key + `*.enc.yaml` + running gitleaks are the founder's step (§10.1).
+
+**MVP-009 · Staging environment — BLOCKED (scaffold only)**
+- `infra/terraform/staging/*` (Hetzner CPX21 + firewall + ssh key; DNS/Meta stubbed) and `.github/workflows/deploy-staging.yml` (deploy-on-merge, migrations before swap, `/readyz` smoke; gated behind a `staging` env + `STAGING_ENABLED`). **Un-applied.** Needs Hetzner account, domain, data-residency decision (BLOCKERS #8), Meta access.
+
+**Also:** `pyproject.toml` pytest `--import-mode=importlib` (fixes unit/integration same-name collisions).
+
+**Commands:** `uv run ruff check .` (PASS) · `uv run mypy core` (PASS, 30 files) · `uv run python scripts/guards.py` (PASS) · `uv run pytest -q` (**69 passed**) · YAML workflows parse. terraform not installed (scaffold not fmt-validated).
+
+**Next action:** founder reviews + approves commit; then MVP-012. Founder to unblock MVP-009 (account/domain/residency) and MVP-008 (age key) when ready.

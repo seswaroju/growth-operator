@@ -19,6 +19,8 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run mypy core
+      - name: Architecture guards (MVP-010)
+        run: uv run python scripts/guards.py
 
   test:
     runs-on: ubuntu-latest

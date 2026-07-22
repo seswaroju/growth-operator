@@ -8,6 +8,11 @@ __pycache__/
 .env
 secrets/*.yaml
 !secrets/*.enc.yaml
+!secrets/*.example.yaml
+# age private keys — never commit
+*.agekey
+age-keys.txt
+keys.txt
 
 # docs is a symlink to the vault, tracked as a link not repo content
 

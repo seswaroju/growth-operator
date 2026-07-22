@@ -78,6 +78,13 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None)
     smtp_from: str | None = Field(default=None, description="From address, e.g. no-reply@x.com")
 
+    # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
+    # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
+    # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot
+    # hard-fails (assert_secrets_available) if decryption did not produce that file —
+    # never silently fall back to insecure defaults.
+    require_secrets_file: bool = Field(default=False)
+
     @classmethod
     def settings_customise_sources(
         cls,
@@ -98,3 +105,22 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def assert_secrets_available(settings: Settings) -> None:
+    """Fail closed at startup if a decrypted secrets file is required but absent (MVP-008).
+
+    Guards against a container booting with insecure defaults when SOPS decryption did not
+    run or the age key is missing. Enabled per environment via require_secrets_file.
+    """
+    if not settings.require_secrets_file:
+        return
+    import os
+
+    path = os.environ.get("GROWTH_OPERATOR_SECRETS_FILE")
+    if not path or not Path(path).is_file():
+        raise RuntimeError(
+            "GROWTH_OPERATOR_REQUIRE_SECRETS_FILE is set but the decrypted secrets file "
+            f"(GROWTH_OPERATOR_SECRETS_FILE={path!r}) is missing or unreadable. Run "
+            "`scripts/decrypt-secrets.sh <env>` (needs the age key) before boot."
+        )
