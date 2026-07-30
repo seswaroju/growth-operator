@@ -9,9 +9,9 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch (founder-directed) — PAUSED after MVP-015 for founder review + commit decision
+## Active: MVP-012–030 batch (founder-directed) — 012–015 COMMITTED + MERGED + PUSHED; next MVP-016
 
-**Status:** In progress — started 2026-07-29 on branch `feature/mvp-012-sessions-jwt` (off merged main). Founder approved proceeding **ticket-by-ticket through the 012–030 batch** (implement → verify live → log each; stop only on a new decision/blocker). Environment verified live: postgres+redis healthy, **86 pytest pass (0 skipped)**. DB tickets are done in **migration-number order** (002→011); per founder decision (2026-07-29) migration **010 (prompts, MVP-058) is pulled forward** before CRM (011/MVP-023).
+**Status:** 012–015 implemented 2026-07-29 on `feature/mvp-012-sessions-jwt`, committed `35457ef`, **merged to main `8cfa3e8` and pushed to origin** (founder-authorized). Batch continues **ticket-by-ticket through 012–030** (implement → verify live → log each; stop only on a new decision/blocker). Environment verified live: postgres+redis healthy, **101 pytest pass (0 skipped)**. DB tickets are done in **migration-number order** (002→011); per founder decision (2026-07-29) migration **010 (prompts, MVP-058) is pulled forward** before CRM (011/MVP-023). Next: **MVP-016** (tenant middleware + `app_rw` role, BLOCKERS #11).
 
 **Done + verified this session:**
 - **MVP-012** ✅ refresh rotation + reuse-revokes-family + rotation-race (`/v1/auth/refresh`); `jti` nonce bug fix.

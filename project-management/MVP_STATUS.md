@@ -24,10 +24,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-009 | Staging environment | 🟡 | 2026-07-22 | `684a000` | **BLOCKED** — Terraform (Hetzner CPX21) + deploy workflow written but un-applied; needs account/domain/residency (BLOCKERS #8)/Meta |
 | MVP-010 | Lint guards (core↛verticals, noun/money/send) | ✅ | 2026-07-22 | `684a000` | `scripts/guards.py` + allowlist + CI wiring; 8 tests (each guard red on its violation) |
 | MVP-011 | OTP auth endpoints | ✅ | 2026-07-22 | `6cd38f4` | Migration 001; OTP logic + `/v1/auth/otp(/verify)`; interim **email** channel; `EmailOtpDelivery` (gated); **verified live** |
-| MVP-012 | Sessions + JWT issue/refresh | ✅ | 2026-07-29 | _pending_ | Refresh rotation + reuse-revokes-family + rotation-race on `sessions` (001); `/v1/auth/refresh`; `jti` nonce fix; **77 pytest** live. Audit-on-reuse interim (log) until MVP-024 |
-| MVP-013 | Logout + revocation | ✅ | 2026-07-29 | _pending_ | `POST /v1/auth/logout` + `/logout-all` on `sessions` (001); revoked session can't refresh; **80 pytest** live |
-| MVP-014 | Organizations + /me | ✅ | 2026-07-29 | _pending_ | Migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy); `POST /v1/orgs`, `GET /v1/me`; refresh re-embeds org_id; `apply_rls` NULLIF-hardened; **86 pytest** live. ⚠️ RLS not enforced until `app_rw` role (BLOCKERS #11) |
-| MVP-015 | RBAC roles + @requires | ✅ | 2026-07-29 | _pending_ | Migration 003 (roles/permissions/role_permissions + user_roles+RLS, seeded); `permissions.py` constants + `requires()` dep; 403 problem+json names perm; **101 pytest** live |
+| MVP-012 | Sessions + JWT issue/refresh | ✅ | 2026-07-29 | `35457ef` | Refresh rotation + reuse-revokes-family + rotation-race on `sessions` (001); `/v1/auth/refresh`; `jti` nonce fix; **77 pytest** live. Audit-on-reuse interim (log) until MVP-024 |
+| MVP-013 | Logout + revocation | ✅ | 2026-07-29 | `35457ef` | `POST /v1/auth/logout` + `/logout-all` on `sessions` (001); revoked session can't refresh; **80 pytest** live |
+| MVP-014 | Organizations + /me | ✅ | 2026-07-29 | `35457ef` | Migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy); `POST /v1/orgs`, `GET /v1/me`; refresh re-embeds org_id; `apply_rls` NULLIF-hardened; **86 pytest** live. ⚠️ RLS not enforced until `app_rw` role (BLOCKERS #11) |
+| MVP-015 | RBAC roles + @requires | ✅ | 2026-07-29 | `35457ef` | Migration 003 (roles/permissions/role_permissions + user_roles+RLS, seeded); `permissions.py` constants + `requires()` dep; 403 problem+json names perm; **101 pytest** live |
 
 > **Gap note (resolved 2026-07-22):** MVP-006–010 were leapfrogged after the scaffold; the
 > founder directed implementing them before continuing. Now done/scaffolded on branch
