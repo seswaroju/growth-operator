@@ -11,7 +11,7 @@ selects and approves the next ticket.
 
 ## Active: MVP-012–030 batch — 012–020 + 024/025 on main; 021+022 done on branch (awaiting commit); next 058/023
 
-**On main:** 012–020 + 024/025 + 021/022 (`47846af`/`6d9c848`) — migrations linear through 009, RLS enforced. **15/19 of the 012–30 goal done.** Remaining: MVP-058 (prompts, 010), MVP-023 (CRM, 011), the Redis-streams consumer set 026–029, and MVP-030.
+**On main:** 012–020 + 024/025 + 021/022 + **058 + 023** (`25527c0`/`7981079`) — migrations linear through 011, RLS enforced. **17/19 done.** Remaining: the Redis-streams consumer set MVP-026→029 + MVP-030. **15/19 of the 012–30 goal done.** Remaining: MVP-058 (prompts, 010), MVP-023 (CRM, 011), the Redis-streams consumer set 026–029, and MVP-030.
 
 **On main:** 012–019 (`290c476`) + 024/025/020 (`dbab65a`/`2aeb288`) — migrations linear through 008, RLS enforced. **13/19 of the 012–30 goal done.** Next: MVP-021 + MVP-022 (tenant settings + feature flags, migration 009), then 058 (010), 023 (011); then the Redis-streams consumer set 026–029 + 030.
 
