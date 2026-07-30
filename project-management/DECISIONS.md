@@ -172,3 +172,14 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 **Decision:** Migration 011 (CRM, MVP-023) stores money as integer minor units — `orders.total_minor`, `attributions.amount_minor` (bigint) — rather than v1's `numeric(12,2)`. Matches the platform money model (topics.yaml `total_minor:int`, the float-money guard's intent) and keeps amounts consistent with the event payloads that carry them. Also: `attributions.agent_id` is a plain uuid (no FK) until an agents table exists.
 
 **Decided by:** Claude (flagged) — aligns with the platform's stated money convention.
+
+---
+
+### 2026-07-30 — Consumer/scheduler/events implementation choices (MVP-026..030)
+
+**Decisions (flagged):**
+- **MVP-028 scheduler uses a hand-rolled cron matcher, not `croniter`** — CLAUDE.md §9 discourages adding a dependency for a small amount of straightforward code. Supports `*`, lists, ranges, and `*/n` steps in the five fields; timezone-aware via stdlib `zoneinfo`. The `jobs_runs` observability table is **deferred** (run start/end/status go to structured logs; not needed for the acceptance criteria — lock proof + tz firing).
+- **MVP-029 backoff** = the idle-reclaim interval (5 min) between redeliveries, a pragmatic stand-in for per-message exponential backoff; DLQ after 5 retries (6th failure) with error history + `alert.ops` emit; `scripts/dlq-replay.py` re-injects.
+- **MVP-030** uses the ticket's allowed "generated specs + checksum" variant: `scripts/gen_events.py` writes `core/events/types.py` (payload specs + checksum) from topics.yaml; a drift test fails CI if stale; `emit()` validates payloads at runtime. Static pydantic models (compile-time typing) are a later refinement.
+
+**Decided by:** Claude (flagged for founder awareness) — all satisfy the tickets' acceptance criteria.

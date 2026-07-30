@@ -512,3 +512,30 @@ make -n dev / migrate / test / seed
 **Commands:** ruff · mypy core (48) · guards (5) · `pytest -q` **156 passed, 0 skipped**. Migrations 010 + 011 up/down/re-up verified; chain linear through 011.
 
 **Next:** the Redis-streams consumer set — MVP-026 (framework) → 027 (dedupe) → 028 (scheduler) → 029 (retries/DLQ) → 030 (typed event catalog).
+
+## 2026-07-30 — MVP-026..030 · Redis-streams consumer set + typed event catalog
+
+**Tickets:** MVP-026 (consumer framework), 027 (dedupe), 028 (scheduler), 029 (retries/DLQ), 030 (typed event catalog). Branch `feature/mvp-026-030-consumers`. No new dependencies; no new migrations (dedupe_consumer already exists from 006).
+
+**Files:** `core/events/consumer.py` (026+027+029), `core/events/scheduler.py` (028), `core/events/types.py` (generated) + `scripts/gen_events.py` (030), `core/events/outbox.py` (payload validation), `scripts/dlq-replay.py` (029); tests `test_consumer.py`, `test_scheduler.py`, `test_event_types.py`.
+
+- **MVP-026 framework** — `@consumer(stream, group)`; `drain_once` = XAUTOCLAIM idle-reclaim + XREADGROUP new; `run_consumer` loop with graceful shutdown (in-flight acks, no loss). First consumer: a no-op logger on msg.received.
+- **MVP-027 dedupe** — every message runs through `INSERT dedupe_consumer (consumer, event_id) ON CONFLICT DO NOTHING`; handler runs only on first sight → exactly-once effect; `prune_dedupe` removes rows > 30d.
+- **MVP-028 scheduler** — 5-field cron matcher (`cron_matches`), timezone-aware (`zoneinfo`) so tenant-local schedules fire at local time; per-(job,minute) Redis lock → one fire across schedulers. (croniter avoided, jobs_runs deferred — DECISIONS.)
+- **MVP-029 retries/DLQ** — bounded retries; after 5 (6th failure) → `gop:dlq:<type>` with error history + `alert.ops` emit; `scripts/dlq-replay.py` re-injects after a fix.
+- **MVP-030 typed catalog** — `scripts/gen_events.py` generates `core/events/types.py` (payload specs + checksum) from topics.yaml; drift test fails CI if stale; `emit()` rejects malformed payloads.
+
+**Requirement → evidence (all live, pg+redis):**
+| Criterion | Test | Result |
+|---|---|---|
+| kill mid-handler → single redelivery | `test_consumer::test_crashed_message_is_reclaimed_once` | PASS |
+| graceful shutdown, no ack loss | `test_consumer::test_run_consumer_graceful_stop` | PASS |
+| duplicate delivery → one effect + 30d prune | `test_consumer::test_handle_ack_and_dedupe`, `test_prune_dedupe_removes_old_rows` | PASS |
+| two schedulers → each job fires once | `test_scheduler::test_two_schedulers_fire_a_job_once` | PASS |
+| tenant-local firing | `test_scheduler::test_tenant_local_firing` | PASS |
+| 6th failure → DLQ + error history; replay | `test_consumer::test_poison_message_dead_letters_and_replays` | PASS |
+| CI fails on topics.yaml/model drift; emit rejects malformed | `test_event_types::*` + `gen_events.py --check` | PASS |
+
+**Commands:** ruff · mypy core (51) + migrations · guards (5) · `gen_events.py --check` OK · `pytest -q` **168 passed, 0 skipped**.
+
+**🎯 The MVP-012..030 goal is complete — 19/19 tickets, all verified live.**

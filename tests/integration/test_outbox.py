@@ -20,7 +20,9 @@ from core.common.config import get_settings
 from core.events import outbox
 from core.events.topics import stream_name
 
-EVENT_TYPE = "msg.sent.v1"
+# A no-declared-payload event, so these outbox-mechanism tests aren't coupled to a payload
+# shape (payload validation is covered in tests/unit/test_event_types.py).
+EVENT_TYPE = "approval.expired.v1"
 
 
 def _owner_dsn() -> str:

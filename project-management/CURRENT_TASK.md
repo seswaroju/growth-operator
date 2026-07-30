@@ -9,9 +9,11 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch — 012–020 + 024/025 on main; 021+022 done on branch (awaiting commit); next 058/023
+## Active: MVP-012–030 batch — COMPLETE (19/19). 026–030 done on branch (awaiting commit)
 
-**On main:** 012–020 + 024/025 + 021/022 + **058 + 023** (`25527c0`/`7981079`) — migrations linear through 011, RLS enforced. **17/19 done.** Remaining: the Redis-streams consumer set MVP-026→029 + MVP-030. **15/19 of the 012–30 goal done.** Remaining: MVP-058 (prompts, 010), MVP-023 (CRM, 011), the Redis-streams consumer set 026–029, and MVP-030.
+**🎯 The MVP-012..030 goal is complete — 19/19 tickets, all verified live.** On main: 012–020 + 024/025 + 021/022 + 058/023 (`25527c0`). On branch `feature/mvp-026-030-consumers` (uncommitted): MVP-026/027/028/029/030 (consumer framework, dedupe, scheduler, retries/DLQ, typed event catalog) — **168 pytest**, migrations linear through 011, RLS enforced. No new deps, no new migrations. Awaiting commit → main.
+
+**What's live:** the full platform foundation — auth/sessions/RBAC, tenant isolation (RLS enforced under `app_rw`), API keys, invites, messaging + CRM + prompt schemas, audit hash-chain, transactional outbox, packs+archetypes, tenant settings + feature flags, and the Redis-streams consumer/scheduler/DLQ + typed event bus. Next: founder selects post-30 work (catalog/pricing/agent-runtime/WhatsApp channel per the roadmap).
 
 **On main:** 012–019 (`290c476`) + 024/025/020 (`dbab65a`/`2aeb288`) — migrations linear through 008, RLS enforced. **13/19 of the 012–30 goal done.** Next: MVP-021 + MVP-022 (tenant settings + feature flags, migration 009), then 058 (010), 023 (011); then the Redis-streams consumer set 026–029 + 030.
 
