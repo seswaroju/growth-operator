@@ -33,8 +33,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-018 | API keys (service auth) | ✅ | 2026-07-29 | `290c476` | Migration 004 (api_keys +RLS + `resolve_api_key` SECURITY DEFINER); `require_key_scope` sets org ctx + scope + last_used; founder-only issuance |
 | MVP-019 | Messaging migration 005 | ✅ | 2026-07-29 | `290c476` | 6 org-scoped +RLS (channels/contacts/conversations/messages/templates/suppressions) + webhook_events global; isolation probed as app_rw |
 | MVP-020 | Packs migration 008 + seed | ✅ | 2026-07-30 | `dbab65a` | Migration 008 (packs/pack_installations+RLS/catalog_schemas/agent_archetypes+seed/agent_bindings/agent_instances+RLS); 5 archetypes byte-for-byte vs tool-permissions.yaml (support omitted, DECISIONS); **140 pytest** |
-| MVP-021 | Tenant settings service | ✅ | 2026-07-30 | _pending_ | Migration 009 (tenant_settings+RLS); `resolve()` 4-layer+provenance, tighten-only autonomy, `resolve_at`, audited writes; `/v1/settings(/effective)`; **151 pytest** |
-| MVP-022 | Feature flag service | ✅ | 2026-07-30 | _pending_ | Migration 009 (feature_flags, flag_rules); in-process snapshot `eval` (no-I/O, atomic swap, sticky bucket), fail-closed kill-switch, `flag_debt.py`; `/v1/flags/eval` |
+| MVP-021 | Tenant settings service | ✅ | 2026-07-30 | `47846af` | Migration 009 (tenant_settings+RLS); `resolve()` 4-layer+provenance, tighten-only autonomy, `resolve_at`, audited writes; `/v1/settings(/effective)`; **151 pytest** |
+| MVP-022 | Feature flag service | ✅ | 2026-07-30 | `47846af` | Migration 009 (feature_flags, flag_rules); in-process snapshot `eval` (no-I/O, atomic swap, sticky bucket), fail-closed kill-switch, `flag_debt.py`; `/v1/flags/eval` |
 | MVP-024 | Audit chain writer | ✅ | 2026-07-30 | `dbab65a` | Migration 006 (audit_log append-only +RLS +trigger, dedupe_consumer); per-org hash chain writer + 10m capability + `audit-verify.py`; p95 **1.12ms**; **131 pytest** |
 | MVP-025 | Outbox emit + publisher | ✅ | 2026-07-30 | `dbab65a` | Migration 007 (event_outbox global); `emit` same-txn + `publish_batch` at-least-once → Redis streams (CloudEvents); crash-window + idempotency; **137 pytest** |
 
