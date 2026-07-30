@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None)
     smtp_from: str | None = Field(default=None, description="From address, e.g. no-reply@x.com")
 
+    # WhatsApp / Meta webhook verification (MVP-031/032). Secrets in prod come from SOPS;
+    # the dev defaults are obvious fakes so local webhook tests can compute signatures.
+    # Real Meta sends stay gated (BLOCKERS #3) — these only cover ingress verification.
+    whatsapp_app_secret: str = Field(default="dev-whatsapp-app-secret")  # noqa: S105 - dev fake
+    whatsapp_verify_token: str = Field(default="dev-verify-token")  # noqa: S105 - dev fake
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot
