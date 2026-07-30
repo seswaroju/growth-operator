@@ -9,7 +9,10 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch (founder-directed) — 012–015 pushed to main; MVP-016 done on branch (awaiting commit)
+## Active: MVP-012–030 batch (founder-directed) — 012–019 pushed to main (RLS enforced); next MVP-024
+
+**Pushed to main:** 012–015 (`35457ef`/`8cfa3e8`) and 016–019 (`290c476`/`a139ac3`). RLS is enforced (app runs as `app_rw`). Next: **MVP-024** (audit hash-chain, migration 006) → MVP-025 (events/007) → MVP-020 (packs/008).
+
 
 **Status:** 012–015 committed `35457ef`, **merged to main `8cfa3e8`/`7b769da` and pushed**. **MVP-016 implemented 2026-07-29 on `feature/mvp-016-tenant-middleware`** (off main) — **not yet committed**. Batch continues **ticket-by-ticket through 012–030** (implement → verify live → log each; stop only on a new decision/blocker). Environment live: postgres+redis healthy, **107 pytest (0 skipped)**, RLS now enforced. Migration order 002→011; migration **010 (prompts, MVP-058) pulled forward** before CRM (011/MVP-023).
 

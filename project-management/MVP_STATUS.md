@@ -28,10 +28,10 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-013 | Logout + revocation | ✅ | 2026-07-29 | `35457ef` | `POST /v1/auth/logout` + `/logout-all` on `sessions` (001); revoked session can't refresh; **80 pytest** live |
 | MVP-014 | Organizations + /me | ✅ | 2026-07-29 | `35457ef` | Migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy); `POST /v1/orgs`, `GET /v1/me`; refresh re-embeds org_id; `apply_rls` NULLIF-hardened; **86 pytest** live. ⚠️ RLS not enforced until `app_rw` role (BLOCKERS #11) |
 | MVP-015 | RBAC roles + @requires | ✅ | 2026-07-29 | `35457ef` | Migration 003 (roles/permissions/role_permissions + user_roles+RLS, seeded); `permissions.py` constants + `requires()` dep; 403 problem+json names perm; **101 pytest** live |
-| MVP-016 | Tenant middleware + app_rw | ✅ | 2026-07-29 | _pending_ | `app_rw` non-BYPASSRLS role + 2-URL split (app vs migrator); `get_db`/`org_scoped_session` SET LOCAL; session-SET guard; **RLS now ENFORCED** (BLOCKERS #11 resolved); **107 pytest** + live smoke |
-| MVP-017 | Staff invite (seed only) | ✅ | 2026-07-29 | _pending_ | `invites` (global, expiring, appended after 005); owner-only invite + accept-as-staff; `invites_enabled` gate; **118 pytest** |
-| MVP-018 | API keys (service auth) | ✅ | 2026-07-29 | _pending_ | Migration 004 (api_keys +RLS + `resolve_api_key` SECURITY DEFINER); `require_key_scope` sets org ctx + scope + last_used; founder-only issuance |
-| MVP-019 | Messaging migration 005 | ✅ | 2026-07-29 | _pending_ | 6 org-scoped +RLS (channels/contacts/conversations/messages/templates/suppressions) + webhook_events global; isolation probed as app_rw |
+| MVP-016 | Tenant middleware + app_rw | ✅ | 2026-07-29 | `290c476` | `app_rw` non-BYPASSRLS role + 2-URL split (app vs migrator); `get_db`/`org_scoped_session` SET LOCAL; session-SET guard; **RLS now ENFORCED** (BLOCKERS #11 resolved); **107 pytest** + live smoke |
+| MVP-017 | Staff invite (seed only) | ✅ | 2026-07-29 | `290c476` | `invites` (global, expiring, appended after 005); owner-only invite + accept-as-staff; `invites_enabled` gate; **118 pytest** |
+| MVP-018 | API keys (service auth) | ✅ | 2026-07-29 | `290c476` | Migration 004 (api_keys +RLS + `resolve_api_key` SECURITY DEFINER); `require_key_scope` sets org ctx + scope + last_used; founder-only issuance |
+| MVP-019 | Messaging migration 005 | ✅ | 2026-07-29 | `290c476` | 6 org-scoped +RLS (channels/contacts/conversations/messages/templates/suppressions) + webhook_events global; isolation probed as app_rw |
 | MVP-020 | Packs migration 008 | ⬜ | — | — | Deferred behind 024/025 (migration-chain order) |
 
 > **Gap note (resolved 2026-07-22):** MVP-006–010 were leapfrogged after the scaffold; the
