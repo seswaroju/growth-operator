@@ -24,6 +24,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.common.config import get_settings
 from core.common.db import get_sessionmaker
 from core.events.topics import ALLOWED_EVENT_TYPES, stream_name
+from core.events.types import PAYLOAD_SPECS
+
+# Map topics.yaml payload types to the Python types emit() checks against.
+_TYPE_MAP: dict[str, type | tuple[type, ...]] = {
+    "uuid": str, "string": str, "rfc3339": str, "int": int, "bool": bool,
+    "array": list, "object": dict,
+}
+
+
+def validate_payload(event_type: str, payload: dict[str, Any]) -> None:
+    """Reject a payload that doesn't match the type's topics.yaml spec (MVP-030).
+
+    Checks each declared field is present and roughly the right type; `string|null` allows
+    None. Event types with no declared payload accept anything.
+    """
+    for field, tspec in PAYLOAD_SPECS.get(event_type, {}).items():
+        if field not in payload:
+            raise ValueError(f"{event_type}: missing payload field {field!r}")
+        value = payload[field]
+        if tspec.endswith("|null") and value is None:
+            continue
+        expected = _TYPE_MAP.get(tspec.split("|")[0])
+        if expected is not None and not isinstance(value, expected):
+            raise ValueError(
+                f"{event_type}: field {field!r} should be {tspec}, got {type(value).__name__}"
+            )
 
 # LISTEN/NOTIFY channel the publisher can wake on (fast path); the 200ms poll is the floor.
 NOTIFY_CHANNEL = "event_outbox"
@@ -66,6 +92,7 @@ async def emit(
     """
     if event_type not in ALLOWED_EVENT_TYPES:
         raise ValueError(f"unknown event type: {event_type}")
+    validate_payload(event_type, payload)  # reject malformed payloads (MVP-030)
     result = await session.execute(
         text(
             "INSERT INTO event_outbox (org_id, type, source, payload) "

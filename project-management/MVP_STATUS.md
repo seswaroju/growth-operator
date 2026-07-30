@@ -36,7 +36,12 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-021 | Tenant settings service | ✅ | 2026-07-30 | `47846af` | Migration 009 (tenant_settings+RLS); `resolve()` 4-layer+provenance, tighten-only autonomy, `resolve_at`, audited writes; `/v1/settings(/effective)`; **151 pytest** |
 | MVP-022 | Feature flag service | ✅ | 2026-07-30 | `47846af` | Migration 009 (feature_flags, flag_rules); in-process snapshot `eval` (no-I/O, atomic swap, sticky bucket), fail-closed kill-switch, `flag_debt.py`; `/v1/flags/eval` |
 | MVP-023 | CRM migration 011 | ✅ | 2026-07-30 | `25527c0` | Migration 011 (leads/appointments/orders/attributions/segments +RLS); `last_customer_msg_at` trigger; money minor-units; **156 pytest** |
-| MVP-058 | Prompt registry | ✅ | 2026-07-30 | `25527c0` | Migration 010 (prompt_layers partial-RLS+content-immutable, prompt_bindings+RLS one-active, prompt_evals); `registry.py` pin/compat/revert; HTTP endpoints deferred |
+| MVP-058 | Prompt registry | ✅ | 2026-07-30 | `25527c0` |
+| MVP-026 | Consumer framework | ✅ | 2026-07-30 | _pending_ | `@consumer` + XREADGROUP/XAUTOCLAIM drain, graceful shutdown; **168 pytest** |
+| MVP-027 | Consumer dedupe | ✅ | 2026-07-30 | _pending_ | `dedupe_consumer` insert-first → exactly-once effect; 30d prune |
+| MVP-028 | Scheduler process | ✅ | 2026-07-30 | _pending_ | cron matcher (no croniter) + tz-local firing + per-(job,minute) redis lock |
+| MVP-029 | Retries + DLQ | ✅ | 2026-07-30 | _pending_ | bounded retries → `gop:dlq:<type>` + alert.ops; `dlq-replay.py` |
+| MVP-030 | Typed event catalog | ✅ | 2026-07-30 | _pending_ | `gen_events.py` → `types.py` (specs+checksum) drift test; `emit()` validates payloads | Migration 010 (prompt_layers partial-RLS+content-immutable, prompt_bindings+RLS one-active, prompt_evals); `registry.py` pin/compat/revert; HTTP endpoints deferred |
 | MVP-024 | Audit chain writer | ✅ | 2026-07-30 | `dbab65a` | Migration 006 (audit_log append-only +RLS +trigger, dedupe_consumer); per-org hash chain writer + 10m capability + `audit-verify.py`; p95 **1.12ms**; **131 pytest** |
 | MVP-025 | Outbox emit + publisher | ✅ | 2026-07-30 | `dbab65a` | Migration 007 (event_outbox global); `emit` same-txn + `publish_batch` at-least-once → Redis streams (CloudEvents); crash-window + idempotency; **137 pytest** |
 
