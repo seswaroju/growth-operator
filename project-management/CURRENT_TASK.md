@@ -9,9 +9,24 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-006 – MVP-010 · platform foundations batch (founder-directed)
+## Active: MVP-012–030 batch (founder-directed) — PAUSED after MVP-015 for founder review + commit decision
 
-**Status:** Completed — awaiting founder review (2026-07-22, branch `feature/mvp-006-010-platform-foundations`, off merged main). Founder directed implementing the leapfrogged 006–010 before continuing. Outcome: **007 + 010 DONE**, **006 + 008 PARTIAL**, **009 BLOCKED (scaffold only)**. Details in [MVP_STATUS.md](MVP_STATUS.md) + [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md); MVP-009 blocker recorded in [BLOCKERS.md](BLOCKERS.md) #10. Gates: ruff, mypy, arch guards, **69 pytest** all pass. Not yet committed — awaiting commit approval. Recommended next ticket: **MVP-012**.
+**Status:** In progress — started 2026-07-29 on branch `feature/mvp-012-sessions-jwt` (off merged main). Founder approved proceeding **ticket-by-ticket through the 012–030 batch** (implement → verify live → log each; stop only on a new decision/blocker). Environment verified live: postgres+redis healthy, **86 pytest pass (0 skipped)**. DB tickets are done in **migration-number order** (002→011); per founder decision (2026-07-29) migration **010 (prompts, MVP-058) is pulled forward** before CRM (011/MVP-023).
+
+**Done + verified this session:**
+- **MVP-012** ✅ refresh rotation + reuse-revokes-family + rotation-race (`/v1/auth/refresh`); `jti` nonce bug fix.
+- **MVP-013** ✅ logout + logout-all.
+- **MVP-014** ✅ migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy per DECISIONS 2026-07-29); `POST /v1/orgs`, `GET /v1/me`; refresh/verify re-embed org_id. Hardened `apply_rls` (NULLIF) — **pending founder ratification**. RLS not enforced until `app_rw` role — **BLOCKERS #11 (MVP-016)**.
+
+**Next:** MVP-015 · RBAC roles + `@requires` decorator (migration 003 + seeds).
+
+**Authoritative docs:** `docs/tickets/MVP-0NN.md`; `docs/25-implementation-starter-kit/13-auth-rbac-approval-audit.md`; `docs/25-implementation-starter-kit/09-database-migration-order.md`; `docs/21-platform/multi-tenant-rls.md`.
+
+---
+
+## Prior: MVP-006 – MVP-010 · platform foundations batch (merged)
+
+**Status:** Completed — implemented 2026-07-22, committed `684a000`, merged `e128c11`. Outcome: **007 + 010 DONE**, **006 + 008 PARTIAL**, **009 BLOCKED (scaffold only)** — see [MVP_STATUS.md](MVP_STATUS.md) + [IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md); MVP-009 blocker in [BLOCKERS.md](BLOCKERS.md) #10.
 
 ---
 

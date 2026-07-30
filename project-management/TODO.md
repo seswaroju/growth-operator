@@ -67,3 +67,15 @@ Created 2026-07-22 during MVP-011.
 - **Founder step (§10.1):** `age-keygen`, paste the public key into `.sops.yaml`, create the
   real `secrets/{dev,staging,prod}.enc.yaml`, and run `pre-commit install` so gitleaks blocks
   plaintext-secret commits. Then set `GROWTH_OPERATOR_REQUIRE_SECRETS_FILE=true` in staging/prod.
+
+## 7. MVP-012 reuse-detection audit entry — INTERIM (structured log), added 2026-07-29
+
+- **Spec baseline:** MVP-012 acceptance says reuse detection writes an **audit entry**.
+  The immutable per-org hash-chain `audit_log` doesn't exist until migration 006 /
+  **MVP-024** (audit chain writer).
+- **Interim:** on refresh-token reuse, `core/tenancy/tokens.py` emits a scrubbed
+  structured security log (`refresh_token_reuse_detected`, session + user id, no token)
+  and revokes the session family. This satisfies the *revocation* half now.
+- **Add back at MVP-024:** replace/supplement the log with a real `audit.write` intent
+  entry (per-org chain, same-txn) so reuse is verifiable in the audit trail. Grep anchor:
+  `refresh_token_reuse_detected`.

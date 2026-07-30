@@ -6,7 +6,9 @@ from core.api.health import router as health_router
 from core.common.config import assert_secrets_available, get_settings
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
+from core.tenancy.orgs_router import router as orgs_router
 from core.tenancy.otp_delivery import assert_otp_config_safe
+from core.tenancy.rbac import register_rbac_handlers
 from core.tenancy.router import router as auth_router
 
 # Fail closed at import/startup: dev-only OTP echo outside dev (§10.3), and a required
@@ -17,6 +19,8 @@ assert_secrets_available(_settings)
 
 app = FastAPI(title="Growth Operator")
 register_exception_handlers(app)
+register_rbac_handlers(app)
 setup_telemetry(app)  # no-op unless an OTLP endpoint is configured
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(orgs_router)
