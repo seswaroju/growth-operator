@@ -164,3 +164,11 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 **Founder action needed:** to seed `support`, define its level-1 `capability_allowlist` in the vault's tool-permissions.yaml; then it can be added to `core/packs/archetypes.py` + migration (or a follow-up migration). Until then, 5 archetypes stand.
 
 **Decided by:** Claude (flagged for founder resolution) — doc inconsistency (6-vs-5).
+
+---
+
+### 2026-07-30 — CRM money stored as integer minor units (`*_minor bigint`)
+
+**Decision:** Migration 011 (CRM, MVP-023) stores money as integer minor units — `orders.total_minor`, `attributions.amount_minor` (bigint) — rather than v1's `numeric(12,2)`. Matches the platform money model (topics.yaml `total_minor:int`, the float-money guard's intent) and keeps amounts consistent with the event payloads that carry them. Also: `attributions.agent_id` is a plain uuid (no FK) until an agents table exists.
+
+**Decided by:** Claude (flagged) — aligns with the platform's stated money convention.
