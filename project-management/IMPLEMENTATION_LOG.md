@@ -539,3 +539,27 @@ make -n dev / migrate / test / seed
 **Commands:** ruff · mypy core (51) + migrations · guards (5) · `gen_events.py --check` OK · `pytest -q` **168 passed, 0 skipped**.
 
 **🎯 The MVP-012..030 goal is complete — 19/19 tickets, all verified live.**
+
+## 2026-07-30 — MVP-032 · Webhook ingress · + MVP-033 · Message normalizer (WhatsApp inbound path)
+
+**Tickets:** [MVP-032](../docs/tickets/MVP-032.md) + [MVP-033](../docs/tickets/MVP-033.md) · P0. Branch `feature/mvp-031-037-whatsapp`. The "customer inquiry enters through a conversation channel" step of the MVP workflow, built end-to-end (no real Meta — DECISIONS 2026-07-30).
+
+**Files:** `core/channels/whatsapp/ingress.py` (032) + `normalizer.py` (033); `migrations/versions/126c955c13de_channel_resolve_fn.py` (resolve_channel SECURITY DEFINER); `core/common/config.py` (whatsapp_app_secret/verify_token); `core/api/main.py` (mount); tests `test_whatsapp_ingress.py`, `test_whatsapp_normalizer.py`.
+
+**MVP-032 ingress** — public `GET/POST /webhooks/whatsapp`: verify-token handshake; **constant-time HMAC-SHA256** signature check (`hmac.compare_digest`); dedupe by wamid (webhook_events `(provider, external_id)` unique); malformed body → **quarantine row + 200** (never 5xx → no Meta retry-storm).
+
+**MVP-033 normalizer** — `normalize_pending()` drains unprocessed `webhook_events`, resolves org from phone_number_id via `resolve_channel` (RLS-exempt), sets tenant context, upserts contact + open conversation, inserts the inbound message (its trigger updates `leads.last_customer_msg_at`), emits `msg.received.v1` via the outbox, marks the webhook processed — one transaction per event. Idempotent (wamid unique).
+
+**Requirement → evidence (all live):**
+| Criterion | Test | Result |
+|---|---|---|
+| invalid signature → 403, no row | `test_whatsapp_ingress::test_invalid_signature_rejected_no_row` | PASS |
+| duplicate external_id → single row | `test_whatsapp_ingress::test_valid_signature_persists_and_dedupes` | PASS |
+| malformed JSON → 200 + quarantine | `test_whatsapp_ingress::test_malformed_body_is_quarantined_with_200` | PASS |
+| verify-token handshake | `test_whatsapp_ingress::test_verify_handshake` | PASS |
+| webhook → contact/conversation/message + msg.received emitted, idempotent | `test_whatsapp_normalizer::test_normalizes_message_and_emits_event` | PASS |
+| unknown channel handled (no orphan contact) | `test_whatsapp_normalizer::test_unknown_channel_is_marked_processed_without_contact` | PASS |
+
+**Commands:** ruff · mypy core (53) + migrations · guards (5) · `pytest -q` **174 passed, 0 skipped**. Migration round-trip verified.
+
+**Deferred:** creds-never-logged scrub test (031 connect) + the p95<50ms soak — connect/soak land with MVP-031; gated real-send stays blocked (#3). Remaining WhatsApp: 031 (connect), 034 (send, gated), 035/036/037.

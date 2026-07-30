@@ -183,3 +183,13 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 - **MVP-030** uses the ticket's allowed "generated specs + checksum" variant: `scripts/gen_events.py` writes `core/events/types.py` (payload specs + checksum) from topics.yaml; a drift test fails CI if stale; `emit()` validates payloads at runtime. Static pydantic models (compile-time typing) are a later refinement.
 
 **Decided by:** Claude (flagged for founder awareness) — all satisfy the tickets' acceptance criteria.
+
+---
+
+### 2026-07-30 — WhatsApp channel built gated/simulated; `resolve_channel` helper migration
+
+**Decisions:**
+- **MVP-031..037 WhatsApp adapters are built in gated/simulated mode.** Ingress signature-verify + normalize are fully real and tested; real Meta *sends* and webhook *registration* stay behind a flag + founder approval (§10.4, BLOCKERS #3, TODO #1). No real external calls in code or tests.
+- **`resolve_channel(type, external_id)` SECURITY DEFINER function** added (small migration appended after 011, not in the migration-order doc — same pattern as `invites`/`resolve_api_key`). The message normalizer (MVP-033) must resolve org-from-webhook before any tenant context exists, but `channels` is RLS-scoped; the function does that one RLS-exempt exact lookup.
+
+**Decided by:** Claude (flagged for founder awareness) — architectural necessity + the approved gated-adapter approach.
