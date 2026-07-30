@@ -7,11 +7,13 @@ from core.common.config import assert_secrets_available, get_settings
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
 from core.tenancy.api_keys import router as api_keys_router
+from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
 from core.tenancy.orgs_router import router as orgs_router
 from core.tenancy.otp_delivery import assert_otp_config_safe
 from core.tenancy.rbac import register_rbac_handlers
 from core.tenancy.router import router as auth_router
+from core.tenancy.settings_router import router as settings_router
 
 # Fail closed at import/startup: dev-only OTP echo outside dev (§10.3), and a required
 # secrets file that decryption did not produce (MVP-008).
@@ -28,3 +30,5 @@ app.include_router(auth_router)
 app.include_router(orgs_router)
 app.include_router(api_keys_router)
 app.include_router(invites_router)
+app.include_router(settings_router)
+app.include_router(flags_router)

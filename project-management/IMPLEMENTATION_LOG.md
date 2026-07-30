@@ -464,3 +464,30 @@ make -n dev / migrate / test / seed
 **Commands:** ruff · mypy core (43) · guards (5) · `pytest -q` **140 passed, 0 skipped**. Migration 008 up/down/re-up + double-upgrade verified.
 
 **Next:** MVP-021 + MVP-022 (tenant settings + feature flags, migration 009).
+
+## 2026-07-30 — MVP-021 · Tenant settings service · + MVP-022 · Feature flag service
+
+**Tickets:** [MVP-021](../docs/tickets/MVP-021.md) + [MVP-022](../docs/tickets/MVP-022.md) · P0 · deps MVP-020. Branch `feature/mvp-021-022-settings-flags`. Shared migration 009.
+
+**Files:** `migrations/versions/cd8141763357_009_settings_flags.py` (tenant_settings+RLS, feature_flags, flag_rules — all per schema-v2); `core/tenancy/settings.py` + `settings_router.py` (021); `core/tenancy/flags.py` + `flags_router.py` (022); `scripts/flag_debt.py`; tests `test_settings.py`, `test_flags.py`, `test_flags_db.py`.
+
+**MVP-021 (settings):** `resolve()` 4-layer precedence **flag > tenant > pack > platform** with provenance; writes append a new version row (never UPDATE), enforce **tighten-only autonomy** (loosening fails closed until MVP-065 trust ledger), write a `settings.changed` audit entry (integrates MVP-024), and publish `settings:{org}` invalidation; `resolve_at()` walks version history. `POST /v1/settings`, `GET /v1/settings/effective`. Deferred: full JSON-Schema validation vs schema_ref (needs `jsonschema`, BLOCKERS #4).
+
+**MVP-022 (flags):** in-process `eval(snapshot, key, ctx)` — **pure, I/O-free hot path**; precedence user>tenant>pack>global with a **sticky bucket** rollout gate; snapshot swapped atomically (single ref → no torn reads); **fail-closed** kill-switch defaults; boot fallback file (persist/load); `publish_flag_change` pubsub push for ≤2s kill propagation (subscriber loop wired at MVP-028); `GET /v1/flags/eval`; `scripts/flag_debt.py` (expiry-debt CI, fail >20 or any >90d). Deviation: `bucket()` uses SHA-256 not murmur3 (no new dep; deterministic + well-distributed).
+
+**Requirement → evidence (all live):**
+| Criterion | Test | Result |
+|---|---|---|
+| settings provenance (pack\|tenant\|flag) + precedence matrix | `test_settings::test_precedence_flag_over_tenant_over_pack_over_platform` | PASS |
+| loosening autonomy rejected | `test_settings::test_tighten_only_rejects_loosening` | PASS |
+| resolve_at historical | `test_settings::test_resolve_at_walks_history` | PASS |
+| flag eval precedence + no-I/O | `test_flags::test_precedence_user_over_tenant_over_global` (pure fn) | PASS |
+| sticky bucket stability | `test_flags::test_bucket_is_stable_and_in_range` | PASS |
+| torn-read (atomic snapshot) | `test_flags::test_snapshot_swap_is_atomic_no_torn_read` | PASS |
+| kill flag flip observed (reload) | `test_flags_db::test_load_snapshot_and_kill_switch_flip` | PASS |
+
+**Commands:** ruff · mypy core (47) · guards (5) · `flag_debt.py` OK · `pytest -q` **151 passed, 0 skipped**. Migration 009 up/down/re-up verified.
+
+**Deferred (disclosed):** the ≤2s kill-switch subscriber loop + 30s snapshot refresher run in the worker/scheduler (MVP-028); jsonschema settings validation (BLOCKERS #4).
+
+**Next:** MVP-058 (prompts, migration 010) → MVP-023 (CRM, 011); then the Redis-streams consumer set 026–029 + 030.
