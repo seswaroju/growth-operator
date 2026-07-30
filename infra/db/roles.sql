@@ -40,3 +40,14 @@ ALTER DEFAULT PRIVILEGES FOR ROLE growth_operator IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO app_rw;
 ALTER DEFAULT PRIVILEGES FOR ROLE growth_operator IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO app_rw;
+
+-- audit_log is append-only (MVP-024): keep UPDATE/DELETE revoked even though the blanket
+-- grant above hands them out. The BEFORE UPDATE/DELETE trigger is the ultimate guard; this
+-- is defense-in-depth. Guarded so roles.sql still runs before the table exists.
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'audit_log') THEN
+    REVOKE UPDATE, DELETE ON audit_log FROM app_rw;
+  END IF;
+END
+$$;

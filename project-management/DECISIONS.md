@@ -146,3 +146,21 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 **Context:** MVP-019 / the migration-order doc list `webhook_events` among "7 tables, RLS on all". But raw webhook ingress arrives **before** the tenant is known (a webhook is matched to a channel→org during processing), so an org-scoped INSERT would fail the RLS check (no context / NULL org_id). Making it global is the architecturally-correct reading of its own "raw immutable ingress" role. Deviation from "RLS on all 7" flagged for founder review; schema-only with no data yet, so trivially revisitable. Also: `messages.audit_id` and `conversations.assigned_agent` are plain uuids (no FK) until their referenced tables exist (audit_log/006, agents/packs).
 
 **Decided by:** Claude (flagged for founder ratification) — architectural necessity, not a preference.
+
+---
+
+### 2026-07-30 — event_outbox is global (not org-scoped RLS), like webhook_events
+
+**Decision:** `event_outbox` (migration 007, MVP-025) is a global table (has `org_id` but no RLS). It's written inside org transactions via `emit()` but drained by a single cross-org publisher, which — running as the non-BYPASSRLS `app_rw` role — could not read other orgs' rows under RLS. Same rationale and precedent as `webhook_events` (2026-07-30). Not exposed to request handlers; only `emit()` (writer) and the publisher (reader) touch it.
+
+**Decided by:** Claude (flagged for founder awareness) — pipeline table serving a cross-org system publisher.
+
+---
+
+### 2026-07-30 — Seed 5 archetypes (not 6): `support` has no level-1 allowlist
+
+**Decision / flag:** Migration 008 (MVP-020) seeds **five** agent archetypes — concierge, nurture, campaigner, ops, planner — with `capability_allowlist` matching `docs/implementation/agents/tool-permissions.yaml` byte-for-byte (the ticket's binding acceptance criterion + "level-1 truth"). The ticket / schema comment mention a **sixth** archetype (`support`, which has a jewelry prompt), but **no level-1 allowlist is defined for it** in tool-permissions.yaml or anywhere else, so it cannot be seeded byte-for-byte and is omitted.
+
+**Founder action needed:** to seed `support`, define its level-1 `capability_allowlist` in the vault's tool-permissions.yaml; then it can be added to `core/packs/archetypes.py` + migration (or a follow-up migration). Until then, 5 archetypes stand.
+
+**Decided by:** Claude (flagged for founder resolution) — doc inconsistency (6-vs-5).
