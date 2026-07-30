@@ -491,3 +491,24 @@ make -n dev / migrate / test / seed
 **Deferred (disclosed):** the ≤2s kill-switch subscriber loop + 30s snapshot refresher run in the worker/scheduler (MVP-028); jsonschema settings validation (BLOCKERS #4).
 
 **Next:** MVP-058 (prompts, migration 010) → MVP-023 (CRM, 011); then the Redis-streams consumer set 026–029 + 030.
+
+## 2026-07-30 — MVP-058 · Prompt registry · + MVP-023 · CRM migration
+
+**Tickets:** [MVP-058](../docs/tickets/MVP-058.md) (prompts, migration 010) + [MVP-023](../docs/tickets/MVP-023.md) (CRM, migration 011). Branch `feature/mvp-058-023-prompts-crm`. Both pulled into migration-number order (058 forward per DECISIONS 2026-07-29).
+
+**MVP-058 (prompt registry):** `migrations/…010_prompts.py` — `prompt_layers` (partial RLS: base/vertical global, tenant org-scoped; **content immutable** via BEFORE UPDATE trigger), `prompt_bindings` (+RLS, partial unique index = **one active per (instance,task)**), `prompt_evals` (global). `core/prompts/registry.py` — `create_layer`, `pin_binding` (runs `check_compat` on `requires{}` → **refuses incompatible pins**, deactivate-then-activate in one txn), `get_active_binding`, `revert_to`. Tests: `test_prompt_registry.py` (compat refused + compatible pins; one-active invariant; content immutable). **Deferred:** the internal HTTP registry endpoints are thin wrappers to add when the composer (MVP-059) + eval gate (MVP-096) consume them — the service is complete and tested.
+
+**MVP-023 (CRM):** `migrations/…011_crm.py` — leads, appointments, orders, attributions, segments (**all +RLS**); `leads.last_customer_msg_at` (72h silent-detection source) kept current by an AFTER INSERT trigger on `messages` (inbound only); money as integer minor units (DECISIONS 2026-07-30). Schema-only (rows written by the normalizer/MVP-033 + agent `crm.write`). Tests: `test_crm.py` (5-table RLS isolation under app_rw; trigger updates on inbound, not outbound).
+
+**Requirement → evidence (all live):**
+| Criterion | Test | Result |
+|---|---|---|
+| incompatible pin refused | `test_prompt_registry::test_incompatible_pin_refused...` | PASS |
+| one active binding per (instance,task) | `test_prompt_registry::test_one_active_binding...` | PASS |
+| layer content immutable | `test_prompt_registry::test_layer_content_is_immutable` | PASS |
+| RLS green on all five CRM tables | `test_crm::test_all_five_tables_isolated_under_app_rw` | PASS |
+| last_customer_msg_at updates on inbound message | `test_crm::test_inbound_message_updates_lead_last_customer_msg_at` | PASS |
+
+**Commands:** ruff · mypy core (48) · guards (5) · `pytest -q` **156 passed, 0 skipped**. Migrations 010 + 011 up/down/re-up verified; chain linear through 011.
+
+**Next:** the Redis-streams consumer set — MVP-026 (framework) → 027 (dedupe) → 028 (scheduler) → 029 (retries/DLQ) → 030 (typed event catalog).
