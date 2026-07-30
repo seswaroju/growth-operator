@@ -96,3 +96,23 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 - Data residency: Hetzner EU vs. India VPS
 - React 18 (per spec) vs. React 19 (as scaffolded)
 - Judge model choice for eval harness (cost vs. calibration)
+
+---
+
+### 2026-07-29 — RLS membership bootstrap: `app.user_id` self-policy on `user_orgs`; refresh/login re-derive `org_id`
+
+**Decision:** `user_orgs` (migration 002, MVP-014) gets the standard `apply_rls` org policy **plus** a permissive self-policy `p_self` — `FOR SELECT USING (user_id = current_setting('app.user_id', true)::uuid)`. Requests set **two** transaction-local GUCs: `app.user_id` (always, from the JWT `sub`) and `app.org_id` (when known). Consequently, `core/tenancy/tokens.refresh_session` and the OTP verify path **re-derive the user's `org_id` + role from `user_orgs`** (the source of truth) and embed them in every freshly-minted access token; the tenant middleware (MVP-016) will set both GUCs for all requests/jobs.
+
+**Context:** `user_orgs` RLS keys on `org_id` and fail-closes with no context, but `/me`, org-create idempotency, and — critically — **refresh** must read a user's membership *before* any org context exists (a bare refresh token carries only `sub`/`sid`, so without this the 15-minute access-token refresh would silently drop `org_id` and break every downstream tenant query). The self-policy lets a user read only their **own** membership rows (isolation still holds: a user never sees another user's memberships), which is the standard multi-tenant bootstrap pattern. Alternative considered: denormalize `org_id`/role onto `sessions` (rejected — denormalized, role-sync burden, and migration 001 defined sessions as pure identity). Founder chose the self-policy from a 2-option prompt.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-29 — Ratified: `apply_rls` hardened with `NULLIF(current_setting(...), '')`
+
+**Decision:** `migrations/lib/rls.py` policies use `NULLIF(current_setting('app.org_id', true), '')::uuid` (and migration 002's self-policy the `app.user_id` equivalent). This normalises both the unset (NULL) and the pooled-connection empty-string cases to NULL before the `::uuid` cast, so a missing tenant context fails **closed to zero rows** rather than raising `''::uuid` (a 500) on a PgBouncer transaction-mode connection that previously ran `SET LOCAL app.org_id`.
+
+**Context:** The literal SQL in `docs/21-platform/multi-tenant-rls.md` (`current_setting(...)::uuid`) assumes unset returns NULL, which is only true on a connection that never set the GUC; under transaction pooling the reset value is the empty string. The hardening preserves the doc's stated "no context = no rows" intent while fixing the edge. Founder ratified from a 3-option prompt ("Ratify + keep going"). App-level RLS **enforcement** still requires a non-BYPASSRLS `app_rw` role (BLOCKERS #11, MVP-016) — this decision is about policy correctness, not enforcement.
+
+**Decided by:** founder

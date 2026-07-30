@@ -11,8 +11,9 @@ no auth codes and §13 forbids inventing new ones.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +21,10 @@ from starlette.concurrency import run_in_threadpool
 
 from core.common.config import Settings, get_settings
 from core.common.db import get_session
-from core.tenancy import auth, repository
+from core.tenancy import auth, repository, tokens
 from core.tenancy.auth import OtpChannel, VerifyOutcome
 from core.tenancy.otp_delivery import get_otp_delivery
+from core.tenancy.tokens import RefreshOutcome
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -43,6 +45,16 @@ class OtpRequestAck(BaseModel):
 class OtpVerifyRequest(BaseModel):
     identifier: str = Field(..., description="The same identifier the OTP was sent to")
     code: str = Field(..., min_length=1, description="The one-time code")
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=1, description="A valid rotating refresh token")
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = Field(
+        ..., min_length=1, description="The session's refresh token (identifies the session)"
+    )
 
 
 class TokenPair(BaseModel):
@@ -157,9 +169,88 @@ async def verify_otp(
         user_agent=request.headers.get("user-agent"),
     )
     sub = str(user_id)
-    access = auth.issue_access_token(sub=sub, secret=settings.jwt_secret, now=now)
+    # A returning owner already has an org — embed org_id + roles so their access token
+    # carries tenant context from login (not only after the first refresh) (MVP-014).
+    membership = await repository.primary_membership(session, user_id)
+    org_id = str(membership.org_id) if membership else None
+    roles = [membership.role] if membership else []
+    access = auth.issue_access_token(
+        sub=sub, secret=settings.jwt_secret, org_id=org_id, roles=roles, now=now
+    )
     refresh = auth.issue_refresh_token(
         sub=sub, secret=settings.jwt_secret, session_id=str(session_id), now=now
     )
     await repository.set_session_token_hash(session, session_id, auth.hash_secret(refresh))
     return TokenPair(access_token=access, refresh_token=refresh)
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenPair,
+    summary="Rotate a refresh token; issue a new access + refresh pair",
+)
+async def refresh(
+    body: RefreshRequest,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TokenPair | JSONResponse:
+    result = await tokens.refresh_session(
+        session,
+        presented_token=body.refresh_token,
+        secret=settings.jwt_secret,
+        now=_now(),
+    )
+    if result.outcome is RefreshOutcome.OK:
+        assert result.access_token and result.refresh_token  # narrow Optional for mypy
+        return TokenPair(
+            access_token=result.access_token, refresh_token=result.refresh_token
+        )
+    if result.outcome is RefreshOutcome.RACE_LOST:
+        # A concurrent refresh rotated first; the family is intact. Ask the client to
+        # retry with whichever token that winning request returned.
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": "concurrent refresh; retry"},
+        )
+    # INVALID and REUSE are both surfaced as a uniform 401 (no oracle). On REUSE the
+    # session family has already been revoked server-side inside refresh_session.
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": _INVALID}
+    )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke the current session (sign out this device)",
+)
+async def logout(
+    body: LogoutRequest,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    # Best-effort + idempotent: an unknown/expired/garbled token is a silent no-op (no
+    # oracle). Revocation takes effect at the session's next refresh; the stateless
+    # access token keeps working until it expires (documented semantics).
+    ref = tokens.read_session_ref(body.refresh_token, settings.jwt_secret)
+    if ref is not None:
+        _, session_id = ref
+        await repository.revoke_session(session, session_id, _now())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/logout-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke every session for the user (sign out everywhere)",
+)
+async def logout_all(
+    body: LogoutRequest,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    ref = tokens.read_session_ref(body.refresh_token, settings.jwt_secret)
+    if ref is not None:
+        user_id, _ = ref
+        await repository.revoke_all_user_sessions(session, UUID(user_id), _now())
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -207,6 +207,11 @@ def issue_refresh_token(
         "sub": sub,
         "sid": session_id,
         "type": "refresh",
+        # A random per-mint nonce so every refresh token is a distinct string even when
+        # two are issued in the same second (iat/exp are second-granular). Without it, a
+        # same-second rotation would mint a byte-identical token and reuse detection —
+        # which compares token identity — would be blind inside that window (MVP-012).
+        "jti": secrets.token_urlsafe(16),
         "iat": int(ts.timestamp()),
         "exp": int((ts + REFRESH_TTL).timestamp()),
     }

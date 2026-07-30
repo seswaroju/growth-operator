@@ -197,3 +197,135 @@ make -n dev / migrate / test / seed
 **Commands:** `uv run ruff check .` (PASS) · `uv run mypy core` (PASS, 30 files) · `uv run python scripts/guards.py` (PASS) · `uv run pytest -q` (**69 passed**) · YAML workflows parse. terraform not installed (scaffold not fmt-validated).
 
 **Next action:** founder reviews + approves commit; then MVP-012. Founder to unblock MVP-009 (account/domain/residency) and MVP-008 (age key) when ready.
+
+## 2026-07-29 — MVP-012 · Sessions + JWT issue/refresh
+
+**Ticket:** [MVP-012](../docs/tickets/MVP-012.md) · P0 · deps MVP-011. Branch `feature/mvp-012-sessions-jwt` off merged main. First ticket of the founder-directed 012–030 batch (implement → verify live → log; verified against live postgres+redis this session).
+
+**Approved plan:** Rotating refresh on the existing migration-001 `sessions` table (no new migration). The `sessions` row (`sid`) is the token family; `token_hash` holds only the current valid refresh token. Reuse of a rotated token on a live session revokes the family; concurrent rotation resolves to one winner via an atomic conditional UPDATE. Audit-on-reuse is interim (structured log) until `audit_log` (migration 006 / MVP-024).
+
+**Files changed:**
+- `core/tenancy/tokens.py` (new) — `refresh_session()` orchestrator; `RefreshOutcome` {OK, INVALID, REUSE, RACE_LOST}; reuse detection + interim security log.
+- `core/tenancy/repository.py` — `SessionRow`, `get_session_row`, `rotate_session_token` (atomic `UPDATE … WHERE token_hash=:expected AND revoked_at IS NULL RETURNING`, slides `expires_at`), `revoke_session` (idempotent; reused by MVP-013 logout).
+- `core/tenancy/router.py` — `POST /v1/auth/refresh`: 200 pair · 409 RACE_LOST · uniform 401 for INVALID/REUSE (no oracle; family already revoked server-side on REUSE).
+- `core/tenancy/auth.py` — added random `jti` nonce to `issue_refresh_token` (fixes a real bug: same-second rotation minted a byte-identical token, which would blind reuse detection in that window).
+- `tests/unit/test_tokens.py` (new) — DB-free INVALID branches (malformed, wrong type, missing sid, bad signature).
+- `tests/integration/test_refresh_flow.py` (new, live DB) — rotate + old-token-rejected; reuse revokes family (new token also dead; `revoked_at` set); rotation race one-winner + family survives; orchestrator returns RACE_LOST not REUSE when a valid token loses the update.
+
+**Migration:** none. **DB tables:** none (uses `sessions` from 001). **Deps:** none. **Frontend:** not done — no owner-facing auth client is wired yet (ticket's "silent refresh in api client" deferred with the auth UI; noted below).
+
+**API:** `POST /v1/auth/refresh` — req `{refresh_token}` → `TokenPair {access_token, refresh_token, token_type}`; 401 invalid/reuse, 409 concurrent-refresh.
+
+**Commands:** `uv run ruff check .` (PASS) · `uv run mypy core` (PASS, 31 files) · `uv run pytest -q` (**77 passed**, 0 skipped — live postgres+redis up) · new tests `-v` (8 passed).
+
+**Requirement → evidence:**
+| Criterion | Impl | Test | Result |
+|---|---|---|---|
+| Stolen old refresh rejected after rotation | tokens.py, repository.py | `test_refresh_rotates_and_old_token_rejected` | PASS (live) |
+| Reuse detection revokes session family + audit entry | tokens.py | `test_reuse_of_rotated_token_revokes_family` | PASS (live); **audit entry = interim structured log** until MVP-024 |
+| Rotation race → one wins, family survives | repository.rotate_session_token | `test_rotation_race_one_wins_family_survives`, `test_refresh_session_returns_race_lost_when_hash_moved` | PASS (live) |
+| Reuse of rotated refresh revokes family | tokens.py | `test_reuse_of_rotated_token_revokes_family` | PASS (live) |
+
+**Known issues / deferred:**
+- Audit entry on reuse is a structured log, not the immutable hash-chain entry — real linkage is an add-back at MVP-024 (TODO.md #7).
+- Frontend silent-refresh not implemented (no auth client scaffold yet); revisit with the owner login UI.
+- Refresh lifetime slides (each rotation extends `expires_at` to now+30d) — documented semantics.
+
+**Next action:** MVP-013 (logout + logout-all) — reuses `revoke_session`; ship together with 012 per the ticket rollout note.
+
+## 2026-07-29 — MVP-013 · Logout + revocation
+
+**Ticket:** [MVP-013](../docs/tickets/MVP-013.md) · P1 · deps MVP-012. Branch `feature/mvp-012-sessions-jwt` (ships with 012 per the ticket rollout note).
+
+**Approved plan:** `POST /v1/auth/logout` (this session) + `POST /v1/auth/logout-all` (all sessions for the user), on the migration-001 `sessions` table (`revoked_at` already present). Revocation bites at the next refresh; the stateless access token keeps working until expiry (documented semantics).
+
+**Files changed:**
+- `core/tenancy/tokens.py` — `read_session_ref()`: verifies signature, ignores expiry (you may log out an expired session), returns `(user_id, session_id)` or None.
+- `core/tenancy/repository.py` — `revoke_all_user_sessions()` (returns count of revoked).
+- `core/tenancy/router.py` — `POST /v1/auth/logout` (204, idempotent best-effort no-op on bad token) + `POST /v1/auth/logout-all` (204); `LogoutRequest`.
+- `tests/integration/test_logout_flow.py` (new, live DB) — logout→can't-refresh + idempotent re-logout; logout-all kills a second device (2 live sessions → 0); garbage token → 204 no-op.
+
+**Migration:** none. **DB tables:** none. **Deps:** none. **Frontend:** not done — sign-out UI (AppShell + settings) deferred with the auth client (no auth UI wired yet).
+
+**API:** `POST /v1/auth/logout`, `POST /v1/auth/logout-all` — req `{refresh_token}` → 204.
+
+**Commands:** `uv run ruff check .` (PASS) · `uv run mypy core` (PASS, 31 files) · `uv run pytest -q` (**80 passed**, 0 skipped).
+
+**Requirement → evidence:**
+| Criterion | Impl | Test | Result |
+|---|---|---|---|
+| Revoked session cannot refresh | logout + tokens.refresh_session | `test_logout_revokes_current_session_cannot_refresh` | PASS (live) |
+| logout-all revokes every session for the user | repository.revoke_all_user_sessions | `test_logout_all_kills_second_device` | PASS (live) |
+| Revoked session's access token lives until expiry then dies | documented semantics (stateless access) | asserted at refresh boundary | PASS (documented) |
+
+**Next action:** MVP-014 (organizations + /me, migration 002 — first org-scoped RLS migration).
+
+## 2026-07-29 — MVP-014 · Organizations + /me
+
+**Ticket:** [MVP-014](../docs/tickets/MVP-014.md) · P0 · deps MVP-012. Branch `feature/mvp-012-sessions-jwt`. First org-scoped (RLS) migration.
+
+**Approved plan / decisions:** migration 002 (`organizations` = tenant root, no RLS; `user_orgs` = membership, RLS). Founder approved (DECISIONS.md 2026-07-29) the **`app.user_id` self-policy** on `user_orgs` so `/me`, org-create idempotency, and refresh can read a user's membership before any org context exists; requests set two GUCs (`app.user_id` always, `app.org_id` when known). Refresh + OTP-verify now **re-derive org_id + role from user_orgs** and embed them in the access token (closes a real gap: a bare refresh token carries no org_id, so every 15-min refresh previously dropped tenant context).
+
+**Files changed:**
+- `migrations/versions/f9b698afc8b8_002_orgs.py` (new) — `organizations`, `user_orgs` (PK (user_id,org_id), role CHECK owner|staff|founder), `apply_rls('user_orgs')` + `p_self` SELECT self-policy.
+- `migrations/lib/rls.py` — **hardened** `apply_rls`: `NULLIF(current_setting('app.org_id', true), '')::uuid` so a pooled connection's empty-string GUC fails closed (0 rows) instead of raising `''::uuid` (500). Deviates from the literal SQL in multi-tenant-rls.md but preserves its "no context = no rows" intent. **Pending founder ratification.**
+- `core/tenancy/repository.py` — `set_user_context`, `set_org_context`, `primary_membership`, `get_organization`, `insert_organization` (vertical omitted when None → DB default, keeps Rule Zero), `insert_user_org`, `get_user`.
+- `core/tenancy/deps.py` (new) — `get_current_auth` Bearer-access dependency (precursor to MVP-016 middleware).
+- `core/tenancy/orgs_router.py` (new) — `POST /v1/orgs`, `GET /v1/me`.
+- `core/tenancy/tokens.py`, `core/tenancy/router.py` — refresh + verify embed org_id/roles.
+- `core/api/main.py` — mount orgs_router.
+- `tests/integration/test_orgs_flow.py` (new, live DB) — create→owner + JWT reissue with org_id; idempotent per user; /me before/after; refresh re-embeds org_id; /me needs bearer; **RLS isolation under a constrained non-bypass role** (org-scoped, fail-closed, self-policy).
+
+**Migration 002:** upgrade + downgrade + re-upgrade verified live; RLS forced on user_orgs; policies p_self(SELECT)/p_tenant(ALL)/p_tenant_ins(INSERT) confirmed via catalog.
+
+**API:** `POST /v1/orgs` (Bearer; Idempotency-Key header accepted) → `{org, access_token}`; `GET /v1/me` → `{user, org|null, roles}`. 401 without bearer.
+
+**Commands:** guards PASS · ruff PASS · mypy core PASS (33) · mypy migrations PASS · `pytest -q` **86 passed**, 0 skipped.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| org create idempotent via Idempotency-Key (same key → same org id) | `test_org_create_is_idempotent_per_user` | PASS (live) |
+| JWT reissued with org_id claim (before/after) | `test_create_org_grants_owner_and_reissues_jwt_with_org_id` | PASS (live) |
+| refresh preserves org_id (gap closed) | `test_refresh_reembeds_org_id` | PASS (live) |
+| user_orgs RLS isolates (org-scope, fail-closed, self) | `test_user_orgs_rls_isolates_under_constrained_role` | PASS (live, constrained role) |
+
+**Known issues / BLOCKER:**
+- **RLS not enforced for the app yet** — the app connects as `growth_operator` (superuser, bypassrls). Policies are defined + proven under a constrained role, but real enforcement needs a non-bypass `app_rw` role + pointing the app at it. → **MVP-016** (BLOCKERS #11).
+- `apply_rls` NULLIF hardening awaits founder ratification (see above).
+- Frontend onboarding org step not built (no web auth client yet).
+
+**Next action:** founder ratifies the apply_rls hardening; MVP-015 (RBAC roles + @requires, migration 003).
+
+## 2026-07-29 — MVP-015 · RBAC roles + @requires decorator
+
+**Ticket:** [MVP-015](../docs/tickets/MVP-015.md) · P0 · deps MVP-014. Branch `feature/mvp-012-sessions-jwt`.
+
+**Approved plan:** Three fixed roles (owner/staff/founder) with constant-based enforcement. `@requires(perm)` dependency resolves perms from `ROLE_PERMISSIONS` (no per-request DB I/O); migration 003 seeds the roles/permissions/role_permissions catalog FROM those constants (drift-tested). 403 is RFC7807 `application/problem+json` naming the missing permission.
+
+**Files changed:**
+- `core/tenancy/permissions.py` (new) — role + permission constants, `ROLE_PERMISSIONS`, `permissions_for`/`has_permission`. Single source of truth (append-only in MVP).
+- `core/tenancy/rbac.py` (new) — `requires(perm)` dependency factory; `PermissionDenied` → `permission_denied_handler` (403 problem+json with `permission` field + detail); `register_rbac_handlers`. Not a canonical `GrowthOperatorError` code (§13) — a route-authz problem, like the auth 401s.
+- `core/api/main.py` — register RBAC handler.
+- `migrations/versions/0cf4c4b7b1d3_003_rbac.py` (new) — `roles`, `permissions`, `role_permissions` (global catalog, no RLS) + `user_roles` (org-scoped, `apply_rls`); idempotent seed of 3 roles / 8 perms / grants.
+- `pyproject.toml` — add `core.tenancy.rbac.requires` to ruff B008 immutable-calls (same DI idiom as `fastapi.Depends`).
+- `tests/unit/test_rbac.py` (new) — role×perm matrix (incl. staff-cannot-resolve-approvals), no-role denies all, and HTTP: owner 200 / staff 403 problem+json naming the perm / missing token 401.
+- `tests/integration/test_rbac_seed.py` (new, live DB) — seed ↔ constants drift test; catalog completeness.
+
+**Migration 003:** upgrade + re-upgrade (seed idempotent) + downgrade + re-upgrade verified live; roles=3, perms=8, grants owner7/staff2/founder8; `user_roles` RLS forced.
+
+**Commands:** guards PASS · ruff PASS · mypy core PASS (35) · `pytest -q` **101 passed**, 0 skipped.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| staff cannot resolve approvals | `test_rbac::test_permission_matrix[staff-approvals:resolve]`, `test_staff_denied_with_problem_json_naming_permission` | PASS |
+| 403 problem names the missing permission | `test_staff_denied_with_problem_json_naming_permission` | PASS (problem+json, `permission` field + detail) |
+| matrix roles×5 sample perms | `test_permission_matrix` (8 cases) | PASS |
+| migration 003 seeds match constants | `test_rbac_seed::test_seed_matches_constants` | PASS (live) |
+
+**Deferred (disclosed):**
+- Test case "founder cross-org route without explicit audit wrapper fails a lint test" — **not implemented**: no founder cross-org routes exist yet and audit lands in MVP-024. Revisit when both exist (add a guard once there is something to lint).
+- `user_roles` table created per the migration plan but not wired into enforcement — MVP uses `user_orgs.role` (JWT `roles` claim) as the assignment source; `user_roles` is the normalized table for later.
+
+**Next action:** MVP-016 · tenant middleware `SET LOCAL app.org_id` + `get_db` dependency + worker job wrapper — and the `app_rw` non-BYPASSRLS role that makes RLS actually enforced (BLOCKERS #11).

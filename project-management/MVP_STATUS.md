@@ -7,7 +7,7 @@ index; the sources of truth stay:
 - **[CURRENT_TASK.md](CURRENT_TASK.md)** — the one active ticket.
 - **[IMPLEMENTATION_AUDIT.md](IMPLEMENTATION_AUDIT.md)** — a one-time **2026-07-10 snapshot** (module-based, not ticket-based; do not treat as current).
 
-_Last updated: 2026-07-22._
+_Last updated: 2026-07-29._
 
 Legend: ✅ done · 🟡 partial · ⬜ not started
 
@@ -18,13 +18,16 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-003 | CI pipeline | 🟡 | 2026-07-10 | `cf7536e` | `.github/workflows/ci.yml` exists; a **green run on GitHub not yet confirmed** |
 | MVP-004 | Migration framework + RLS helper | ✅ | 2026-07-10 (exercised live 2026-07-22) | `cf7536e` | Alembic async `env.py` + `migrations/lib/rls.py`; proven for real by migration 001 up/down |
 | MVP-005 | Config loader + error taxonomy | ✅ | 2026-07-10 | `cf7536e` | Layered `config.py`; `errors.py` RFC7807 + 12 canonical codes |
-| MVP-006 | OTel tracing + structured logging | 🟡 | 2026-07-22 | _pending_ | SDK wiring (env-gated) + JSON logs + PII scrubber (tested). End-to-end trace acceptance needs webhook→consumer→send (MVP-032+) |
-| MVP-007 | Health + readiness endpoints | ✅ | 2026-07-22 | _pending_ | `/healthz` (liveness) + `/readyz` (pg+redis+migration-head); compose healthcheck; tested live |
-| MVP-008 | Secrets via SOPS | 🟡 | 2026-07-22 | _pending_ | Scaffold: `.sops.yaml`, gitleaks pre-commit, decrypt script, boot fail-closed (tested). Age key + real `*.enc.yaml` are founder's step |
-| MVP-009 | Staging environment | 🟡 | 2026-07-22 | _pending_ | **BLOCKED** — Terraform (Hetzner CPX21) + deploy workflow written but un-applied; needs account/domain/residency (BLOCKERS #8)/Meta |
-| MVP-010 | Lint guards (core↛verticals, noun/money/send) | ✅ | 2026-07-22 | _pending_ | `scripts/guards.py` + allowlist + CI wiring; 8 tests (each guard red on its violation) |
+| MVP-006 | OTel tracing + structured logging | 🟡 | 2026-07-22 | `684a000` | SDK wiring (env-gated) + JSON logs + PII scrubber (tested). End-to-end trace acceptance needs webhook→consumer→send (MVP-032+) |
+| MVP-007 | Health + readiness endpoints | ✅ | 2026-07-22 | `684a000` | `/healthz` (liveness) + `/readyz` (pg+redis+migration-head); compose healthcheck; tested live |
+| MVP-008 | Secrets via SOPS | 🟡 | 2026-07-22 | `684a000` | Scaffold: `.sops.yaml`, gitleaks pre-commit, decrypt script, boot fail-closed (tested). Age key + real `*.enc.yaml` are founder's step |
+| MVP-009 | Staging environment | 🟡 | 2026-07-22 | `684a000` | **BLOCKED** — Terraform (Hetzner CPX21) + deploy workflow written but un-applied; needs account/domain/residency (BLOCKERS #8)/Meta |
+| MVP-010 | Lint guards (core↛verticals, noun/money/send) | ✅ | 2026-07-22 | `684a000` | `scripts/guards.py` + allowlist + CI wiring; 8 tests (each guard red on its violation) |
 | MVP-011 | OTP auth endpoints | ✅ | 2026-07-22 | `6cd38f4` | Migration 001; OTP logic + `/v1/auth/otp(/verify)`; interim **email** channel; `EmailOtpDelivery` (gated); **verified live** |
-| MVP-012 | Sessions + JWT issue/refresh | ⬜ | — | — | Recommended next |
+| MVP-012 | Sessions + JWT issue/refresh | ✅ | 2026-07-29 | _pending_ | Refresh rotation + reuse-revokes-family + rotation-race on `sessions` (001); `/v1/auth/refresh`; `jti` nonce fix; **77 pytest** live. Audit-on-reuse interim (log) until MVP-024 |
+| MVP-013 | Logout + revocation | ✅ | 2026-07-29 | _pending_ | `POST /v1/auth/logout` + `/logout-all` on `sessions` (001); revoked session can't refresh; **80 pytest** live |
+| MVP-014 | Organizations + /me | ✅ | 2026-07-29 | _pending_ | Migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy); `POST /v1/orgs`, `GET /v1/me`; refresh re-embeds org_id; `apply_rls` NULLIF-hardened; **86 pytest** live. ⚠️ RLS not enforced until `app_rw` role (BLOCKERS #11) |
+| MVP-015 | RBAC roles + @requires | ✅ | 2026-07-29 | _pending_ | Migration 003 (roles/permissions/role_permissions + user_roles+RLS, seeded); `permissions.py` constants + `requires()` dep; 403 problem+json names perm; **101 pytest** live |
 
 > **Gap note (resolved 2026-07-22):** MVP-006–010 were leapfrogged after the scaffold; the
 > founder directed implementing them before continuing. Now done/scaffolded on branch
