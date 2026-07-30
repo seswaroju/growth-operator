@@ -61,6 +61,26 @@ def test_send_call_sites_allowed_inside_adapter(tmp_path: Path) -> None:
     assert guards.guard_send_call_sites(core=core, adapter=adapter) == []
 
 
+def test_session_set_ban_goes_red_on_session_set(tmp_path: Path) -> None:
+    core = _core(tmp_path)
+    (core / "a.py").write_text('conn.execute("SET app.org_id = :x")\n')  # session-level SET
+    (core / "b.py").write_text("q = \"set_config('app.org_id', v, false)\"\n")  # false == session
+    v = guards.guard_session_set(core=core)
+    assert len(v) == 2
+    assert all(n.guard == "session-set-ban" for n in v)
+
+
+def test_session_set_ban_allows_transaction_local(tmp_path: Path) -> None:
+    core = _core(tmp_path)
+    # SET LOCAL and set_config(..., true) are the allowed, txn-local forms.
+    (core / "ok.py").write_text(
+        'x = "SET LOCAL app.org_id = 1"\n'
+        "y = \"set_config('app.user_id', v, true)\"\n"
+        'z = "reset value"  # must not trip on the word reset\n'
+    )
+    assert guards.guard_session_set(core=core) == []
+
+
 def test_repo_is_clean() -> None:
     violations, errors = guards.run_all()
     assert violations == []

@@ -9,16 +9,24 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch (founder-directed) — 012–015 COMMITTED + MERGED + PUSHED; next MVP-016
+## Active: MVP-012–030 batch (founder-directed) — 012–015 pushed to main; MVP-016 done on branch (awaiting commit)
 
-**Status:** 012–015 implemented 2026-07-29 on `feature/mvp-012-sessions-jwt`, committed `35457ef`, **merged to main `8cfa3e8` and pushed to origin** (founder-authorized). Batch continues **ticket-by-ticket through 012–030** (implement → verify live → log each; stop only on a new decision/blocker). Environment verified live: postgres+redis healthy, **101 pytest pass (0 skipped)**. DB tickets are done in **migration-number order** (002→011); per founder decision (2026-07-29) migration **010 (prompts, MVP-058) is pulled forward** before CRM (011/MVP-023). Next: **MVP-016** (tenant middleware + `app_rw` role, BLOCKERS #11).
+**Status:** 012–015 committed `35457ef`, **merged to main `8cfa3e8`/`7b769da` and pushed**. **MVP-016 implemented 2026-07-29 on `feature/mvp-016-tenant-middleware`** (off main) — **not yet committed**. Batch continues **ticket-by-ticket through 012–030** (implement → verify live → log each; stop only on a new decision/blocker). Environment live: postgres+redis healthy, **107 pytest (0 skipped)**, RLS now enforced. Migration order 002→011; migration **010 (prompts, MVP-058) pulled forward** before CRM (011/MVP-023).
 
 **Done + verified this session:**
-- **MVP-012** ✅ refresh rotation + reuse-revokes-family + rotation-race (`/v1/auth/refresh`); `jti` nonce bug fix.
-- **MVP-013** ✅ logout + logout-all.
-- **MVP-014** ✅ migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy per DECISIONS 2026-07-29); `POST /v1/orgs`, `GET /v1/me`; refresh/verify re-embed org_id. Hardened `apply_rls` (NULLIF) — **pending founder ratification**. RLS not enforced until `app_rw` role — **BLOCKERS #11 (MVP-016)**.
+- **MVP-012** ✅ refresh rotation + reuse-revokes-family + rotation-race; `jti` nonce fix. (`35457ef`, main)
+- **MVP-013** ✅ logout + logout-all. (`35457ef`, main)
+- **MVP-014** ✅ migration 002 (orgs + user_orgs +RLS + `app.user_id` self-policy); `POST /v1/orgs`, `GET /v1/me`; `apply_rls` NULLIF (ratified). (`35457ef`, main)
+- **MVP-015** ✅ RBAC migration 003 + `@requires` + 403 problem+json. (`35457ef`, main)
+- **MVP-016** ✅ `app_rw` non-BYPASSRLS role + 2-URL split; `get_db`/`org_scoped_session` SET LOCAL; session-SET guard. **RLS now ENFORCED — BLOCKERS #11 RESOLVED.** Verified live end-to-end (isolation tests + uvicorn smoke). Awaiting commit.
 
-**Next:** MVP-015 · RBAC roles + `@requires` decorator (migration 003 + seeds).
+- **MVP-018** ✅ api_keys (migration 004 +RLS + `resolve_api_key` SECURITY DEFINER); `require_key_scope`; founder-only issuance.
+- **MVP-019** ✅ messaging migration 005 — 6 org-scoped +RLS; `webhook_events` global (DECISIONS 2026-07-30).
+- **MVP-017** ✅ `invites` (global, appended after 005); owner-invite + accept-as-staff; `invites_enabled` gate.
+
+**MVP-020 deferred** behind MVP-024 (audit/006) + MVP-025 (events/007) to keep the alembic chain linear (founder decision 2026-07-29).
+
+**Next:** commit + push MVP-016–019 to main; then MVP-024 (audit hash-chain, migration 006) → MVP-025 → MVP-020.
 
 **Authoritative docs:** `docs/tickets/MVP-0NN.md`; `docs/25-implementation-starter-kit/13-auth-rbac-approval-audit.md`; `docs/25-implementation-starter-kit/09-database-migration-order.md`; `docs/21-platform/multi-tenant-rls.md`.
 

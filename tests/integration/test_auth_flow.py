@@ -27,7 +27,7 @@ from core.tenancy import auth
 
 def _dsn() -> str:
     # asyncpg wants a plain DSN, not SQLAlchemy's "+asyncpg" dialect URL.
-    return get_settings().database_url.replace("+asyncpg", "")
+    return get_settings().database_migrator_url.replace("+asyncpg", "")
 
 
 async def _db_ready() -> bool:

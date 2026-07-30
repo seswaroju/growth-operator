@@ -24,6 +24,7 @@ from core.common.config import Settings, get_settings
 from core.common.db import get_session
 from core.tenancy import auth, repository
 from core.tenancy.deps import CurrentAuth, get_current_auth
+from core.tenancy.middleware import get_db
 
 router = APIRouter(prefix="/v1", tags=["orgs"])
 
@@ -138,7 +139,10 @@ async def create_org(
 @router.get("/me", response_model=MeResponse, summary="The caller's user, org, and roles")
 async def me(
     current: CurrentAuth = Depends(get_current_auth),
-    session: AsyncSession = Depends(get_session),
+    # Demo of the MVP-016 tenant dependency: `get_db` has already opened a transaction with
+    # `app.user_id`/`app.org_id` SET LOCAL from this request's access token, so org-scoped
+    # reads below are automatically tenant-scoped by RLS.
+    session: AsyncSession = Depends(get_db),
 ) -> MeResponse:
     user = await repository.get_user(session, current.user_id)
     assert user is not None  # a valid access token implies an existing user

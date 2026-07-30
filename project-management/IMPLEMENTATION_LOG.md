@@ -329,3 +329,75 @@ make -n dev / migrate / test / seed
 - `user_roles` table created per the migration plan but not wired into enforcement — MVP uses `user_orgs.role` (JWT `roles` claim) as the assignment source; `user_roles` is the normalized table for later.
 
 **Next action:** MVP-016 · tenant middleware `SET LOCAL app.org_id` + `get_db` dependency + worker job wrapper — and the `app_rw` non-BYPASSRLS role that makes RLS actually enforced (BLOCKERS #11).
+
+## 2026-07-29 — MVP-016 · Tenant middleware (SET LOCAL) + app_rw role — resolves BLOCKERS #11
+
+**Ticket:** [MVP-016](../docs/tickets/MVP-016.md) · P0 · deps MVP-014. Branch `feature/mvp-016-tenant-middleware`. Makes RLS **actually enforced** for the app (was defined-but-inert; BLOCKERS #11).
+
+**Approved plan:** Founder directed "unblock #11 then test." Two-URL privilege split + tenant context dependency + worker wrapper + session-SET ban lint.
+
+**Files changed:**
+- `infra/db/roles.sql` (new) — idempotent `app_rw`: NON-superuser, **NOBYPASSRLS**, `statement_timeout=5s`, DML grants + `ALTER DEFAULT PRIVILEGES` so future migrations' tables are auto-granted. Dev password is a throwaway local credential; staging/prod source it from SOPS.
+- `core/common/config.py` — `database_url` default → `app_rw` (runtime); new `database_migrator_url` → owner (DDL). The app enforces RLS; alembic keeps DDL rights.
+- `migrations/env.py` — alembic now uses `database_migrator_url`.
+- `core/tenancy/middleware.py` (new) — `get_db` (per-request txn with `SET LOCAL app.org_id`/`app.user_id` from the verified access token; no token → no context → RLS zero rows) and `org_scoped_session` (worker/job wrapper, one org per txn). Uses `set_config(..., true)` (txn-local) — decodes the token itself to avoid the BaseHTTPMiddleware/contextvar propagation pitfall. Stamps `telemetry.org_id_var` for log correlation (MVP-006).
+- `core/tenancy/orgs_router.py` — `GET /v1/me` converted to `get_db` (the required "one endpoint on the dependency" demo).
+- `scripts/guards.py` — 5th guard `session-set-ban`: no session-level `SET app.*` / `set_config('app.*', v, false)` (txn-local only).
+- `infra/docker/docker-compose.dev.yml` — api/worker/scheduler → `app_rw` DATABASE_URL + owner MIGRATOR_URL; postgres mounts `roles.sql` into initdb (fresh volume auto-creates app_rw).
+- `Makefile` — `db-roles` (apply roles.sql) + `bootstrap` (db-roles + migrate).
+- `tests/conftest.py` (new) — session-autouse fixture ensures `app_rw` exists (runs roles.sql via the migrator connection).
+- `tests/integration/*` (6 files) — privileged `_dsn()` helpers switched to `database_migrator_url` (owner) since the app-under-test now runs as app_rw.
+- `tests/isolation/test_tenant_context.py` (new) — end-to-end isolation through the REAL app under app_rw: request sees only its JWT org, no token → zero rows (fail closed), A can't see B, and the worker wrapper isolates.
+- `tests/unit/test_lint_guards.py` — session-set-ban red-on-violation + allows txn-local.
+
+**Migration:** none (no schema change). **DB roles:** app_rw created + verified `super=false bypassrls=false`.
+
+**Commands:** guards PASS (5) · ruff PASS · mypy core PASS (36) · mypy migrations PASS · `pytest -q` **107 passed**, 0 skipped. **Live app smoke** (uvicorn as app_rw): `/healthz` 200, `/readyz` 200 (pg+redis+migration-head via app_rw grants), OTP→verify→`POST /orgs`→`GET /me`→refresh(re-embeds org_id)→`/me` no-token 401 — all correct.
+
+**Requirement → evidence:**
+| Criterion | Test / evidence | Result |
+|---|---|---|
+| probe query inside request returns JWT org | `test_tenant_context::test_request_sees_only_its_own_org` | PASS (live, app_rw) |
+| unset context → zero rows | `test_tenant_context::test_no_token_sees_zero_rows` | PASS (live) |
+| worker job carries org_id / scoped txn | `test_tenant_context::test_worker_org_scoped_session_isolates` | PASS (live) |
+| session-SET banned by lint | `test_lint_guards::test_session_set_ban_goes_red_on_session_set` | PASS |
+| demo: one endpoint on the dependency | `GET /v1/me` via `get_db` | done |
+
+**Known / deferred:**
+- **BLOCKERS #11 RESOLVED** (see below).
+- Full isolation suite (MVP-097) and a dedicated PgBouncer txn-mode harness are later; the empty-string fail-closed (apply_rls NULLIF) + no-context test approximate the pooled-connection case now.
+- The compose **app image** still hasn't been booted via `make dev` (smoke used host uvicorn as app_rw); staging deploy (MVP-009) must run `roles.sql` before the app starts.
+
+**Next action:** commit MVP-016; then MVP-018 (API keys) or founder's pick.
+
+## 2026-07-29 — MVP-018 · API keys (service auth)
+
+**Ticket:** [MVP-018](../docs/tickets/MVP-018.md) · P2 · deps MVP-015. Branch `feature/mvp-016-tenant-middleware` (batched with 016/017/019).
+
+**Files:** `migrations/versions/5b648aeb6773_004_api_keys.py` (api_keys +RLS + unique key_hash + `resolve_api_key` SECURITY DEFINER fn for the RLS-exempt auth lookup); `core/tenancy/api_keys.py` (SHA-256 keys — high-entropy so no argon2; `require_key_scope` dep sets org context from the key + enforces scope + records last_used; founder-only `POST /v1/api-keys`); `infra/db/roles.sql` (grant app_rw EXECUTE on functions + default privs); `core/api/main.py` (mount); `tests/integration/test_api_keys_flow.py`.
+
+**Decisions:** keys hashed with SHA-256 (indexable exact-match; keys are high-entropy). Revocation is immediate (no cache) — trivially within the ticket's ≤60s bound; the cache is a deferred optimization. Auth is a separate service-key path (`require_key_scope`) alongside JWT — full single-dependency unification deferred (keys serve service endpoints; first consumer MVP-097).
+
+**Requirement → evidence (all live):** key auth sets org context → `test_founder_issues_key_and_it_authenticates_with_org_context`; revoked key rejected → `test_revoked_key_is_rejected`; scope enforcement → `test_key_without_scope_is_forbidden`; founder-only → `test_non_founder_cannot_issue_key`; last_used updates → asserted. **5 tests pass.**
+
+## 2026-07-29 — MVP-019 · Messaging migration 005
+
+**Ticket:** [MVP-019](../docs/tickets/MVP-019.md) · P0 · deps MVP-016. Schema-only (DDL + RLS + indexes, no service code).
+
+**Files:** `migrations/versions/306009477ea2_005_messaging.py`; `tests/isolation/test_messaging_rls.py`.
+
+**Tables:** channels, contacts, conversations, messages, message_templates, suppressions (**6 org-scoped +RLS**) + **webhook_events (global, no RLS)**. Adaptations (DECISIONS 2026-07-30): `tenant_id`→`org_id`; `messages` gains denormalized `org_id`; `webhook_events` global (pre-tenant raw ingress can't be org-scoped) with `UNIQUE (provider, external_id)`; `messages.audit_id` / `conversations.assigned_agent` are plain uuids until their tables exist.
+
+**Requirement → evidence (live, probed as app_rw):** per-table isolation (6 tables — org sees only its rows; no context → 0) → `test_each_table_isolated_under_app_rw`; unique (provider, external_id) clean conflict → `test_webhook_events_provider_external_id_unique`. Migration up/down/re-up verified. **2 tests pass.**
+
+## 2026-07-29 — MVP-017 · Staff invite (seed only)
+
+**Ticket:** [MVP-017](../docs/tickets/MVP-017.md) · P2 · deps MVP-015. Flag-gated.
+
+**Files:** `migrations/versions/50583d342beb_invites.py` (invites — **global**, expiring, appended after 005 per DECISIONS 2026-07-30); `core/tenancy/invites.py` (SHA-256 token; owner-only `POST /v1/orgs/invites` + `POST /v1/orgs/invites/{token}/accept` joining as staff); `core/common/config.py` (`invites_enabled`, default false); `core/api/main.py` (mount); `tests/integration/test_invites_flow.py`.
+
+**Decisions:** gated via `Settings.invites_enabled` (config kill-switch) until the real per-tenant `invites.enabled` flag lands with MVP-022; endpoints 404 when off. Accept joins the invited org with the **staff** role only, under that org's tenant context.
+
+**Requirement → evidence (all live):** invite expires after 7 days → `test_expired_invite_is_rejected` (410); accepted invite grants staff only → `test_owner_invites_and_staff_accepts_as_staff_only`; flag-off hides it → `test_invites_disabled_returns_404`; staff can't invite → `test_staff_cannot_invite`. **4 tests pass.**
+
+**Batch gates (016–019):** ruff · mypy core (38) · mypy migrations · guards (5) · **pytest 118 passed, 0 skipped**. Migrations linear: 001→002→003→004→005→invites.

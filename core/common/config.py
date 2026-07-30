@@ -51,7 +51,14 @@ class Settings(BaseSettings):
     )
 
     env: str = Field(default="dev", description="dev | staging | prod")
-    database_url: str = Field(default="postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator")
+    # RUNTIME connection — the app/worker/scheduler use the non-superuser, NON-BYPASSRLS
+    # `app_rw` role so RLS is actually enforced (MVP-016 / BLOCKERS #11). Create the role
+    # with infra/db/roles.sql (`make db-roles`) before the app can connect.
+    database_url: str = Field(default="postgresql+asyncpg://app_rw:app_rw@localhost:5432/growth_operator")
+    # DDL/migration connection — alembic runs as the owner (`growth_operator`), which has
+    # DDL rights and, being the object owner, is what ALTER DEFAULT PRIVILEGES grants FROM.
+    # app_rw has no DDL rights, so migrations MUST use this URL, not database_url.
+    database_migrator_url: str = Field(default="postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator")
     redis_url: str = Field(default="redis://localhost:6379/0")
     otel_exporter_otlp_endpoint: str | None = Field(default=None)
     jwt_secret: str = Field(default="dev-only-insecure-secret")
@@ -65,6 +72,11 @@ class Settings(BaseSettings):
     # set (see core.tenancy.otp_delivery.assert_otp_config_safe). Never persisted,
     # never returned from an API, never written to normal application logs.
     otp_dev_echo: bool = Field(default=False)
+
+    # Staff invites (MVP-017) are gated OFF until Week 5. Interim kill-switch via config;
+    # the real per-tenant `invites.enabled` flag arrives with the feature-flag service
+    # (MVP-022). When false, the invite endpoints return 404 (feature not enabled).
+    invites_enabled: bool = Field(default=False)
 
     # Real email OTP delivery (interim channel). OFF by default — turning it on is the
     # act of authorising a real external side effect (§10.4), so it is the founder's
