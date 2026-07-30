@@ -61,12 +61,12 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** DPDP posture question; not blocking for pilot tenants.
 - **Next action:** Decide before MVP-098 (production infra) / before scaling past pilot tenants.
 
-### 9. Git commit identity auto-detected, not explicitly configured
+### ~~9. Git commit identity auto-detected, not explicitly configured~~ — RESOLVED 2026-07-30
 
 - **Severity:** Low
 - **Owner:** Founder
-- **Description:** The initial commit (`cf7536e`) used an auto-detected identity (`Sri Eswaroju <srila@Sris-Mac-mini.local>`) because no global git user.name/user.email is set.
-- **Next action:** Run `git config --global user.name` / `user.email` if a different commit identity is wanted; otherwise no action needed.
+- **Description:** Commits through `b57648b` used an auto-detected identity (`Sri Eswaroju <srila@mac.attlocal.net>`) because no git user.name/user.email was set.
+- **Resolution (2026-07-30):** Set globally — `Sri Eswaroju <saisrikanth.eswaroju@gmail.com>` (the founder's GitHub email, so commits attribute to their GitHub account). Applies to future commits only; already-pushed history left as-is (no rewrite).
 
 ### 10. MVP-009 staging cannot be applied (scaffold only)
 
