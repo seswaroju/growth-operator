@@ -9,7 +9,9 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch — 012–019 pushed; 024+025+020 done on branch (awaiting commit); next MVP-021/022
+## Active: MVP-012–030 batch — 012–020 + 024/025 on main; 021+022 done on branch (awaiting commit); next 058/023
+
+**On main:** 012–019 + 024/025/020 (`dbab65a`). **On branch `feature/mvp-021-022-settings-flags` (uncommitted):** MVP-021 (tenant settings) + MVP-022 (feature flags), shared migration 009 — verified live, **151 pytest**, migrations linear through 009. **15/19 of the 012–30 goal done.** Remaining: MVP-058 (prompts, 010), MVP-023 (CRM, 011), the Redis-streams consumer set 026–029, and MVP-030.
 
 **On main:** 012–019 (`290c476`) + 024/025/020 (`dbab65a`/`2aeb288`) — migrations linear through 008, RLS enforced. **13/19 of the 012–30 goal done.** Next: MVP-021 + MVP-022 (tenant settings + feature flags, migration 009), then 058 (010), 023 (011); then the Redis-streams consumer set 026–029 + 030.
 
