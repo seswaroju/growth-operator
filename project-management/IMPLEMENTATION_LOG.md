@@ -401,3 +401,66 @@ make -n dev / migrate / test / seed
 **Requirement → evidence (all live):** invite expires after 7 days → `test_expired_invite_is_rejected` (410); accepted invite grants staff only → `test_owner_invites_and_staff_accepts_as_staff_only`; flag-off hides it → `test_invites_disabled_returns_404`; staff can't invite → `test_staff_cannot_invite`. **4 tests pass.**
 
 **Batch gates (016–019):** ruff · mypy core (38) · mypy migrations · guards (5) · **pytest 118 passed, 0 skipped**. Migrations linear: 001→002→003→004→005→invites.
+
+## 2026-07-30 — MVP-024 · Audit chain writer (ADR-007)
+
+**Ticket:** [MVP-024](../docs/tickets/MVP-024.md) · P0 · deps MVP-016. Branch `feature/mvp-024-audit-chain`. Implements docs/21-platform/audit-logging.md + prompt 03.
+
+**Files:** `migrations/versions/e70f466c605e_006_audit.py` (audit_log +RLS, append-only REVOKE + BEFORE UPDATE/DELETE trigger, UNIQUE(org_id,seq); dedupe_consumer global); `core/audit/writer.py` (`write`, `verify_capability`, `write_outcome`, `verify_chain`, `canonical_json`); `core/audit/taxonomy.py` (action constants); `core/audit/__init__.py`; `scripts/audit-verify.py`; `infra/db/roles.sql` (keep audit_log UPDATE/DELETE revoked); `tests/unit/test_audit_chain.py`; `tests/integration/test_audit_writer.py`.
+
+**Design:** per-org hash chain, `entry_hash = sha256(prev_hash + canonical_json(immutable fields))`; log-then-act in the caller's txn; `AuditId` is a 10-minute capability. **Per-org advisory transaction lock** (`pg_advisory_xact_lock` keyed by a 64-bit hash of org_id) serializes writes within an org and, unlike a FOR UPDATE head-lock, also covers the genesis write — different orgs never contend. canonical_json is a stdlib JCS-compatible form (no floats in audit payloads); no new dependency added.
+
+**Requirement → evidence (all live):**
+| Criterion | Test | Result |
+|---|---|---|
+| 1000-write / 3-org concurrency, no gaps, p95<3ms | `test_concurrent_per_org_no_gaps_and_latency` | PASS — **p95 measured 1.12ms**, seq contiguous per org |
+| tampered row detected at exact seq | `test_tamper_detected_by_verify_chain_and_script` (+ `scripts/audit-verify.py`) | PASS (break at seq 3) |
+| chain continuity | `test_write_builds_chain_and_verifies` + unit `verify_chain` suite | PASS |
+| capability expiry | `test_capability_expiry_and_match` | PASS |
+| trigger blocks UPDATE/DELETE | `test_append_only_trigger_blocks_update_and_delete` | PASS (owner blocked too) |
+
+**Commands:** ruff · mypy core (40) · mypy migrations · guards (5) · `pytest -q` **131 passed, 0 skipped**. Migration 006 up/down/re-up verified.
+
+**Deferred (in scope of the ticket, per its scope line):** anchoring job (MVP-071). Adapter `verify_capability` call sites (send/campaign) land with those adapters (MVP-032+).
+
+**Next:** MVP-025 (outbox emit + publisher, migration 007) → MVP-020 (packs, 008).
+
+## 2026-07-30 — MVP-025 · Outbox emit + publisher
+
+**Ticket:** [MVP-025](../docs/tickets/MVP-025.md) · P0 · deps MVP-024. Branch `feature/mvp-024-audit-chain` (batched with 024).
+
+**Files:** `migrations/versions/a9f45bacd465_007_events.py` (`event_outbox` global + partial index on unpublished); `core/events/topics.py` (`ALLOWED_EVENT_TYPES` mirror of topics.yaml + `stream_name`); `core/events/outbox.py` (`emit` same-txn + NOTIFY, `publish_batch` FOR UPDATE SKIP LOCKED → Redis XADD → mark, `run_publisher` loop, CloudEvents envelope); `tests/unit/test_events_topics.py`; `tests/integration/test_outbox.py`.
+
+**Design:** `emit()` writes in the caller's transaction; `publish_batch()` relays to Redis streams **at least once** (XADD before mark → crash republishes; consumers dedupe at MVP-027). CloudEvents 1.0 envelope `{specversion, id, type, source: gop/{source}, subject: org_id, time, data}`. `ALLOWED_EVENT_TYPES` is an in-repo constant (no runtime docs dependency) drift-tested against topics.yaml; MVP-030 will generate typed models from the same YAML. `event_outbox` is global (DECISIONS 2026-07-30).
+
+**Requirement → evidence (all live, pg+redis):**
+| Criterion | Test | Result |
+|---|---|---|
+| crash between insert and publish → published on restart | `test_crash_between_insert_and_publish_is_published_on_restart` | PASS |
+| CloudEvents envelope per topics.yaml | `test_emit_then_publish_delivers_cloudevent` + `test_cloud_event_envelope_shape` | PASS |
+| envelope/type registry drift | `test_allowed_types_match_topics_yaml` | PASS |
+| idempotent publish | `test_publish_is_idempotent` | PASS |
+
+**Commands:** ruff · mypy core (42) · guards (5) · `pytest -q` **137 passed, 0 skipped**. Migration 007 up/down/re-up verified.
+
+**Deferred:** `run_publisher` loop is wired into the worker/scheduler at MVP-028; LISTEN/NOTIFY wakeup is a latency refinement over the 200ms poll (NOTIFY already emitted). Grafana publisher-lag metric with the observability work.
+
+**Next:** MVP-020 (packs migration 008 + archetype seed) — completes the deferred sequencing behind 024/025.
+
+## 2026-07-30 — MVP-020 · Packs migration 008 + archetype seed
+
+**Ticket:** [MVP-020](../docs/tickets/MVP-020.md) · P0 · deps MVP-016. Branch `feature/mvp-024-audit-chain` (batched with 024/025). Completes the sequencing deferred behind 024/025.
+
+**Files:** `migrations/versions/c7f0c9c41a27_008_packs.py` (packs, pack_installations+RLS, catalog_schemas, agent_archetypes+seed, agent_bindings, agent_instances+RLS); `core/packs/archetypes.py` (`ARCHETYPE_ALLOWLISTS`); `tests/unit/test_archetypes.py`; `tests/integration/test_packs_seed.py`.
+
+**RLS:** `pack_installations` + `agent_instances` org-scoped; `packs`/`catalog_schemas`/`agent_archetypes`/`agent_bindings` global registry (no RLS). **Seed:** 5 archetypes (see DECISIONS 2026-07-30 for the 6-vs-5 note), allowlists byte-for-byte from tool-permissions.yaml, idempotent (ON CONFLICT). Bindings/instances *rows* deferred to the installer (MVP-040).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| allowlists match tool-permissions.yaml byte-for-byte | `test_archetypes::test_constants_match...` + `test_packs_seed::test_seed_matches_constants_byte_for_byte` | PASS |
+| seeds idempotent (re-run: no duplicates) | `test_packs_seed::test_reseed_is_idempotent` + re-run `alembic upgrade` | PASS |
+
+**Commands:** ruff · mypy core (43) · guards (5) · `pytest -q` **140 passed, 0 skipped**. Migration 008 up/down/re-up + double-upgrade verified.
+
+**Next:** MVP-021 + MVP-022 (tenant settings + feature flags, migration 009).

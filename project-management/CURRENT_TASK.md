@@ -9,7 +9,10 @@ selects and approves the next ticket.
 
 ---
 
-## Active: MVP-012–030 batch (founder-directed) — 012–019 pushed to main (RLS enforced); next MVP-024
+## Active: MVP-012–030 batch — 012–019 pushed; 024+025+020 done on branch (awaiting commit); next MVP-021/022
+
+**On main:** 012–019 (`290c476`/`a139ac3`). **On branch `feature/mvp-024-audit-chain` (uncommitted):** MVP-024 (audit, migration 006), MVP-025 (outbox, 007), MVP-020 (packs, 008) — all verified live, **140 pytest**, migrations linear through 008. Next: MVP-021 + MVP-022 (tenant settings + feature flags, migration 009), then 058 (010), 023 (011); then the Redis-streams consumer set 026–029 + 030.
+
 
 **Pushed to main:** 012–015 (`35457ef`/`8cfa3e8`) and 016–019 (`290c476`/`a139ac3`). RLS is enforced (app runs as `app_rw`). Next: **MVP-024** (audit hash-chain, migration 006) → MVP-025 (events/007) → MVP-020 (packs/008).
 
