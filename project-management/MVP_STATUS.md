@@ -42,8 +42,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-028 | Scheduler process | ✅ | 2026-07-30 | `ee2ed43` | cron matcher (no croniter) + tz-local firing + per-(job,minute) redis lock |
 | MVP-029 | Retries + DLQ | ✅ | 2026-07-30 | `ee2ed43` | bounded retries → `gop:dlq:<type>` + alert.ops; `dlq-replay.py` |
 | MVP-030 | Typed event catalog | ✅ | 2026-07-30 | `ee2ed43` |
-| MVP-032 | Webhook ingress + sig verify | ✅ | 2026-07-30 | _pending_ | `/webhooks/whatsapp` constant-time HMAC verify + dedupe + quarantine, always-200; **174 pytest** |
-| MVP-033 | Message normalizer | ✅ | 2026-07-30 | _pending_ | webhook→contact/conversation/message + `msg.received.v1` emit; `resolve_channel` fn; idempotent | `gen_events.py` → `types.py` (specs+checksum) drift test; `emit()` validates payloads | Migration 010 (prompt_layers partial-RLS+content-immutable, prompt_bindings+RLS one-active, prompt_evals); `registry.py` pin/compat/revert; HTTP endpoints deferred |
+| MVP-032 | Webhook ingress + sig verify | ✅ | 2026-07-30 | `8fd1f5b` | `/webhooks/whatsapp` constant-time HMAC verify + dedupe + quarantine, always-200; **174 pytest** |
+| MVP-033 | Message normalizer | ✅ | 2026-07-30 | `8fd1f5b` | webhook→contact/conversation/message + `msg.received.v1` emit; `resolve_channel` fn; idempotent | `gen_events.py` → `types.py` (specs+checksum) drift test; `emit()` validates payloads | Migration 010 (prompt_layers partial-RLS+content-immutable, prompt_bindings+RLS one-active, prompt_evals); `registry.py` pin/compat/revert; HTTP endpoints deferred |
 | MVP-024 | Audit chain writer | ✅ | 2026-07-30 | `dbab65a` | Migration 006 (audit_log append-only +RLS +trigger, dedupe_consumer); per-org hash chain writer + 10m capability + `audit-verify.py`; p95 **1.12ms**; **131 pytest** |
 | MVP-025 | Outbox emit + publisher | ✅ | 2026-07-30 | `dbab65a` | Migration 007 (event_outbox global); `emit` same-txn + `publish_batch` at-least-once → Redis streams (CloudEvents); crash-window + idempotency; **137 pytest** |
 
