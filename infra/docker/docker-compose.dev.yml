@@ -11,6 +11,9 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Creates the non-superuser app_rw role on a FRESH volume (MVP-016). For an existing
+      # volume, run `make db-roles` (idempotent) instead — initdb scripts only run once.
+      - ../db/roles.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U growth_operator -d growth_operator"]
       interval: 5s
@@ -39,7 +42,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
+      # Runtime uses the non-superuser app_rw role so RLS is enforced (MVP-016).
+      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@postgres:5432/growth_operator
+      # Migrations/alembic use the owner (DDL rights); app_rw has none.
+      GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
       GROWTH_OPERATOR_REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
@@ -60,7 +66,10 @@ services:
     volumes:
       - ../../core:/app/core
     environment:
-      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
+      # Runtime uses the non-superuser app_rw role so RLS is enforced (MVP-016).
+      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@postgres:5432/growth_operator
+      # Migrations/alembic use the owner (DDL rights); app_rw has none.
+      GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
       GROWTH_OPERATOR_REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:
@@ -76,7 +85,10 @@ services:
     volumes:
       - ../../core:/app/core
     environment:
-      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
+      # Runtime uses the non-superuser app_rw role so RLS is enforced (MVP-016).
+      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@postgres:5432/growth_operator
+      # Migrations/alembic use the owner (DDL rights); app_rw has none.
+      GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql+asyncpg://growth_operator:growth_operator@postgres:5432/growth_operator
       GROWTH_OPERATOR_REDIS_URL: redis://redis:6379/0
     depends_on:
       postgres:

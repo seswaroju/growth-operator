@@ -116,3 +116,33 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 **Context:** The literal SQL in `docs/21-platform/multi-tenant-rls.md` (`current_setting(...)::uuid`) assumes unset returns NULL, which is only true on a connection that never set the GUC; under transaction pooling the reset value is the empty string. The hardening preserves the doc's stated "no context = no rows" intent while fixing the edge. Founder ratified from a 3-option prompt ("Ratify + keep going"). App-level RLS **enforcement** still requires a non-BYPASSRLS `app_rw` role (BLOCKERS #11, MVP-016) — this decision is about policy correctness, not enforcement.
 
 **Decided by:** founder
+
+---
+
+### 2026-07-29 — Batch sequencing: MVP-017/018/019 now; MVP-020 deferred behind 024/025
+
+**Decision:** Implement MVP-017 (staff invite), MVP-018 (api_keys, migration 004), MVP-019 (messaging, migration 005) as the next batch, then commit + push to main. **MVP-020 (packs, migration 008) is deferred** until after MVP-024 (audit, migration 006) and MVP-025 (events, migration 007), because a linear alembic chain requires 006/007 in front of 008 — the same constraint that motivated pulling migration 010 forward (2026-07-29). Reaching 020 now would mean front-loading the two heaviest event/audit tickets; instead 020 runs right after 024/025 in a later batch.
+
+**Context:** Founder chose "Defer 020; do 017–019 now" from a 3-option prompt. Keeps migrations strictly linear with no re-parenting.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-29 — Add an `invites` migration not listed in the authoritative migration order
+
+**Decision:** MVP-017 needs an `invites` table (global, expiring, no RLS) that does **not** appear in `docs/25-implementation-starter-kit/09-database-migration-order.md`. Approved to add it as a new migration appended after messaging (005) in the alembic chain, plus the owner-only invite + accept-on-OTP-login endpoints, flag-gated behind `invites.enabled=false`.
+
+**Context:** The authoritative migration-order doc omits invites entirely; per CLAUDE.md §15.2 adding/reordering a migration needs founder approval. Founder chose "Add it." The `docs/` vault is read-only, so this repo-side decision record is the authority for the deviation until the vault is updated.
+
+**Decided by:** founder
+
+---
+
+### 2026-07-30 — webhook_events is global (not org-scoped RLS) in migration 005
+
+**Decision:** In migration 005 (messaging, MVP-019), six tables — channels, contacts, conversations, messages, message_templates, suppressions — are org-scoped with RLS. **`webhook_events` is global (no `org_id`, no RLS)**, with a `UNIQUE (provider, external_id)` for idempotent ingress. `messages` gains a denormalized `org_id` (v1 scoped it only via `conversation_id`) so the standard org RLS policy applies.
+
+**Context:** MVP-019 / the migration-order doc list `webhook_events` among "7 tables, RLS on all". But raw webhook ingress arrives **before** the tenant is known (a webhook is matched to a channel→org during processing), so an org-scoped INSERT would fail the RLS check (no context / NULL org_id). Making it global is the architecturally-correct reading of its own "raw immutable ingress" role. Deviation from "RLS on all 7" flagged for founder review; schema-only with no data yet, so trivially revisitable. Also: `messages.audit_id` and `conversations.assigned_agent` are plain uuids (no FK) until their referenced tables exist (audit_log/006, agents/packs).
+
+**Decided by:** Claude (flagged for founder ratification) — architectural necessity, not a preference.

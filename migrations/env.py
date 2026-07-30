@@ -18,8 +18,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Authoritative DB URL comes from typed settings, not alembic.ini — see
-# docs/implementation/db/migrations/README.md.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# docs/implementation/db/migrations/README.md. Migrations use the MIGRATOR (owner) URL,
+# not the runtime app_rw URL: app_rw has no DDL rights, and object ownership must stay
+# with the owner so ALTER DEFAULT PRIVILEGES keeps granting new tables to app_rw (MVP-016).
+config.set_main_option("sqlalchemy.url", get_settings().database_migrator_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

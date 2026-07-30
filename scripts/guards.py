@@ -6,6 +6,9 @@ Four grep/AST-light guards enforcing platform invariants in CI, not memory:
   2. industry-nouns     : no vertical-specific nouns in `core/` or `web/src/`.
   3. float-money        : money is integer minor units — never `float()` near a `*_minor`.
   4. send-call-sites    : `messages.send(...)` only inside the channel adapter (`core/channels/`).
+  5. session-set-ban    : tenant GUCs must be transaction-local — no session-level
+                          `SET app.*` / `set_config('app.*', v, false)` (MVP-016; a leaked
+                          GUC on a pooled connection would cross tenants).
 
 False positives are excused via `scripts/lint-allowlist.txt`, where every entry REQUIRES a
 `# justification` comment — an entry without one is itself a failure.
@@ -78,6 +81,12 @@ _VERTICALS_IMPORT = re.compile(r"^\s*(from|import)\s+verticals(\.|\s|$)")
 _FLOAT_CALL = re.compile(r"\bfloat\s*\(")
 _MINOR_TOKEN = re.compile(r"_minor\b")
 _SEND_CALL = re.compile(r"\bmessages\.send\s*\(")
+# Session-level tenant-GUC setters (banned): `SET app.` / `SET SESSION app.` (but NOT
+# `SET LOCAL app.`), and `set_config('app.*', v, false)` (false == session-level).
+_SESSION_SET_SQL = re.compile(r"\bSET\s+(SESSION\s+)?app\.", re.I)
+_SESSION_SETCONFIG = re.compile(
+    r"set_config\(\s*'app\.[^']*'\s*,[^,]*,\s*false\s*\)", re.I
+)
 
 
 def guard_core_not_verticals(core: Path = CORE) -> list[Violation]:
@@ -115,6 +124,14 @@ def guard_send_call_sites(core: Path = CORE, adapter: Path = ADAPTER_DIR) -> lis
     return out
 
 
+def guard_session_set(core: Path = CORE) -> list[Violation]:
+    return [
+        Violation("session-set-ban", _rel(f), i, line.strip())
+        for f, i, line in _iter_lines(_py_files(core))
+        if _SESSION_SET_SQL.search(line) or _SESSION_SETCONFIG.search(line)
+    ]
+
+
 def load_allowlist(path: Path = ALLOWLIST) -> tuple[list[tuple[str, str]], list[str]]:
     """Return (entries, errors). Each entry is (path_substring, token); an entry without a
     `# justification` comment is reported as an error (justification is mandatory)."""
@@ -150,6 +167,7 @@ def run_all() -> tuple[list[Violation], list[str]]:
         guard_industry_nouns,
         guard_float_money,
         guard_send_call_sites,
+        guard_session_set,
     ):
         violations.extend(v for v in guard() if not _excused(v, entries))
     return violations, errors
@@ -168,7 +186,10 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("lint guards passed (core-not-verticals, industry-nouns, float-money, send-call-sites)")
+    print(
+        "lint guards passed (core-not-verticals, industry-nouns, float-money, "
+        "send-call-sites, session-set-ban)"
+    )
     return 0
 
 
