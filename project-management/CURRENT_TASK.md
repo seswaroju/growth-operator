@@ -9,7 +9,15 @@ selects and approves the next ticket.
 
 ---
 
-## MVP-031 · WhatsApp WABA connect — **Completed — awaiting founder review** (2026-07-30)
+## MVP-034 · Gated send adapter — **Completed — awaiting founder review** (2026-07-30)
+
+Branch `feature/mvp-034-036-send-adapter` (off main). `core/channels/whatsapp/send.py`: the single outbound exit, with four fail-closed gates before any Meta call — (1) **audit capability** (fresh <10min entry authorising this exact `msg.send` → `approval_required`), (2) **execution token** (stub, non-empty required; real one-time binding lands MVP-066 → `approval_required`), (3) **suppression** (marketing/all scope → `suppressed_contact`; lookup error fails closed), (4) **consent** (marketing needs positive consent; transactional exempt → `consent_missing`). On success: outbound `messages` row + `msg.sent.v1` + audit `msg.send:succeeded`; on exhausted failure: `status=failed` + `msg.failed.v1` + `msg.send:failed`. Retries honour 429 Retry-After and retry 5xx ×3 (bounded). Meta stays gated-simulated. **No migration** (schema already had `contacts.consent_status`, `suppressions`, `messages.audit_id`). **191 pytest, 0 skipped.**
+
+**MVP-036 enforcement folded in here** (the suppression+consent join is the same gate). **Remaining 036 work (not yet done):** STOP/UNSUB keyword auto-suppress in the normalizer (en/hi/te) + the transactional confirmation reply + suppressed badge (frontend, chats page). The confirmation reply is an **automated outbound send without human approval** — a §19 decision flagged to the founder before implementing.
+
+---
+
+## MVP-031 · WhatsApp WABA connect — Completed — merged to main `644b334` (2026-07-30)
 
 Branch `feature/mvp-031-whatsapp-connect` (off main). The "owner connects their WhatsApp number" step: `POST /v1/channels/whatsapp/connect` runs three gates (token → handshake → echo, all **simulated** until `whatsapp_live_enabled`, §10.4 / BLOCKERS #3); on full success it writes a `channels` row (active) + a **Fernet-encrypted** credential in the new `channel_credentials` table (org-scoped, RLS). Reconnect updates in place; a number owned by another org → 409; `GET /.../{id}/health` re-runs the echo probe. Migration `cfd462c65ec9` (round-trip verified). No new deps (cryptography already present via python-jose). **183 pytest, 0 skipped.** Awaiting founder review → commit. Next candidate: MVP-034 (gated send adapter).
 

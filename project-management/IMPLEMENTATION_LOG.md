@@ -594,3 +594,35 @@ make -n dev / migrate / test / seed
 **Deferred:** real Meta echo against a test number stays gated (#3) — verified in simulated mode; going-live flips `whatsapp_live_enabled` once API access lands. Next: MVP-034 (gated send adapter).
 
 **Commit `2160890`** on `feature/mvp-031-whatsapp-connect`; **merged to main `644b334` and pushed** (`a884700..644b334`) 2026-07-30.
+
+## 2026-07-30 — MVP-034 · Gated send adapter (single outbound exit) · + MVP-036 enforcement (folded in)
+
+**Ticket:** [MVP-034](../docs/tickets/MVP-034.md) · P0. Branch `feature/mvp-034-036-send-adapter` (off main). The one function customer-facing text leaves through — refuses anything unaudited, untokened, suppressed, or without consent. Meta calls stay **gated-simulated** (`whatsapp_live_enabled=False`, §10.4 / BLOCKERS #3).
+
+**Files (new):** `core/channels/whatsapp/send.py`, `tests/integration/test_whatsapp_send.py`. **No migration** — the messaging schema (005) already carries `contacts.consent_status`, `suppressions`, and `messages.audit_id/status/provider_message_id`.
+
+**Four gates (fail-closed, before any external call):**
+1. **audit capability** — `verify_capability(audit_id, action="msg.send", resource=conversation_id)`; missing/expired/mismatched → refuse `approval_required`.
+2. **execution token** — interim non-empty check (real one-time binding to the capability lands MVP-066); empty/None → `approval_required`.
+3. **suppression** — `suppressions` join; `all` scope blocks everything, `marketing` blocks marketing; **any lookup error fails closed** → `suppressed_contact`.
+4. **consent** — marketing requires `consent_status ∈ {opted_in, granted}`; transactional class is exempt → `consent_missing`.
+
+**On pass:** insert `messages` (direction=outbound, status=queued, audit_id) → send via gated `MetaClient` with bounded retries (429 honours Retry-After; 5xx retried ×3) → success: `status=sent` + `provider_message_id`, emit `msg.sent.v1`, `write_outcome(succeeded)`; exhausted failure: `status=failed`, emit `msg.failed.v1`, `write_outcome(failed)`. Two transactions (durable queued row, then outcome) so the intent is recorded even if the send crashes.
+
+**MVP-036 (enforcement half) folded in:** the suppression+consent join *is* this gate. Remaining 036 — STOP/UNSUB keyword auto-suppress in the normalizer (en/hi/te), the transactional confirmation reply, suppressed badge — is **not** in this ticket; the auto-confirm reply is an unapproved automated send (§19) held for a founder decision.
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| success → msg.sent.v1 + audit outcome + provider id stored | `test_whatsapp_send::test_success_emits_sent_and_records_outcome` | PASS |
+| missing audit_id → refusal, no Meta call | `test_whatsapp_send::test_missing_audit_id_refused_no_http` | PASS |
+| bad/empty token → refusal, no Meta call | `test_whatsapp_send::test_bad_token_refused_no_http` | PASS |
+| suppressed marketing blocked, transactional allowed | `test_whatsapp_send::test_suppressed_marketing_blocked_transactional_allowed` | PASS |
+| consent unknown: marketing blocked, transactional allowed | `test_whatsapp_send::test_consent_unknown_marketing_blocked_transactional_allowed` | PASS |
+| 429 Retry-After honoured | `test_whatsapp_send::test_429_retry_after_is_honored` | PASS |
+| 5xx retried ×3 → msg.failed.v1 + status failed | `test_whatsapp_send::test_5xx_retried_thrice_then_failed` | PASS |
+| suppression lookup error fails closed | `test_whatsapp_send::test_suppression_lookup_error_fails_closed` | PASS |
+
+**Commands:** ruff (pass) · mypy core (58) (pass) · guards (5, pass — send.py is inside the allowed `core/channels/` adapter dir) · `pytest -q` **191 passed, 0 skipped**.
+
+**Deferred:** real Meta send stays gated (#3); execution-token real binding (MVP-066); ledger/figure-refs gate (MVP-054, param accepted but not enforced); 036 keyword net + confirm + badge (pending founder decision on auto-send).

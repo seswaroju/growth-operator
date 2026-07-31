@@ -193,3 +193,13 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 - **`resolve_channel(type, external_id)` SECURITY DEFINER function** added (small migration appended after 011, not in the migration-order doc — same pattern as `invites`/`resolve_api_key`). The message normalizer (MVP-033) must resolve org-from-webhook before any tenant context exists, but `channels` is RLS-scoped; the function does that one RLS-exempt exact lookup.
 
 **Decided by:** Claude (flagged for founder awareness) — architectural necessity + the approved gated-adapter approach.
+
+---
+
+### 2026-07-30 — STOP/UNSUB auto-suppress replies with a transactional confirmation (MVP-036)
+
+**Decision (founder-approved):** When a customer sends a STOP/UNSUB keyword, the inbound normalizer auto-suppresses the contact (scope=`marketing`) **and auto-sends a one-line transactional confirmation** ("You've been unsubscribed…") via the gated send adapter — without human approval. This is an automated outbound send, which §19 (human-in-the-loop for customer replies) otherwise gates; the founder explicitly approved this narrow exception because it is a legally-expected compliance acknowledgement, transactional-class (exempt from marketing consent), and self-limiting (one message per STOP).
+
+Bounds on the exception: it fires **only** on a matched STOP/UNSUB keyword, sends **only** the fixed platform confirmation text (no model-generated content), is transactional-class, and remains gated-simulated until `whatsapp_live_enabled`. The send still passes the MVP-034 gates (it mints its own audit capability + execution token), so it is fully audited. No other automated customer-facing send is authorised by this decision.
+
+**Decided by:** Founder (2026-07-30), in response to Claude flagging the §19 conflict before implementing.
