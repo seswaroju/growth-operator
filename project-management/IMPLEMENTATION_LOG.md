@@ -818,3 +818,7 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (65) (pass) · guards (5, pass) · `pytest -q` **291 passed, 0 skipped**.
 
 **Note:** the permanently-red "proving hardcoding" branch is a CI regression fixture the founder maintains; not created here.
+
+## 2026-07-31 — MVP-039 follow-up · Signed-bundle .tar.zst transport (resolves BLOCKERS #13)
+
+Founder approved adding `zstandard` (§9). `core/packs/bundle.py` now has `pack_bundle` (pack tree + `MANIFEST.sha256` + ed25519 `MANIFEST.sig` → `.tar.zst`) and `unpack_bundle` (decompress with a 50MB `frame_content_size` cap + `tarfile` `data` filter → no path traversal / device files); `load_bundle` transparently unpacks a `.tar.zst` to a temp dir, then verifies + parses. **Files:** `pyproject.toml` (+zstandard 0.25), `core/packs/bundle.py`, `tests/unit/test_pack_bundle.py` (+4: round-trip preserves tree, dev-mode load from .zst, prod signed-load + wrong-key refused, size-cap refused). ruff/mypy/guards pass · `pytest -q` **295 passed**.

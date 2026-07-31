@@ -9,22 +9,27 @@ Two trust modes (config `packs_dev_mode`):
 - **prod**: require a `MANIFEST.sha256` whose per-file digests match the tree exactly (a
   tampered file is refused) and a valid **ed25519** signature over that manifest.
 
-The `.tar.zst` transport (packing/unpacking a signed bundle) needs the `zstandard` dependency
-and is deferred (§9, BLOCKERS #13) — it is only compression around the tree that the digest +
-signature verification here already secures.
+A signed bundle is a `.tar.zst` of the pack tree plus its `MANIFEST.sha256` and `MANIFEST.sig`
+(`pack_bundle`); `load_bundle` transparently unpacks a `.tar.zst` (size-capped, path-traversal
+safe) to a temp dir and then verifies + parses it, so packing is only compression around the
+tree that the digest + signature verification already secures.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import re
+import tarfile
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+import zstandard
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from pydantic import ValidationError
 
 from core.common.config import get_settings
@@ -45,6 +50,7 @@ from core.packs.contracts import (
 MANIFEST_NAME = "MANIFEST.sha256"
 SIGNATURE_NAME = "MANIFEST.sig"
 _BUNDLE_META = {MANIFEST_NAME, SIGNATURE_NAME}
+MAX_BUNDLE_BYTES = 50 * 1024 * 1024  # decompressed-size cap (spec) — guards against zip bombs
 
 
 class BundleError(Exception):
@@ -156,6 +162,48 @@ def verify_signature(manifest_bytes: bytes, signature: bytes, public_key: bytes)
     return True
 
 
+# ---- .tar.zst transport ---------------------------------------------------------------
+
+
+def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:
+    info = tarfile.TarInfo(name)
+    info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
+
+
+def pack_bundle(
+    pack_dir: Path, out_path: Path, *, private_key: Ed25519PrivateKey | None = None
+) -> None:
+    """Pack a pack directory into a signed `.tar.zst` bundle: the tree + `MANIFEST.sha256`
+    (per-file digests) + `MANIFEST.sig` (ed25519 over the manifest, when `private_key` given)."""
+    manifest_bytes = serialize_manifest(compute_manifest(pack_dir))
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for p in _iter_files(pack_dir):
+            tar.add(p, arcname=p.relative_to(pack_dir).as_posix())
+        _add_bytes(tar, MANIFEST_NAME, manifest_bytes)
+        if private_key is not None:
+            _add_bytes(tar, SIGNATURE_NAME, private_key.sign(manifest_bytes))
+    out_path.write_bytes(zstandard.ZstdCompressor().compress(buf.getvalue()))
+
+
+def unpack_bundle(bundle_path: Path, dest_dir: Path, *, max_bytes: int = MAX_BUNDLE_BYTES) -> Path:
+    """Decompress + extract a `.tar.zst` bundle into `dest_dir`. The decompressed size is capped
+    (zip-bomb guard) and extraction uses the `data` filter (no path traversal / device files)."""
+    compressed = bundle_path.read_bytes()
+    # Embedded content size (or -1 if unknown) — zstandard ignores max_output_size when the
+    # size is embedded, so cap up front; fall back to max_output_size for streamed frames.
+    if zstandard.frame_content_size(compressed) > max_bytes:
+        raise BundleError("bundle exceeds decompressed-size cap")
+    try:
+        raw = zstandard.ZstdDecompressor().decompress(compressed, max_output_size=max_bytes)
+    except zstandard.ZstdError as exc:
+        raise BundleError(f"bundle too large or corrupt: {exc}") from exc
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r") as tar:
+        tar.extractall(dest_dir, filter="data")
+    return dest_dir
+
+
 # ---- Directory parser -----------------------------------------------------------------
 
 
@@ -221,8 +269,11 @@ def parse_pack_dir(pack_dir: Path) -> ParsedPack:
 
 
 def load_bundle(pack_dir: Path, *, public_key: bytes | None = None) -> ParsedPack:
-    """Load a pack from a directory. In prod (`packs_dev_mode=False`) the tree must carry a
-    matching `MANIFEST.sha256` and a valid ed25519 signature (via `public_key`) first."""
+    """Load a pack from a directory or a `.tar.zst` bundle (unpacked to a temp dir first). In
+    prod (`packs_dev_mode=False`) the tree must carry a matching `MANIFEST.sha256` and a valid
+    ed25519 signature (via `public_key`) first."""
+    if pack_dir.is_file():  # a packed bundle → unpack, then load the tree
+        pack_dir = unpack_bundle(pack_dir, Path(tempfile.mkdtemp(prefix="gop-pack-")))
     if not get_settings().packs_dev_mode:
         manifest_path, sig_path = pack_dir / MANIFEST_NAME, pack_dir / SIGNATURE_NAME
         if not manifest_path.is_file() or not sig_path.is_file():
