@@ -779,3 +779,22 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (65) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **289 passed, 0 skipped** · migration round-trip OK · routes `/v1/packs(/installations)` registered.
 
 **Deferred (BLOCKERS #14):** policies/workflows seeding step functions (MVP-044, once 014/016 land) — the installer already calls the no-op hooks; uninstall attribute-freeze (MVP-045, catalog_items/012) + credential revocation; upgrade orchestration (post-MVP, out of scope).
+
+## 2026-07-31 — MVP-041 · Jewelry install e2e fixture (reference install as a CI check)
+
+**Ticket:** [MVP-041](../docs/tickets/MVP-041.md) · P0 · "S". Branch `feature/mvp-041-jewelry-install-e2e` (off main). CI fixture + assertions only, **no production code**.
+
+**Files (new):** `verticals/jewelry/install.yaml` (reference install — pack_ref + config slot values + `expected_result`), `tests/e2e/test_jewelry_install.py`. **Files (modified):** `.github/workflows/ci.yml` (the `migrate` job now creates the `app_rw` role and runs the reference install e2e as a required check).
+
+**e2e** — a fresh org installs jewelry from `install.yaml`'s config and the test asserts the `expected_result` field-by-field: status `active`, **4 paused** `agent_instances` (support archetype unseeded → skipped), catalog schema **version 2**, **9 candidate** prompt layers, **4 bindings**, deferred steps `[policies, workflows]`, and install completes in **<60s** (locally ~0.5s). `install.yaml` sits at the pack root; the contract walk + `parse_pack_dir` ignore it (not a known contract file), it's only included in the bundle digest.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| expected_result asserted field-by-field | `test_jewelry_install::test_reference_jewelry_install_matches_expected_result` | PASS |
+| install completes <60s | same test (elapsed assert) | PASS |
+| green in CI as a required check | wired: `ci.yml` `migrate` job (app_rw + e2e) | wired (CI run unverified here — MVP-003 CI) |
+
+**Commands:** ruff (pass) · guards (5, pass) · `pytest -q` **290 passed, 0 skipped**.
+
+**Deferred:** `indexes_queued` assertion (MVP-042 index generation); broader integration-test CI wiring (needs redis service etc.) remains a pre-existing gap (MVP-003, 🟡) — only the DB-only reference install is wired here.
