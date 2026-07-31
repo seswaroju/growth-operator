@@ -1,0 +1,18 @@
+# Reference install for the kirana dry-run CI gate (MVP-043). The second pack must install
+# with zero core changes — the dry-run runs the full pipeline in a rolled-back transaction and
+# asserts this expected_plan. A jewelry-specific hardcode in core would make this go red.
+pack_ref: kirana
+config:
+  order_confirm_threshold_minor: 200000
+  delivery_available: true
+  delivery_radius_km: 3
+  gst_scheme: composition
+expected_plan:
+  pack: kirana
+  catalog_schema_version: 1
+  prompt_layers: 5        # concierge 2 + nurture 1 + ops 2
+  bindings: 3             # concierge, nurture, ops (all seeded)
+  instances: 3
+  workflows: 2
+  integrations: 2
+  deferred_steps: [policies, workflows]
