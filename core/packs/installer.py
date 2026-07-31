@@ -56,6 +56,26 @@ class InstallResult:
 
 
 @dataclass
+class InstallPlan:
+    pack: str
+    version: str
+    catalog_schema_version: int
+    prompt_layers: int
+    bindings: int
+    instances: int
+    workflows: int
+    integrations: int
+    deferred_steps: tuple[str, ...] = DEFERRED_STEPS
+
+
+class _DryRunRollback(Exception):
+    """Carries the plan out of the dry-run transaction, forcing it to roll back."""
+
+    def __init__(self, plan: InstallPlan) -> None:
+        self.plan = plan
+
+
+@dataclass
 class _Ctx:
     org_id: UUID
     pack_id: UUID
@@ -335,6 +355,45 @@ async def uninstall(org_id: UUID, installation_id: UUID, *, actor_id: UUID | Non
                 action="pack.uninstalled", resource=str(installation_id), payload={},
             ),
         )
+
+
+async def _plan_counts(
+    session: AsyncSession, org_id: UUID, pack_id: UUID, parsed: ParsedPack
+) -> InstallPlan:
+    async def _count(sql: str, param: dict) -> int:
+        return (await session.execute(text(sql), param)).scalar_one()
+
+    return InstallPlan(
+        pack=parsed.manifest.pack, version=parsed.manifest.version,
+        catalog_schema_version=parsed.catalog.version,
+        prompt_layers=await _count(
+            "SELECT count(*) FROM prompt_layers WHERE pack_id = :p", {"p": str(pack_id)}
+        ),
+        bindings=await _count(
+            "SELECT count(*) FROM agent_bindings WHERE pack_id = :p", {"p": str(pack_id)}
+        ),
+        instances=await _count(
+            "SELECT count(*) FROM agent_instances WHERE org_id = :o", {"o": str(org_id)}
+        ),
+        workflows=len(parsed.workflows), integrations=len(parsed.integrations),
+    )
+
+
+async def dry_run(org_id: UUID, pack_dir: Path) -> InstallPlan:
+    """Validate + plan an install without persisting anything (MVP-043). Runs the real pipeline
+    inside a transaction that is always rolled back, so it catches any core hardcoding that
+    would break a second pack while writing nothing. A contract violation raises `BundleError`."""
+    parsed = load_bundle(pack_dir)
+    digest = _bundle_digest(pack_dir)
+    try:
+        async with org_scoped_session(org_id) as s:
+            pack_id = await _get_or_create_pack(s, parsed, digest)
+            ctx = _Ctx(org_id=org_id, pack_id=pack_id, parsed=parsed)
+            for _name, fn in _steps():
+                await fn(s, ctx)
+            raise _DryRunRollback(await _plan_counts(s, org_id, pack_id, parsed))
+    except _DryRunRollback as rollback:  # the txn rolled back → nothing persisted
+        return rollback.plan
 
 
 async def list_packs(session: AsyncSession) -> list[dict]:

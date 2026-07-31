@@ -798,3 +798,23 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · guards (5, pass) · `pytest -q` **290 passed, 0 skipped**.
 
 **Deferred:** `indexes_queued` assertion (MVP-042 index generation); broader integration-test CI wiring (needs redis service etc.) remains a pre-existing gap (MVP-003, 🟡) — only the DB-only reference install is wired here.
+
+## 2026-07-31 — MVP-043 · Kirana dry-run CI gate (second pack installs with zero core changes)
+
+**Ticket:** [MVP-043](../docs/tickets/MVP-043.md) · P0 · "S". Branch `feature/mvp-043-kirana-dryrun` (off main). The architecture guarantee (IDL-005): a second pack must install forever with zero core diffs.
+
+**Files (new):** `verticals/kirana/install.yaml` (expected_plan), `tests/e2e/test_kirana_dryrun.py`. **Files (modified):** `core/packs/installer.py` (`dry_run` + `InstallPlan`), `.github/workflows/ci.yml` (kirana dry-run runs beside the jewelry e2e in the `migrate` job).
+
+**dry_run** — `dry_run(org_id, pack_dir)` loads+validates the bundle (raises `BundleError` on any contract violation), then runs the **full** 6-step pipeline inside an `org_scoped_session` transaction and raises an internal `_DryRunRollback` carrying the `InstallPlan` — so the transaction always rolls back and **nothing is persisted**, while still exercising every step (any core hardcoding that broke a second pack would fail here). The plan reports the counts that would be written.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| dry-run green on clean main (plan matches: 3 bindings/instances, 5 layers, schema v1, 2 workflows/integrations) | `test_kirana_dryrun::test_kirana_dry_run_matches_plan_and_writes_nothing` | PASS |
+| dry-run writes nothing (no kirana pack row, no instances) | same test | PASS |
+| CI required check | wired: `ci.yml` `migrate` job runs the kirana dry-run | wired (CI run unverified here) |
+| red on the proving-hardcoding branch | the dry-run runs the full pipeline → a core hardcode breaking kirana fails it | by construction (proving branch is a founder-maintained fixture) |
+
+**Commands:** ruff (pass) · mypy core (65) (pass) · guards (5, pass) · `pytest -q` **291 passed, 0 skipped**.
+
+**Note:** the permanently-red "proving hardcoding" branch is a CI regression fixture the founder maintains; not created here.

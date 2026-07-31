@@ -60,11 +60,11 @@ jobs:
       # Runtime RLS role, then the reference pack install (MVP-041) as a required check.
       - name: Create app_rw runtime role
         run: psql "postgresql://growth_operator:growth_operator@localhost:5432/growth_operator" -f infra/db/roles.sql
-      - name: Reference jewelry install e2e (MVP-041)
+      - name: Reference install + kirana dry-run e2e (MVP-041 / MVP-043)
         env:
           GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@localhost:5432/growth_operator
           GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator
-        run: uv run pytest tests/e2e/test_jewelry_install.py -v
+        run: uv run pytest tests/e2e/test_jewelry_install.py tests/e2e/test_kirana_dryrun.py -v
 
   # Placeholder — fails the build once real isolation tests exist and are skipped.
   # Wired for real in MVP-097 (isolation suite + nightly synthetic e2e).
