@@ -626,3 +626,28 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (58) (pass) · guards (5, pass — send.py is inside the allowed `core/channels/` adapter dir) · `pytest -q` **191 passed, 0 skipped**.
 
 **Deferred:** real Meta send stays gated (#3); execution-token real binding (MVP-066); ledger/figure-refs gate (MVP-054, param accepted but not enforced); 036 keyword net + confirm + badge (pending founder decision on auto-send).
+
+## 2026-07-30 — MVP-036 · Opt-out keyword net (STOP auto-suppress + transactional confirm)
+
+**Ticket:** [MVP-036](../docs/tickets/MVP-036.md) · P0. Branch `feature/mvp-036-stop-keywords` (off main). The enforcement half (suppression+consent join) already shipped in MVP-034; this adds the inbound STOP/UNSUB keyword net + auto-suppress + the founder-approved transactional confirmation.
+
+**Files (new):** `core/channels/whatsapp/keywords.py`, `tests/integration/test_whatsapp_stop.py`. **Files (modified):** `core/channels/whatsapp/normalizer.py`. **No migration** (`suppressions` PK `(org_id,contact_id,scope)` already gives idempotent auto-suppress).
+
+**Keyword net** — `keywords.py`: platform list `stop / unsubscribe / unsub / band karo / bandh karo / ఆపండి`. Whole-message strict match (normalize = lower-case + **ASCII-only** punctuation strip + whitespace collapse), so "STOP!", "Band Karo.", "ఆపండి" match while "I couldn't stop thinking about the ring" and "stopwatch" do not. ASCII-only stripping was required — a Unicode `[^\w\s]` strip corrupted Telugu combining marks and broke the non-Latin keyword (caught by the parametrised test). Pack-extensible later.
+
+**Normalizer wiring** — on an inbound STOP: insert `suppressions (scope=marketing) ON CONFLICT DO NOTHING RETURNING` (idempotent); if newly suppressed, queue a confirmation. Confirmations are sent **after the event transaction commits** (suppression durable first), each via `_mint_send_capability` (an audit `msg.send` capability, actor_type=system) → gated `send(message_class="transactional", body=STOP_CONFIRM_TEXT)`. Fixed platform text only (no model content). A `SendRefused` (e.g. channel not connected) is logged, never crashes the batch.
+
+**§19 decision:** auto-sending the confirmation without human approval is a founder-approved narrow exception (DECISIONS 2026-07-30) — keyword-triggered only, fixed text, transactional class, one per STOP, fully audited, gated-simulated until go-live.
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| keyword matrix incl. STOP / unsubscribe / band karo / ఆపండి (+ negatives) | `test_whatsapp_stop::test_keyword_matches`, `::test_keyword_does_not_match` | PASS |
+| STOP suppresses within one message + transactional confirm sent (msg.sent.v1) | `test_whatsapp_stop::test_stop_suppresses_and_confirms_once` | PASS |
+| suppression idempotent → confirm only on first STOP | `test_whatsapp_stop::test_repeated_exact_stop_does_not_double_confirm` | PASS |
+| suppressed contact: marketing blocked, transactional allowed | `test_whatsapp_send::test_suppressed_marketing_blocked_transactional_allowed` (MVP-034) | PASS |
+| consent=unknown + marketing blocked | `test_whatsapp_send::test_consent_unknown_marketing_blocked_transactional_allowed` (MVP-034) | PASS |
+
+**Commands:** ruff (pass) · mypy core (59) (pass) · guards (5, pass) · `pytest -q` **206 passed, 0 skipped**. App imports clean (no normalizer↔send cycle).
+
+**Deferred:** suppressed badge in chats (frontend, MVP-087); real send gated (#3); fuzzy/pack-extensible keyword matching later.
