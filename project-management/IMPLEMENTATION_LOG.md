@@ -682,3 +682,33 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (60) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **214 passed, 0 skipped** · migration round-trip OK · route `GET /v1/channels/whatsapp/templates` registered.
 
 **Deferred:** template-builder UI + campaign-wizard picker (frontend, MVP-08x); real Meta submission + status webhooks (gated #3 — `scripts/seed_whatsapp_templates.py` submits simulated until go-live).
+
+## 2026-07-31 — MVP-037 · WhatsApp media handling (gated download → fail-closed AV → store → link)
+
+**Ticket:** [MVP-037](../docs/tickets/MVP-037.md) · P1. Branch `feature/mvp-037-media` (off main). Customers send photos; agents send catalog images. Built with **simulated** AV + storage adapters (no new deps, §9 — founder chose "Simulated adapters" 2026-07-31); real clamav/MinIO deferred (BLOCKERS #12). Meta media I/O gated (#3).
+
+**Files (new):** `core/channels/whatsapp/media.py`, `tests/integration/test_whatsapp_media.py`. **Files (modified):** `core/channels/whatsapp/meta_client.py` (gated `download_media`/`upload_media`), `core/channels/whatsapp/normalizer.py` (media ingest wiring), `core/common/config.py` (`media_av_enabled`/`media_storage_enabled`, both default False). **No migration** (`messages.media` jsonb already exists).
+
+**media.py** — `ALLOWED_MIME` (jpeg/png/webp/pdf) + `MAX_MEDIA_BYTES` (16MB) gates; `ingest_inbound_media` = mime gate → download (gated) → size gate → **AV scan fail-closed** (`MediaScanError` → `quarantined`, never stored) → infected → `infected` → clean → store + sha256 → `MediaDescriptor` (never raises; status says what happened). `MediaScanner`/`MediaStore` Protocols with `SimulatedScanner`/`SimulatedStore` defaults; `default_scanner`/`default_store` raise `NotImplementedError` if `media_*_enabled` is set (real adapter absent) so a no-op AV scanner can't silently run in prod. `upload_outbound_media` gates then uploads (gated).
+
+**Normalizer** — after inserting an inbound message, `_ingest_media` downloads/scans/stores any attachment, writes the descriptor to `messages.media`, emits `alert.ops.v1` on quarantine, and includes the descriptor in `msg.received.v1`. A disallowed mime or missing credential still normalizes the message (text fallback body, e.g. `[image]`).
+
+**Requirement → evidence (all live where DB-backed):**
+| Criterion | Test | Result |
+|---|---|---|
+| disallowed mime rejected (no download) | `test_whatsapp_media::test_disallowed_mime_rejected_without_download` | PASS |
+| oversize rejected at cap | `::test_oversize_rejected_at_cap` | PASS |
+| scanner down → quarantined, fail-closed (not stored) | `::test_scanner_error_quarantines_fail_closed` | PASS |
+| infected → rejected | `::test_infected_rejected` | PASS |
+| clean media stored (bytes persisted, sha256) | `::test_clean_media_stored` | PASS |
+| outbound upload gates + uploads | `::test_outbound_upload_gates_and_uploads` | PASS |
+| enabling real adapters fails closed | `::test_enabling_real_adapters_fails_closed` | PASS |
+| e2e image stored + linked + media on event | `::test_image_message_stored_and_linked` | PASS |
+| disallowed mime → message still normalized (text fallback) | `::test_disallowed_mime_still_normalizes` | PASS |
+| scanner down e2e → quarantine + alert.ops.v1 | `::test_scanner_down_quarantines_and_alerts` | PASS |
+
+**Commands:** ruff (pass) · mypy core (61) (pass) · guards (5, pass — a "Jewelry" comment in core was caught and reworded) · `pytest -q` **225 passed, 0 skipped**.
+
+**Deferred (BLOCKERS #12):** real clamav + MinIO/S3 clients as deps + docker-compose services + wiring behind the two flags; media rendering in the chat transcript (frontend); Meta media download/upload gated (#3).
+
+**🎯 WhatsApp channel group (MVP-031–037) complete:** connect, ingress + signature verify, normalize, send (4 gates + retries), templates + status sync, opt-out compliance, media — end-to-end, gated-simulated for all real Meta I/O.

@@ -15,6 +15,7 @@ MVP-034 gates (it mints its own audit capability).
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -23,6 +24,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.writer import AuditEntry, write
+from core.channels.whatsapp import media
+from core.channels.whatsapp.credentials import load_credentials
 from core.channels.whatsapp.keywords import is_stop_keyword
 from core.channels.whatsapp.send import SendRefused, send
 from core.common.db import get_sessionmaker
@@ -122,6 +125,37 @@ async def _auto_suppress(session: AsyncSession, org_id: UUID, contact_id: UUID) 
     ).scalar_one_or_none() is not None
 
 
+async def _ingest_media(
+    session: AsyncSession, org_id: UUID, *,
+    message: dict[str, Any], message_id: UUID, conversation_id: UUID, access_token: str | None,
+) -> list[dict[str, Any]]:
+    """Download/scan/store any attached media, link it on the message, and alert on
+    quarantine. Returns the descriptor list (empty for a text-only message)."""
+    ref = media.media_ref(message)
+    if ref is None:
+        return []
+    media_id, mime = ref
+    if access_token is None:  # no channel credentials → can't fetch; record, don't block
+        descriptor = media.MediaDescriptor(media_id, mime, media.QUARANTINED,
+                                            reason="no channel credentials")
+    else:
+        descriptor = await media.ingest_inbound_media(media_id, mime, access_token)
+    media_list = [descriptor.as_dict()]
+    await session.execute(
+        text("UPDATE messages SET media = CAST(:m AS jsonb) WHERE id = :id"),
+        {"m": json.dumps(media_list), "id": str(message_id)},
+    )
+    if descriptor.quarantined:
+        await outbox.emit(
+            session, org_id=org_id, event_type="alert.ops.v1", source="channels.whatsapp",
+            payload={
+                "severity": "warning", "kind": "media_scanner_unavailable",
+                "detail": {"media_id": media_id, "conversation_id": str(conversation_id)},
+            },
+        )
+    return media_list
+
+
 async def _normalize_one(
     session: AsyncSession, event_id: UUID, payload: dict[str, Any]
 ) -> list[tuple[UUID, UUID]]:
@@ -142,6 +176,8 @@ async def _normalize_one(
     await session.execute(
         text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)}
     )
+    creds = await load_credentials(session, org_id=org_id, channel_id=channel_id)
+    access_token = creds["access_token"] if creds else None
 
     confirms: list[tuple[UUID, UUID]] = []
     for _pnid, message in messages:
@@ -165,11 +201,15 @@ async def _normalize_one(
         ).scalar_one_or_none()
         if inserted is None:
             continue  # already ingested
+        media_list = await _ingest_media(
+            session, org_id, message=message, message_id=inserted,
+            conversation_id=conversation_id, access_token=access_token,
+        )
         await outbox.emit(
             session, org_id=org_id, event_type="msg.received.v1", source="channels.whatsapp",
             payload={
                 "conversation_id": str(conversation_id), "contact_id": str(contact_id),
-                "body": body, "media": [], "classified_intent": None,
+                "body": body, "media": media_list, "classified_intent": None,
             },
         )
         # Opt-out keyword net (MVP-036): suppress, and confirm once, after commit.
