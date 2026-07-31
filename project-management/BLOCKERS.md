@@ -89,3 +89,10 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder (dependency + infra approval) → Engineering (wire adapters).
 - **Description:** MVP-037 media handling ships with **simulated** adapters (`SimulatedScanner` returns clean, `SimulatedStore` keeps bytes in-process) so the download→scan→store flow is testable with no new dependencies (§9, founder-approved 2026-07-31). The real clamav AV scanner and MinIO/S3 object store are **not** added (no deps, no docker-compose services). A no-op AV scanner reaching production would pass malware, so `media_av_enabled` / `media_storage_enabled` **fail closed** (`NotImplementedError`) until the real adapters exist — the simulated scanner can only run with the flags off (dev default).
 - **Next action:** Founder approves adding the object-storage client (minio/boto3) + a clamd client as dependencies and MinIO + clamav services to `docker-compose.dev.yml`; then wire the real `MediaScanner`/`MediaStore` adapters behind the two flags and enable them in staging/prod. Meta media download/upload also stays gated (#3) until API access lands.
+
+### 13. Signed-bundle .tar.zst transport deferred (needs zstandard dep)
+
+- **Severity:** Low — dev installs from a directory; the security-critical verification is done.
+- **Owner:** Founder (dependency approval) → Engineering.
+- **Description:** MVP-039 implements the pack digest manifest (`MANIFEST.sha256`) + ed25519 signature verification over a **directory** (tampered file → refused; invalid signature → refused), which is the trust-critical part. The `.tar.zst` packaging/unpacking of a signed bundle needs the `zstandard` dependency (not present; not added per §9). Deferred — it's only compression/transport around the already-verified tree.
+- **Next action:** Founder approves adding `zstandard`; then add `pack_bundle` pack/unpack around `load_bundle` (compute/verify manifest on the unpacked tree). The publisher-side signing tool + real platform public key are separate (publisher keys are explicitly out of scope for MVP-039).

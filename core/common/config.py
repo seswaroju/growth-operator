@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     media_av_enabled: bool = Field(default=False)
     media_storage_enabled: bool = Field(default=False)
 
+    # Vertical-pack bundle trust (MVP-039). Dev (default) installs from a directory with no
+    # signature. Prod MUST set this False so the installer requires a MANIFEST.sha256 whose
+    # digests match and a valid ed25519 signature over it before a pack is accepted.
+    packs_dev_mode: bool = Field(default=True)
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot
