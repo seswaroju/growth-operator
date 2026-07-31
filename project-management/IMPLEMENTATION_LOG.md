@@ -651,3 +651,34 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (59) (pass) · guards (5, pass) · `pytest -q` **206 passed, 0 skipped**. App imports clean (no normalizer↔send cycle).
 
 **Deferred:** suppressed badge in chats (frontend, MVP-087); real send gated (#3); fuzzy/pack-extensible keyword matching later.
+
+## 2026-07-31 — MVP-035 · WhatsApp templates management (registry, Meta status sync, send gate)
+
+**Ticket:** [MVP-035](../docs/tickets/MVP-035.md) · P1. Branch `feature/mvp-035-templates` (off main). Meta requires pre-approved templates for business-initiated messages; this manages the registry, syncs review status, and gates sends. Founder chose **full scope** incl. webhook-driven status updates. Real Meta submit/webhooks stay gated (#3).
+
+**Files (new):** `core/channels/whatsapp/templates.py`, `verticals/jewelry/templates/whatsapp.yaml` (jewelry_v2 seed), `scripts/seed_whatsapp_templates.py` (gated), `tests/integration/test_whatsapp_templates.py`, migration `83efabba79ee_message_templates_meta.py`.
+**Files (modified):** `core/channels/whatsapp/meta_client.py` (submit_template + send_template, gated; `_send_result` helper), `core/channels/whatsapp/send.py` (optional `template=(key,lang)` path + gate), `core/channels/whatsapp/connect.py` (set `waba_id` on connect + `GET /templates`), `core/channels/whatsapp/normalizer.py` (skip status webhooks).
+
+**Migration `83efabba79ee`** (revises `cfd462c65ec9`): additive — `message_templates` += `category, namespace, provider_template_id, provider_reason, updated_at`; `channels` += `waba_id`; new `resolve_channel_by_waba(text)` SECURITY DEFINER (org resolution for status webhooks, keyed by WABA id, before tenant context — same pattern as `resolve_channel`). Upgrade→downgrade→upgrade verified; roles re-applied.
+
+**templates.py** — `upsert_template` (edit resets to draft), `list_templates`, `get_template`, `submit_template` (gated → pending + provider id), `apply_status_update` (APPROVED/REJECTED/PENDING/PAUSED/DISABLED → status + reason), `assert_template_sendable` (raises `TemplateNotSendable` naming the template), `seed_from_manifest`, and `process_template_status_pending` (drains `message_template_status_update` webhooks; normalizer now skips them via a SQL field filter so it can't swallow them).
+
+**Send gate** — `send(..., template=(key, language))` calls `assert_template_sendable` inside the gate txn and sends via `meta_client.send_template`; a rejected template is refused before any Meta call. Freeform (`template=None`) is unchanged (MVP-034 tests still green).
+
+**Rule Zero** — all jewelry template *content* is declarative in `verticals/jewelry/templates/whatsapp.yaml`; `core/` never names the pack (guard caught an early docstring and was fixed).
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| status sync approved/rejected transitions reflected | `test_whatsapp_templates::test_lifecycle_draft_submit_approve_reject` | PASS |
+| rejected template blocks send, actionable problem naming it | `::test_gate_blocks_non_approved_naming_template` | PASS |
+| send with rejected template → refused, no Meta call | `::test_send_with_rejected_template_refused_no_meta_call` | PASS |
+| approved template → template send path used | `::test_send_with_approved_template_uses_template_path` | PASS |
+| status webhook applied (org by WABA id); normalizer skips it | `::test_status_webhook_drainer_and_normalizer_skips` | PASS |
+| seed manifest upserts; cross-org isolation | `::test_seed_from_manifest_and_isolation` | PASS |
+| list endpoint returns org templates | `::test_list_endpoint_returns_org_templates` | PASS |
+| jewelry_v2 seed has all 5 templates, valid | `::test_jewelry_pack_seed_manifest_is_valid` | PASS |
+
+**Commands:** ruff (pass) · mypy core (60) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **214 passed, 0 skipped** · migration round-trip OK · route `GET /v1/channels/whatsapp/templates` registered.
+
+**Deferred:** template-builder UI + campaign-wizard picker (frontend, MVP-08x); real Meta submission + status webhooks (gated #3 — `scripts/seed_whatsapp_templates.py` submits simulated until go-live).

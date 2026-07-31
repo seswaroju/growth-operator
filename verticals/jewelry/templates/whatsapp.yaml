@@ -1,0 +1,43 @@
+# jewelry_v2 WhatsApp message templates (MVP-035 seed).
+#
+# Declarative pack content — the platform template registry (core/channels/whatsapp/templates.py)
+# loads these org-scoped and submits them to Meta for review (gated until API access lands).
+# {{n}} are Meta body placeholders filled at send time. Categories follow Meta's taxonomy
+# (MARKETING | UTILITY | AUTHENTICATION); UTILITY/transactional templates are exempt from the
+# marketing-consent gate.
+namespace: jewelry_v2
+templates:
+  - template_key: approval
+    language: en
+    category: UTILITY
+    body: >-
+      Hi {{1}}, please review and approve the design quote for {{2}}.
+      Reply YES to confirm, or share any changes and our team will assist.
+
+  - template_key: reactivation
+    language: en
+    category: MARKETING
+    body: >-
+      Hi {{1}}, it's been a while! Fresh {{2}} designs just arrived in our
+      collection. Reply here and we'll share a curated selection for you.
+
+  - template_key: festival
+    language: en
+    category: MARKETING
+    body: >-
+      Wishing you a joyous {{1}}! Celebrate the occasion with our festive
+      jewellery collection — special offers are available this week.
+
+  - template_key: visit_reminder
+    language: en
+    category: UTILITY
+    body: >-
+      Hi {{1}}, a reminder of your showroom visit on {{2}} at {{3}}.
+      Reply RESCHEDULE if you'd like a different time.
+
+  - template_key: holding
+    language: en
+    category: UTILITY
+    body: >-
+      Hi {{1}}, we're holding the {{2}} for you until {{3}}.
+      Reply CONFIRM to proceed, and we'll keep it reserved.

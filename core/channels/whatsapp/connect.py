@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.channels.whatsapp.credentials import load_credentials, store_credentials
 from core.channels.whatsapp.meta_client import MetaClient
+from core.channels.whatsapp.templates import list_templates
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import ORG_MANAGE
@@ -57,6 +58,16 @@ class HealthResponse(BaseModel):
     status: str
     healthy: bool
     simulated: bool
+
+
+class TemplateItem(BaseModel):
+    template_key: str
+    language: str
+    category: str | None = None
+    provider_status: str
+    provider_reason: str | None = None
+    provider_template_id: str | None = None
+    namespace: str | None = None
 
 
 async def _resolve_any_org(session: AsyncSession, phone_number_id: str) -> tuple[UUID, UUID] | None:
@@ -105,18 +116,21 @@ async def connect(
 
     if existing is not None:  # reconnect within our own org
         channel_id = existing[0]
+        # waba_id lets template-status webhooks (keyed by WABA id) resolve the org (MVP-035).
         await session.execute(
-            text("UPDATE channels SET status = 'active' WHERE id = :id"),
-            {"id": str(channel_id)},
+            text("UPDATE channels SET status = 'active', waba_id = :waba WHERE id = :id"),
+            {"waba": body.waba_id, "id": str(channel_id)},
         )
     else:
         channel_id = (
             await session.execute(
                 text(
-                    "INSERT INTO channels (org_id, type, external_id, credentials_ref, status) "
-                    "VALUES (:org, 'whatsapp', :pnid, :ref, 'active') RETURNING id"
+                    "INSERT INTO channels "
+                    "(org_id, type, external_id, credentials_ref, status, waba_id) "
+                    "VALUES (:org, 'whatsapp', :pnid, :ref, 'active', :waba) RETURNING id"
                 ),
-                {"org": str(org_id), "pnid": body.phone_number_id, "ref": _CREDENTIALS_REF},
+                {"org": str(org_id), "pnid": body.phone_number_id, "ref": _CREDENTIALS_REF,
+                 "waba": body.waba_id},
             )
         ).scalar_one()
 
@@ -160,3 +174,14 @@ async def health(
         channel_id=channel_id, status=row["status"],
         healthy=healthy, simulated=client.simulated,
     )
+
+
+@router.get("/templates", response_model=list[TemplateItem], summary="List templates (owner)")
+async def templates(
+    current: CurrentAuth = Depends(requires(ORG_MANAGE)),
+    session: AsyncSession = Depends(get_db),
+) -> list[TemplateItem]:
+    """The org's WhatsApp templates with their Meta review status (campaign wizard picker)."""
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    return [TemplateItem(**t) for t in await list_templates(session, current.org_id)]
