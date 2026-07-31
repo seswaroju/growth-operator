@@ -23,6 +23,7 @@ dependencies = [
     # the packages back is all that's needed to activate them.
     "opentelemetry-exporter-otlp>=1.28",
     "pyyaml>=6.0",
+    "zstandard>=0.23",
 ]
 
 [dependency-groups]

@@ -20,9 +20,11 @@ from core.packs.bundle import (
     ParsedPack,
     compute_manifest,
     load_bundle,
+    pack_bundle,
     parse_pack_dir,
     serialize_manifest,
     split_prompt_layers,
+    unpack_bundle,
     verify_manifest,
     verify_signature,
 )
@@ -132,3 +134,41 @@ def test_prod_mode_requires_valid_signature(
 def test_dev_mode_loads_without_signature() -> None:
     # Default packs_dev_mode=True → a bare directory parses with no manifest/sig.
     assert load_bundle(VERTICALS / "kirana").manifest.pack == "kirana"
+
+
+# ---- .tar.zst transport ---------------------------------------------------------------
+
+
+def test_pack_unpack_roundtrip_preserves_tree(tmp_path: Path) -> None:
+    out = tmp_path / "jewelry.tar.zst"
+    pack_bundle(VERTICALS / "jewelry", out)
+    dest = unpack_bundle(out, tmp_path / "unpacked")
+    # Every pack file survives the round-trip byte-for-byte, and the tree still parses.
+    assert compute_manifest(dest) == compute_manifest(VERTICALS / "jewelry")
+    assert parse_pack_dir(dest).manifest.pack == "jewelry"
+
+
+def test_load_bundle_from_zst_dev_mode(tmp_path: Path) -> None:
+    out = tmp_path / "kirana.tar.zst"
+    pack_bundle(VERTICALS / "kirana", out)
+    assert load_bundle(out).manifest.pack == "kirana"  # unpacks + parses transparently
+
+
+def test_signed_bundle_verifies_in_prod(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROWTH_OPERATOR_PACKS_DEV_MODE", "false")
+    priv = Ed25519PrivateKey.generate()
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    out = tmp_path / "kirana.tar.zst"
+    pack_bundle(VERTICALS / "kirana", out, private_key=priv)
+
+    assert load_bundle(out, public_key=pub).manifest.pack == "kirana"  # valid signature
+    other = Ed25519PrivateKey.generate().public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    with pytest.raises(BundleError):
+        load_bundle(out, public_key=other)  # wrong key → refused
+
+
+def test_bundle_size_cap_refused(tmp_path: Path) -> None:
+    out = tmp_path / "kirana.tar.zst"
+    pack_bundle(VERTICALS / "kirana", out)
+    with pytest.raises(BundleError):
+        unpack_bundle(out, tmp_path / "dest", max_bytes=1024)  # 1KB cap → zip-bomb guard trips

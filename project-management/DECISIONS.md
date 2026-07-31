@@ -241,3 +241,13 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **Digest stored in `pack_installations.config._digest`** (no dedicated column) as the idempotency key.
 
 **Decided by:** Founder (deferral, 2026-07-31) + Claude (flagged: status-value mapping, the additive failed-status migration, unseeded-archetype skip).
+
+---
+
+### 2026-07-31 — Dependency approvals: zstandard (pack transport) + clamav/MinIO (media)
+
+**Decision (founder-approved):** Add the dependencies deferred as BLOCKERS #12/#13 (§9):
+- **`zstandard`** (pack bundle `.tar.zst` transport, MVP-039 follow-up) — done 2026-07-31; resolves #13.
+- **ClamAV (antivirus) + MinIO/S3 (object store)** for real WhatsApp media handling (MVP-037 follow-up) — resolves #12; wires the real `MediaScanner`/`MediaStore` behind the existing `media_av_enabled`/`media_storage_enabled` flags.
+
+**Decided by:** Founder (2026-07-31), explicitly choosing "add them now" for both.
