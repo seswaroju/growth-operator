@@ -96,3 +96,10 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder (dependency approval) → Engineering.
 - **Description:** MVP-039 implements the pack digest manifest (`MANIFEST.sha256`) + ed25519 signature verification over a **directory** (tampered file → refused; invalid signature → refused), which is the trust-critical part. The `.tar.zst` packaging/unpacking of a signed bundle needs the `zstandard` dependency (not present; not added per §9). Deferred — it's only compression/transport around the already-verified tree.
 - **Next action:** Founder approves adding `zstandard`; then add `pack_bundle` pack/unpack around `load_bundle` (compute/verify manifest on the unpacked tree). The publisher-side signing tool + real platform public key are separate (publisher keys are explicitly out of scope for MVP-039).
+
+### 14. Pack installer: policies/workflows seeding + attribute freeze deferred (tables not built)
+
+- **Severity:** Medium — the installer is complete for existing tables; two pipeline steps + part of uninstall await later migrations.
+- **Owner:** Engineering (unblocks when the migrations land).
+- **Description:** MVP-040's 6-step install pipeline runs 4 steps against existing tables (catalog schema → `catalog_schemas`, prompt layers → `prompt_layers` candidate, bindings → `agent_bindings`, paused instances → `agent_instances`). Steps 4 (**policies** → `approval_policies`, migration 014 / MVP-065) and 5 (**workflows** → `workflow_definitions`, migration 016 / MVP-072) are explicit **deferred no-ops** — those tables don't exist yet (founder decision 2026-07-31). Likewise uninstall's **attribute freeze** (`catalog_items`, migration 012 / MVP-045) and **credential revocation** are deferred. Uninstall currently pauses instances + marks the install `uninstalled` + retains the catalog schema + leaves L3 untouched.
+- **Next action:** MVP-044 implements the policies/workflows seeding step functions once 014/016 land; the installer already calls the (currently no-op) `_seed_policies`/`_seed_workflows` hooks. Attribute freeze wires in with MVP-045 (catalog_items).

@@ -228,3 +228,16 @@ Also: the `send()` adapter gained an optional `template=(key, language)` path (t
 Models are **strict** (`extra="forbid"`) where the platform owns the shape (manifest, bindings core, catalog, workflow, calendar) and **open** where the pack/engine does. Prompt `.md` anchor-splitting is MVP-039; the `templates/` seed is MVP-035 — both excluded from the 038 contract walk.
 
 **Decided by:** Claude (flagged for founder awareness) — required to satisfy "every file parses"; the core-platform.md signatures are illustrative, the pack files are ground truth.
+
+---
+
+### 2026-07-31 — MVP-040 installer: status machine (active/failed) + deferred steps + failed-status migration
+
+**Decisions:**
+- **Install status machine uses the schema's allowed set** (`pack_installations.status` CHECK from migration 008): `installing → active` on success (not the spec's "installed" — the table has no such value), `→ failed` on rollback, `→ uninstalled` on uninstall. Idempotency matches an existing **active** install of the same bundle digest.
+- **Migration `5dcbda42efca`** adds `'failed'` to the status CHECK (additive — widens the allowed set only). The installer needs to distinguish a rolled-back attempt from one still installing. NOT a migration-order change; a new head migration for 040's own status machine.
+- **Steps 4 (policies) + 5 (workflows) are deferred no-ops** — their tables (`approval_policies`/014, `workflow_definitions`/016) belong to MVP-065/072, not built (founder chose "build installer, defer policies/workflows", 2026-07-31). BLOCKERS #14.
+- **A binding for an unseeded archetype is skipped** (logged) — `support` was omitted from the archetype seed (MVP-020), so jewelry installs 4 bindings/instances (concierge/nurture/campaigner/ops), kirana 3.
+- **Digest stored in `pack_installations.config._digest`** (no dedicated column) as the idempotency key.
+
+**Decided by:** Founder (deferral, 2026-07-31) + Claude (flagged: status-value mapping, the additive failed-status migration, unseeded-archetype skip).
