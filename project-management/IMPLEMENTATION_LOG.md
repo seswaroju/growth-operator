@@ -734,3 +734,24 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (62) (pass) · guards (5, pass) · `pytest -q` **266 passed, 0 skipped**.
 
 **Deferred:** prompt `.md` anchor-splitting into `PromptLayerDef` records (MVP-039); `templates/` seed is MVP-035 (excluded from the contract walk). Signing verify is dev-mode-first (MVP-039).
+
+## 2026-07-31 — MVP-039 · Bundle parser + verifier (dev directory parse + prompt split + digest/ed25519 verify)
+
+**Ticket:** [MVP-039](../docs/tickets/MVP-039.md) · P0 · "M". Branch `feature/mvp-039-bundle-parser` (off main). Dev-mode-first: install from a directory; prod requires a signed bundle.
+
+**Files (new):** `core/packs/bundle.py`, `tests/unit/test_pack_bundle.py`. **Files (modified):** `core/common/config.py` (`packs_dev_mode`, default True). No DB, no migration, **no new deps** (ed25519 via the existing cryptography dependency).
+
+**bundle.py** — `split_prompt_layers` (each `## <a id="x"></a>Layer: archetype.pack.task` heading → a `PromptLayerDef`; content = the following fenced block; version from the file header `vX.Y`; `requires` from the "Composes on `base…`" line). `parse_pack_dir` validates pack.yaml / bindings / catalog (`from_document`) / pricing / workflows / integrations / evals / onboarding / ui / calendar against the MVP-038 contracts and splits all prompts, wrapping any pydantic error with the offending **file path** (`agents/bindings.yaml: …`). `compute_manifest`/`verify_manifest` (sha256 per file; tampered/incomplete tree → `BundleError`), `serialize_manifest`, `verify_signature` (ed25519), and `load_bundle` (dev = parse dir; prod = require MANIFEST + matching digests + valid signature first).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| prompt anchors → layer records incl. versions (concierge.md → 4) | `test_pack_bundle::test_concierge_anchor_split_yields_four_versioned_layers`, `::test_prompt_files_split_to_expected_counts` | PASS |
+| tampered digest refused | `::test_verify_manifest_refuses_tampered_digest`, `::test_prod_mode_requires_valid_signature` | PASS |
+| one invalid field in bindings.yaml → path-precise error mentioning the file | `::test_invalid_field_in_bindings_names_the_file` | PASS |
+| both packs parse to a ParsedPack (expected counts) | `::test_parse_jewelry_pack_dir`, `::test_parse_kirana_pack_dir` | PASS |
+| ed25519 sign/verify (tamper + wrong key → false) | `::test_ed25519_signature_roundtrip` | PASS |
+
+**Commands:** ruff (pass) · mypy core (63) (pass) · guards (5, pass) · `pytest -q` **279 passed, 0 skipped**.
+
+**Deferred:** `.tar.zst` bundle packing/unpacking (needs `zstandard` dep — BLOCKERS #13; verification is over the tree so no acceptance criterion is affected); publisher keys + the signing tool are explicitly out of MVP-039 scope; the real platform public key is config/secret for prod.
