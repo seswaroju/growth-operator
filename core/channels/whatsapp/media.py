@@ -5,16 +5,19 @@ the bytes (gated MetaClient), **AV-scans fail-closed** (a scanner error quaranti
 passes), stores clean bytes in an object store, and returns a descriptor for `messages.media`.
 Outbound: a helper uploads bytes to Meta for a send.
 
-The AV scanner and object store are **pluggable** and default to *simulated* implementations
-so the flow is fully testable with no new dependencies (§9). The real clamav + MinIO/S3
-adapters are not wired yet; enabling them via config before they exist fails closed
-(`media_av_enabled` / `media_storage_enabled` → NotImplementedError) so a no-op simulated AV
-scanner can never silently run in production (BLOCKERS #12). All Meta I/O stays gated (#3).
+The AV scanner and object store are **pluggable** and default to *simulated* implementations,
+so the flow is fully testable without the services running. When `media_av_enabled` /
+`media_storage_enabled` are set, the real `ClamavScanner` (clamd) and `S3Store` (boto3 →
+MinIO/S3) below are used; if the scanner service is unreachable a scan raises `MediaScanError`
+and the caller **quarantines** (fail-closed), so a no-op scanner never silently runs. Start the
+services with `docker compose --profile media up` (BLOCKERS #12). All Meta I/O stays gated (#3).
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import io
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -78,15 +81,79 @@ class SimulatedStore:
 _SIM_STORE = SimulatedStore()  # shared so a stored ref is retrievable within a process
 
 
+class ClamavScanner:
+    """Real AV scanner over a clamd (ClamAV daemon) socket. A connection/scan failure raises
+    `MediaScanError` so the caller fails closed (quarantine)."""
+
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+
+    async def scan(self, data: bytes) -> bool:
+        def _scan() -> bool:
+            import clamd
+
+            result = clamd.ClamdNetworkSocket(self.host, self.port).instream(io.BytesIO(data))
+            return result["stream"][0] == "OK"  # ('OK'|'FOUND', signature)
+
+        try:
+            return await asyncio.to_thread(_scan)
+        except MediaScanError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any clamd failure must fail closed
+            raise MediaScanError(f"clamav scan failed: {exc}") from exc
+
+
+class S3Store:
+    """Real object store over an S3-compatible endpoint (MinIO in dev, AWS S3 in prod)."""
+
+    def __init__(
+        self, *, endpoint_url: str | None, region: str, bucket: str,
+        access_key: str, secret_key: str,
+    ) -> None:
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.bucket = bucket
+        self.access_key = access_key
+        self.secret_key = secret_key
+
+    def _client(self) -> Any:
+        import boto3
+
+        return boto3.client(
+            "s3", endpoint_url=self.endpoint_url, region_name=self.region,
+            aws_access_key_id=self.access_key, aws_secret_access_key=self.secret_key,
+        )
+
+    async def put(self, key: str, data: bytes, *, mime: str) -> str:
+        def _put() -> str:
+            from botocore.exceptions import ClientError
+
+            client = self._client()
+            try:
+                client.head_bucket(Bucket=self.bucket)
+            except ClientError:
+                client.create_bucket(Bucket=self.bucket)
+            client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=mime)
+            return f"s3://{self.bucket}/{key}"
+
+        return await asyncio.to_thread(_put)
+
+
 def default_scanner() -> MediaScanner:
-    if get_settings().media_av_enabled:  # real clamav adapter not built yet (§9, BLOCKERS #12)
-        raise NotImplementedError("media_av_enabled is set but no real AV scanner is wired")
+    s = get_settings()
+    if s.media_av_enabled:
+        return ClamavScanner(s.clamav_host, s.clamav_port)
     return SimulatedScanner()
 
 
 def default_store() -> MediaStore:
-    if get_settings().media_storage_enabled:  # real MinIO/S3 adapter not built yet
-        raise NotImplementedError("media_storage_enabled is set but no real store is wired")
+    s = get_settings()
+    if s.media_storage_enabled:
+        return S3Store(
+            endpoint_url=s.s3_endpoint_url, region=s.s3_region, bucket=s.s3_bucket,
+            access_key=s.s3_access_key, secret_key=s.s3_secret_key,
+        )
     return _SIM_STORE
 
 

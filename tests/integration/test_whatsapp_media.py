@@ -119,13 +119,13 @@ async def test_outbound_upload_gates_and_uploads() -> None:
     assert media_id == "media.UP" and meta.uploads == 1
 
 
-def test_enabling_real_adapters_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_enabling_flags_selects_real_adapters(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Flags off → simulated; flags on → the real clamav/S3 adapters (no service call here).
+    assert isinstance(media.default_scanner(), media.SimulatedScanner)
     monkeypatch.setenv("GROWTH_OPERATOR_MEDIA_AV_ENABLED", "true")
-    with pytest.raises(NotImplementedError):
-        media.default_scanner()
+    assert isinstance(media.default_scanner(), media.ClamavScanner)
     monkeypatch.setenv("GROWTH_OPERATOR_MEDIA_STORAGE_ENABLED", "true")
-    with pytest.raises(NotImplementedError):
-        media.default_store()
+    assert isinstance(media.default_store(), media.S3Store)
 
 
 # ---- E2E: normalizer media path -------------------------------------------------------
