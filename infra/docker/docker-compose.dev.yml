@@ -32,6 +32,34 @@ services:
       timeout: 5s
       retries: 10
 
+  # WhatsApp media handling (MVP-037 / BLOCKERS #12). Opt-in — only started with
+  # `docker compose --profile media up` (clamav is heavy: it loads virus definitions on boot).
+  # Enable via GROWTH_OPERATOR_MEDIA_AV_ENABLED / _MEDIA_STORAGE_ENABLED.
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["media"]
+    ports:
+      - "3310:3310"
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 180s   # first boot downloads/loads the virus database
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["media"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
   api:
     build:
       context: ../..
@@ -109,3 +137,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  miniodata:

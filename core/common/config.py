@@ -110,11 +110,20 @@ class Settings(BaseSettings):
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
 
     # WhatsApp media handling (MVP-037). Both OFF by default → simulated adapters (dev/tests).
-    # The real clamav AV scanner and MinIO/S3 object store are not wired yet (no deps added,
-    # §9); turning these on before those adapters exist fails closed (NotImplementedError) so
-    # a no-op simulated AV scanner can never silently run in production (BLOCKERS #12).
+    # When enabled, the real clamav scanner + S3/MinIO store below are used; if the service is
+    # unreachable the scan fails closed (media quarantined), so a no-op scanner never silently
+    # runs. Start the services with `docker compose --profile media up` (BLOCKERS #12).
     media_av_enabled: bool = Field(default=False)
     media_storage_enabled: bool = Field(default=False)
+    clamav_host: str = Field(default="localhost")
+    clamav_port: int = Field(default=3310)
+    # Object store (MinIO in dev; leave s3_endpoint_url unset for real AWS S3). The secret key
+    # comes from SOPS in prod; the dev defaults match the compose MinIO service.
+    s3_endpoint_url: str | None = Field(default="http://localhost:9000")
+    s3_region: str = Field(default="us-east-1")
+    s3_bucket: str = Field(default="gop-media")
+    s3_access_key: str = Field(default="minioadmin")
+    s3_secret_key: str = Field(default="minioadmin")  # noqa: S105 - dev fake; prod via SOPS
 
     # Vertical-pack bundle trust (MVP-039). Dev (default) installs from a directory with no
     # signature. Prod MUST set this False so the installer requires a MANIFEST.sha256 whose
