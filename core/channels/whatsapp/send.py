@@ -1,0 +1,237 @@
+"""Outbound WhatsApp send adapter — the single, gated exit to customers (MVP-034 + MVP-036).
+
+Every send passes four gates before any external call and refuses (no side effect) if any
+fails:
+
+  1. audit capability  — a fresh (<10min) audit entry authorising this exact msg.send
+                         → refuse ``approval_required``
+  2. execution token   — proof the send came from an approved action (stub → MVP-066)
+                         → refuse ``approval_required``
+  3. suppression       — contact is not on the suppression list for this class
+                         → refuse ``suppressed_contact``
+  4. consent           — marketing requires positive consent (transactional is exempt)
+                         → refuse ``consent_missing``
+
+On success it records the outbound message, emits ``msg.sent.v1`` and writes the audit
+outcome; on exhausted failure it marks the message failed and emits ``msg.failed.v1``. Meta
+calls go through the gated ``MetaClient`` (simulated until ``whatsapp_live_enabled``), with a
+``429`` Retry-After honoured and ``5xx`` retried a bounded number of times.
+
+Fail closed: a missing capability/token, a suppression-lookup error, or unknown consent all
+block the send. Ledger/figure checks (``figure_refs``) plug in here later — MVP-054.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
+from typing import Literal
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.audit.writer import verify_capability, write_outcome
+from core.channels.whatsapp.credentials import load_credentials
+from core.channels.whatsapp.meta_client import MetaClient, SendResult
+from core.events.outbox import emit
+from core.tenancy.middleware import org_scoped_session
+
+SEND_ACTION = "msg.send"
+MAX_RETRIES = 3
+_MAX_BACKOFF_S = 30.0
+# Positive marketing consent values (platform default; pack-extensible later — MVP-036).
+_POSITIVE_CONSENT = frozenset({"opted_in", "granted"})
+
+MessageClass = Literal["marketing", "transactional"]
+
+Sleeper = Callable[[float], Awaitable[None]]
+
+
+class SendRefused(Exception):
+    """A gate blocked the send. ``code`` is a canonical error code (core.common.errors)."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(f"{code}: {detail}")
+        self.code = code
+        self.detail = detail
+
+
+@dataclass
+class SendOutcome:
+    sent: bool
+    message_id: UUID | None
+    provider_message_id: str | None = None
+    retryable: bool = False
+
+
+def _verify_execution_token(token: str | None, audit_id: UUID | None) -> bool:
+    """Interim execution-token gate. Fail-closed: a send must carry a non-empty token proving
+    it originated from an approved action. Real single-use binding to the audit capability
+    lands with the approval execution-token store — MVP-066."""
+    return bool(token)
+
+
+def _assert_not_suppressed(scopes: set[str], message_class: MessageClass) -> None:
+    if "all" in scopes:
+        raise SendRefused("suppressed_contact", "contact suppressed (all)")
+    if message_class == "marketing" and "marketing" in scopes:
+        raise SendRefused("suppressed_contact", "contact suppressed (marketing)")
+
+
+def _assert_consent(consent_status: str, message_class: MessageClass) -> None:
+    if message_class == "transactional":
+        return  # transactional class is exempt from marketing consent (MVP-036)
+    if consent_status not in _POSITIVE_CONSENT:
+        raise SendRefused("consent_missing", f"marketing requires consent (is {consent_status!r})")
+
+
+async def _suppression_scopes(session: AsyncSession, contact_id: UUID) -> set[str]:
+    """Read the contact's suppression scopes. Any lookup error fails closed (no send)."""
+    try:
+        rows = (
+            await session.execute(
+                text("SELECT scope FROM suppressions WHERE contact_id = :cid"),
+                {"cid": str(contact_id)},
+            )
+        ).scalars().all()
+    except Exception as exc:  # noqa: BLE001 - fail closed on any suppression-lookup failure
+        raise SendRefused("suppressed_contact", "suppression lookup failed") from exc
+    return set(rows)
+
+
+def _is_retryable(result: SendResult) -> bool:
+    sc = result.status_code
+    return sc is None or sc == 429 or (500 <= sc < 600)
+
+
+def _backoff(attempt: int) -> float:
+    return min(2.0**attempt, _MAX_BACKOFF_S)
+
+
+async def _send_with_retries(
+    client: MetaClient, phone_number_id: str, access_token: str, to: str, body: str,
+    sleeper: Sleeper, max_retries: int = MAX_RETRIES,
+) -> SendResult:
+    """Call the gated Meta client, honouring Retry-After on 429 and retrying 5xx up to
+    ``max_retries`` times. A non-retryable status (e.g. 4xx) fails immediately."""
+    attempt = 0
+    while True:
+        result = await client.send_text(phone_number_id, access_token, to, body)
+        if result.ok or not _is_retryable(result) or attempt >= max_retries:
+            return result
+        delay = result.retry_after_s if result.retry_after_s is not None else _backoff(attempt)
+        await sleeper(delay)
+        attempt += 1
+
+
+async def send(
+    *,
+    org_id: UUID,
+    conversation_id: UUID,
+    body: str,
+    audit_id: UUID | None,
+    execution_token: str | None,
+    figure_refs: Sequence[str] = (),
+    message_class: MessageClass = "marketing",
+    meta_client: MetaClient | None = None,
+    sleeper: Sleeper = asyncio.sleep,
+) -> SendOutcome:
+    """Send ``body`` on ``conversation_id`` after the four gates. Raises ``SendRefused`` if a
+    gate blocks it; otherwise attempts the send and returns the recorded outcome.
+
+    ``figure_refs`` (quoted prices etc.) is accepted for the ledger gate that plugs in at
+    MVP-054; it is not yet enforced here.
+    """
+    client = meta_client or MetaClient()
+
+    # --- Gates + durable queued row, in one tenant-scoped transaction ---
+    async with org_scoped_session(org_id) as s:
+        conv = (
+            await s.execute(
+                text(
+                    "SELECT c.contact_id, c.channel_id, ct.phone, ct.consent_status "
+                    "FROM conversations c JOIN contacts ct ON ct.id = c.contact_id "
+                    "WHERE c.id = :conv"
+                ),
+                {"conv": str(conversation_id)},
+            )
+        ).mappings().first()
+        if conv is None:  # RLS-scoped: unknown or another org's conversation
+            raise SendRefused("approval_required", "unknown conversation")
+
+        # Gate 1 — audit capability authorising this exact send.
+        if audit_id is None or not await verify_capability(
+            s, audit_id, action=SEND_ACTION, resource=str(conversation_id)
+        ):
+            raise SendRefused("approval_required", "missing or invalid audit capability")
+
+        # Gate 2 — execution token (stub, fail-closed).
+        if not _verify_execution_token(execution_token, audit_id):
+            raise SendRefused("approval_required", "missing execution token")
+
+        # Gates 3 + 4 — suppression then consent (both fail-closed).
+        _assert_not_suppressed(await _suppression_scopes(s, conv["contact_id"]), message_class)
+        _assert_consent(conv["consent_status"], message_class)
+
+        creds = await load_credentials(s, org_id=org_id, channel_id=conv["channel_id"])
+        if creds is None:
+            raise SendRefused("approval_required", "channel not connected")
+
+        message_id: UUID = (
+            await s.execute(
+                text(
+                    "INSERT INTO messages "
+                    "(org_id, conversation_id, direction, sender, body, audit_id, status) "
+                    "VALUES (:org, :conv, 'outbound', 'agent', :body, :aid, 'queued') "
+                    "RETURNING id"
+                ),
+                {"org": str(org_id), "conv": str(conversation_id), "body": body,
+                 "aid": str(audit_id)},
+            )
+        ).scalar_one()
+        to, phone_number_id, access_token = (
+            conv["phone"], creds["phone_number_id"], creds["access_token"]
+        )
+    # queued row committed; audit_id is guaranteed non-None past gate 1
+    assert audit_id is not None
+
+    # --- External send with bounded retries (gated-simulated) ---
+    result = await _send_with_retries(client, phone_number_id, access_token, to, body, sleeper)
+
+    # --- Record the outcome in a second transaction ---
+    async with org_scoped_session(org_id) as s:
+        if result.ok:
+            await s.execute(
+                text("UPDATE messages SET status='sent', provider_message_id=:pmid WHERE id=:id"),
+                {"pmid": result.provider_message_id, "id": str(message_id)},
+            )
+            await emit(
+                s, org_id=org_id, event_type="msg.sent.v1", source="whatsapp",
+                payload={
+                    "message_id": str(message_id),
+                    "conversation_id": str(conversation_id),
+                    "audit_id": str(audit_id),
+                },
+            )
+            await write_outcome(s, audit_id, "succeeded")
+            return SendOutcome(
+                sent=True, message_id=message_id,
+                provider_message_id=result.provider_message_id,
+            )
+
+        retryable = _is_retryable(result)
+        await s.execute(
+            text("UPDATE messages SET status='failed' WHERE id=:id"), {"id": str(message_id)}
+        )
+        await emit(
+            s, org_id=org_id, event_type="msg.failed.v1", source="whatsapp",
+            payload={
+                "message_id": str(message_id),
+                "error": (result.error or f"status {result.status_code}")[:500],
+                "retryable": retryable,
+            },
+        )
+        await write_outcome(s, audit_id, "failed", detail=result.error)
+        return SendOutcome(sent=False, message_id=message_id, retryable=retryable)
