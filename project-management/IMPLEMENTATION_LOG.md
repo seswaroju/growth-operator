@@ -563,3 +563,32 @@ make -n dev / migrate / test / seed
 **Commands:** ruff · mypy core (53) + migrations · guards (5) · `pytest -q` **174 passed, 0 skipped**. Migration round-trip verified.
 
 **Deferred:** creds-never-logged scrub test (031 connect) + the p95<50ms soak — connect/soak land with MVP-031; gated real-send stays blocked (#3). Remaining WhatsApp: 031 (connect), 034 (send, gated), 035/036/037.
+
+## 2026-07-30 — MVP-031 · WhatsApp WABA connect (channel onboarding + encrypted credentials)
+
+**Ticket:** [MVP-031](../docs/tickets/MVP-031.md) · P0. Branch `feature/mvp-031-whatsapp-connect` (off main). Lets an owner attach their WhatsApp Business number so the inbound path (032/033) and the coming send adapter (034) have a channel + credential to work with. No real Meta calls — the client runs **simulated** until `whatsapp_live_enabled` (§10.4 / BLOCKERS #3); the real httpx paths are written so flipping the flag is the only change.
+
+**Files (new):** `core/common/crypto.py` (Fernet encrypt/decrypt for creds at rest), `core/channels/whatsapp/meta_client.py` (gated Meta client: verify_credentials / register_webhook / echo_test / send_text), `core/channels/whatsapp/credentials.py` (store/load encrypted creds), `core/channels/whatsapp/connect.py` (connect + health endpoints), `migrations/versions/cfd462c65ec9_channel_credentials.py`, `tests/integration/test_whatsapp_connect.py`.
+**Files (modified):** `core/common/config.py` (`whatsapp_live_enabled`, `credential_encryption_key` + `_DEV_CREDENTIAL_KEY`), `core/api/main.py` (mount connect router).
+
+**Migration `cfd462c65ec9`** (revises `126c955c13de`): `channel_credentials` (channel_id PK → channels ON DELETE CASCADE, org_id, ciphertext, timestamps), **RLS applied**. Upgrade→downgrade→upgrade round-trip verified; `relforcerowsecurity=true`.
+
+**Connect flow** — `POST /v1/channels/whatsapp/connect` (owner, `ORG_MANAGE`): (1) token gate `verify_credentials` → else **400 invalid_token**; (2) handshake gate `register_webhook` → else **403 handshake_failed**; (3) echo gate `echo_test` → else **200 {connected:false, reason:echo_failed}** (nothing persisted). All pass → cross-org check via `resolve_channel` (number owned elsewhere → **409**), else insert/update `channels` (active) + `store_credentials` (Fernet ciphertext). `GET /.../{channel_id}/health` re-runs the echo probe with stored creds; unknown/other-org → 404 (RLS-scoped).
+
+**Security:** access token encrypted at rest (never plaintext in DB), never logged (scrub test), never returned in a response. Credential store is org-scoped + RLS; cross-org number takeover rejected.
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| valid connect → channel active + credential encrypted at rest | `test_whatsapp_connect::test_connect_success_persists_channel_and_encrypted_credential` | PASS |
+| bad token → 400, no row | `test_whatsapp_connect::test_bad_token_returns_400_and_writes_no_row` | PASS |
+| handshake mismatch → 403, no row | `test_whatsapp_connect::test_handshake_mismatch_returns_403_and_writes_no_row` | PASS |
+| echo failure → connected=false, no row | `test_whatsapp_connect::test_echo_failure_reports_not_connected_and_writes_no_row` | PASS |
+| credentials never logged | `test_whatsapp_connect::test_credentials_never_logged` | PASS |
+| reconnect same org → update in place (rotates cred) | `test_whatsapp_connect::test_reconnect_same_org_updates_in_place` | PASS |
+| number owned by another org → 409 | `test_whatsapp_connect::test_number_owned_by_another_org_is_rejected` | PASS |
+| health probe (healthy + 404 unknown) | `test_whatsapp_connect::test_health_probe` | PASS |
+
+**Commands:** ruff (all pass) · mypy core (57) + migrations (3) · guards (5) · `pytest -q` **183 passed, 0 skipped** · migration round-trip OK.
+
+**Deferred:** real Meta echo against a test number stays gated (#3) — verified in simulated mode; going-live flips `whatsapp_live_enabled` once API access lands. Next: MVP-034 (gated send adapter).
