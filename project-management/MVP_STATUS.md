@@ -44,6 +44,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-030 | Typed event catalog | ✅ | 2026-07-30 | `ee2ed43` | `gen_events.py` → `types.py` (specs+checksum) drift test; `emit()` validates payloads |
 | MVP-032 | Webhook ingress + sig verify | ✅ | 2026-07-30 | `33a76bc` | `/webhooks/whatsapp` constant-time HMAC verify + dedupe + quarantine, always-200; **174 pytest** |
 | MVP-033 | Message normalizer | ✅ | 2026-07-30 | `33a76bc` | webhook→contact/conversation/message + `msg.received.v1` emit; `resolve_channel` fn; idempotent |
+| MVP-031 | WhatsApp WABA connect | ✅ | 2026-07-30 | _uncommitted_ | Migration `cfd462c65ec9` (`channel_credentials`+RLS); `POST /v1/channels/whatsapp/connect` token/handshake/echo gates (gated-simulated), Fernet-encrypted creds at rest, cross-org 409, health probe; **183 pytest** |
 | MVP-024 | Audit chain writer | ✅ | 2026-07-30 | `dbab65a` | Migration 006 (audit_log append-only +RLS +trigger, dedupe_consumer); per-org hash chain writer + 10m capability + `audit-verify.py`; p95 **1.12ms**; **131 pytest** |
 | MVP-025 | Outbox emit + publisher | ✅ | 2026-07-30 | `dbab65a` | Migration 007 (event_outbox global); `emit` same-txn + `publish_batch` at-least-once → Redis streams (CloudEvents); crash-window + idempotency; **137 pytest** |
 

@@ -10,12 +10,20 @@ pre-commit scanning) is out of scope here — MVP-008.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+# A deterministic, valid Fernet key for LOCAL dev/tests only (derived, not a real secret).
+# Production supplies a real key via SOPS (GROWTH_OPERATOR_CREDENTIAL_ENCRYPTION_KEY).
+_DEV_CREDENTIAL_KEY = base64.urlsafe_b64encode(
+    hashlib.sha256(b"growth-operator-dev-credential-key").digest()
+).decode()
 
 
 class SopsSecretsSource(PydanticBaseSettingsSource):
@@ -95,6 +103,11 @@ class Settings(BaseSettings):
     # Real Meta sends stay gated (BLOCKERS #3) — these only cover ingress verification.
     whatsapp_app_secret: str = Field(default="dev-whatsapp-app-secret")  # noqa: S105 - dev fake
     whatsapp_verify_token: str = Field(default="dev-verify-token")  # noqa: S105 - dev fake
+    # Real Meta API calls (webhook registration, sends) are OFF until API access lands
+    # (BLOCKERS #3, §10.4). While false, the Meta client runs in simulated mode.
+    whatsapp_live_enabled: bool = Field(default=False)
+    # Fernet key used to encrypt channel credentials (WABA access token) at rest.
+    credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
 
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
