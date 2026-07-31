@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.audit.writer import verify_capability, write_outcome
 from core.channels.whatsapp.credentials import load_credentials
 from core.channels.whatsapp.meta_client import MetaClient, SendResult
+from core.channels.whatsapp.templates import assert_template_sendable
 from core.events.outbox import emit
 from core.tenancy.middleware import org_scoped_session
 
@@ -111,14 +112,14 @@ def _backoff(attempt: int) -> float:
 
 
 async def _send_with_retries(
-    client: MetaClient, phone_number_id: str, access_token: str, to: str, body: str,
-    sleeper: Sleeper, max_retries: int = MAX_RETRIES,
+    send_fn: Callable[[], Awaitable[SendResult]], sleeper: Sleeper,
+    max_retries: int = MAX_RETRIES,
 ) -> SendResult:
-    """Call the gated Meta client, honouring Retry-After on 429 and retrying 5xx up to
+    """Call ``send_fn`` (a Meta send), honouring Retry-After on 429 and retrying 5xx up to
     ``max_retries`` times. A non-retryable status (e.g. 4xx) fails immediately."""
     attempt = 0
     while True:
-        result = await client.send_text(phone_number_id, access_token, to, body)
+        result = await send_fn()
         if result.ok or not _is_retryable(result) or attempt >= max_retries:
             return result
         delay = result.retry_after_s if result.retry_after_s is not None else _backoff(attempt)
@@ -135,14 +136,18 @@ async def send(
     execution_token: str | None,
     figure_refs: Sequence[str] = (),
     message_class: MessageClass = "marketing",
+    template: tuple[str, str] | None = None,
     meta_client: MetaClient | None = None,
     sleeper: Sleeper = asyncio.sleep,
 ) -> SendOutcome:
-    """Send ``body`` on ``conversation_id`` after the four gates. Raises ``SendRefused`` if a
-    gate blocks it; otherwise attempts the send and returns the recorded outcome.
+    """Send on ``conversation_id`` after the gates. Raises ``SendRefused`` (or
+    ``TemplateNotSendable``) if a gate blocks it; otherwise attempts the send and returns the
+    recorded outcome.
 
-    ``figure_refs`` (quoted prices etc.) is accepted for the ledger gate that plugs in at
-    MVP-054; it is not yet enforced here.
+    ``template`` = (template_key, language) sends an approved template instead of freeform
+    text (``body`` is still stored as the message record); a non-approved template is refused
+    by the MVP-035 gate. ``figure_refs`` (quoted prices etc.) is accepted for the ledger gate
+    that plugs in at MVP-054; it is not yet enforced here.
     """
     client = meta_client or MetaClient()
 
@@ -175,6 +180,10 @@ async def send(
         _assert_not_suppressed(await _suppression_scopes(s, conv["contact_id"]), message_class)
         _assert_consent(conv["consent_status"], message_class)
 
+        # Template gate (MVP-035) — a non-approved template can never go out.
+        if template is not None:
+            await assert_template_sendable(s, org_id, template[0], template[1])
+
         creds = await load_credentials(s, org_id=org_id, channel_id=conv["channel_id"])
         if creds is None:
             raise SendRefused("approval_required", "channel not connected")
@@ -198,7 +207,14 @@ async def send(
     assert audit_id is not None
 
     # --- External send with bounded retries (gated-simulated) ---
-    result = await _send_with_retries(client, phone_number_id, access_token, to, body, sleeper)
+    async def _do() -> SendResult:
+        if template is not None:
+            return await client.send_template(
+                phone_number_id, access_token, to, template[0], template[1]
+            )
+        return await client.send_text(phone_number_id, access_token, to, body)
+
+    result = await _send_with_retries(_do, sleeper)
 
     # --- Record the outcome in a second transaction ---
     async with org_scoped_session(org_id) as s:

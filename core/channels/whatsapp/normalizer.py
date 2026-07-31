@@ -223,6 +223,9 @@ async def normalize_pending(limit: int = 100) -> int:
                     "SELECT id, payload FROM webhook_events "
                     "WHERE provider = 'whatsapp' AND processed_at IS NULL "
                     "AND payload->>'_malformed' IS NULL "
+                    # Template-status updates are drained by templates.py, not here.
+                    "AND coalesce(payload->'entry'->0->'changes'->0->>'field', 'messages') "
+                    "    <> 'message_template_status_update' "
                     "ORDER BY received_at LIMIT :n"
                 ),
                 {"n": limit},

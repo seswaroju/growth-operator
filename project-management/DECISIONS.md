@@ -203,3 +203,13 @@ These appear in `IMPLEMENTATION_AUDIT.md` under "Questions requiring founder dec
 Bounds on the exception: it fires **only** on a matched STOP/UNSUB keyword, sends **only** the fixed platform confirmation text (no model-generated content), is transactional-class, and remains gated-simulated until `whatsapp_live_enabled`. The send still passes the MVP-034 gates (it mints its own audit capability + execution token), so it is fully audited. No other automated customer-facing send is authorised by this decision.
 
 **Decided by:** Founder (2026-07-30), in response to Claude flagging the §19 conflict before implementing.
+
+---
+
+### 2026-07-31 — MVP-035 full scope: template status webhooks + channels.waba_id (touches MVP-031)
+
+**Decision (founder-approved):** Build MVP-035 at **full scope**, including webhook-driven template status updates. Meta's `message_template_status_update` webhook is keyed by WABA id, but the WABA id lived only inside the encrypted channel credential — so to resolve the org, migration `83efabba79ee` adds a queryable `channels.waba_id` column (an account identifier, not a secret; the access token stays encrypted) plus a `resolve_channel_by_waba` SECURITY DEFINER lookup, and MVP-031's already-merged `connect.py` now populates `waba_id` on connect. Modifying merged connect.py is justified: it's additive, backward-compatible (existing rows get NULL and simply won't resolve status webhooks until reconnected), and the alternative (parsing the encrypted blob for every status webhook) is worse.
+
+Also: the `send()` adapter gained an optional `template=(key, language)` path (template gate + `send_template`); freeform sends are unchanged. Real Meta submission/webhooks remain gated (#3).
+
+**Decided by:** Founder (2026-07-31), selecting "Full scope incl. waba_id + connect touch."
