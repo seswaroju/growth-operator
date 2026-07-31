@@ -109,6 +109,13 @@ class Settings(BaseSettings):
     # Fernet key used to encrypt channel credentials (WABA access token) at rest.
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
 
+    # WhatsApp media handling (MVP-037). Both OFF by default → simulated adapters (dev/tests).
+    # The real clamav AV scanner and MinIO/S3 object store are not wired yet (no deps added,
+    # §9); turning these on before those adapters exist fails closed (NotImplementedError) so
+    # a no-op simulated AV scanner can never silently run in production (BLOCKERS #12).
+    media_av_enabled: bool = Field(default=False)
+    media_storage_enabled: bool = Field(default=False)
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot

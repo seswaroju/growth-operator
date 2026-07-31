@@ -142,6 +142,35 @@ class MetaClient:
             )
         return self._send_result(resp)
 
+    async def download_media(self, media_id: str, access_token: str) -> bytes:
+        """Fetch a media object's bytes (gated). Simulated → deterministic fake bytes."""
+        if self.simulated:
+            return b"SIMULATED_MEDIA:" + media_id.encode()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            meta = await client.get(f"{GRAPH_BASE}/{media_id}", headers=headers)
+            meta.raise_for_status()
+            url = meta.json()["url"]
+            blob = await client.get(url, headers=headers)
+            blob.raise_for_status()
+        return blob.content
+
+    async def upload_media(
+        self, phone_number_id: str, access_token: str, data: bytes, mime: str
+    ) -> str:
+        """Upload media to Meta for an outbound send (gated). Simulated → a fake media id."""
+        if self.simulated:
+            return f"media.SIM-{uuid.uuid4().hex[:16]}"
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.post(
+                f"{GRAPH_BASE}/{phone_number_id}/media",
+                headers={"Authorization": f"Bearer {access_token}"},
+                data={"messaging_product": "whatsapp"},
+                files={"file": ("upload", data, mime)},
+            )
+            resp.raise_for_status()
+        return str(resp.json()["id"])
+
     @staticmethod
     def _send_result(resp: httpx.Response) -> SendResult:
         if resp.status_code == 200:
