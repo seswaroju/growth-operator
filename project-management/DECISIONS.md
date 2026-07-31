@@ -213,3 +213,18 @@ Bounds on the exception: it fires **only** on a matched STOP/UNSUB keyword, send
 Also: the `send()` adapter gained an optional `template=(key, language)` path (template gate + `send_template`); freeform sends are unchanged. Real Meta submission/webhooks remain gated (#3).
 
 **Decided by:** Founder (2026-07-31), selecting "Full scope incl. waba_id + connect touch."
+
+---
+
+### 2026-07-31 — MVP-038 pack contracts model the pack DATA where it deviates from core-platform.md signatures
+
+**Decision (flagged, §4):** The `core/packs/contracts.py` models follow docs/21-platform/core-platform.md, but the authoritative pack **data** under `verticals/` deviates from those illustrative signatures in several places. Since the acceptance criterion is "every verticals/* file parses," the data wins and the models match it, with the deviations recorded here:
+- `AgentBinding.kpi_defs` (spec) → `kpis: list[str]` + `budgets: dict` (data); bindings.yaml also carries a top-level `planner:` block → `BindingsPack.planner`.
+- `PricingStrategyDef.rule_schema`/`rate_source_requirements` (spec) → `rules`/`rate_sources` (data); modelled `_Open` because rules are engine-specific (validated by the pricing engine, MVP-050+).
+- `CatalogSchema.identity_keys` is a **list of composite key-lists** (`[["huid"],["sku"]]`), not `list[str]`; the on-disk file is a JSON-Schema-plus document, split via `CatalogSchema.from_document` (version from the `$id` tail).
+- `IntegrationSpec.mcp_server` may be a bare string; integration files carry provider-specific extras (calendars, sources_ref, usage, templates_namespace) → modelled `_Open`.
+- Auxiliary files not in the core-platform.md signatures (onboarding/ui/calendar/evals) got models too (founder chose full scope 2026-07-31) so literally every contract file parses.
+
+Models are **strict** (`extra="forbid"`) where the platform owns the shape (manifest, bindings core, catalog, workflow, calendar) and **open** where the pack/engine does. Prompt `.md` anchor-splitting is MVP-039; the `templates/` seed is MVP-035 — both excluded from the 038 contract walk.
+
+**Decided by:** Claude (flagged for founder awareness) — required to satisfy "every file parses"; the core-platform.md signatures are illustrative, the pack files are ground truth.
