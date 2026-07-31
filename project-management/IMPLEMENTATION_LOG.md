@@ -592,3 +592,5 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (all pass) · mypy core (57) + migrations (3) · guards (5) · `pytest -q` **183 passed, 0 skipped** · migration round-trip OK.
 
 **Deferred:** real Meta echo against a test number stays gated (#3) — verified in simulated mode; going-live flips `whatsapp_live_enabled` once API access lands. Next: MVP-034 (gated send adapter).
+
+**Commit `2160890`** on `feature/mvp-031-whatsapp-connect`; **merged to main `644b334` and pushed** (`a884700..644b334`) 2026-07-30.
