@@ -755,3 +755,27 @@ make -n dev / migrate / test / seed
 **Commands:** ruff (pass) · mypy core (63) (pass) · guards (5, pass) · `pytest -q` **279 passed, 0 skipped**.
 
 **Deferred:** `.tar.zst` bundle packing/unpacking (needs `zstandard` dep — BLOCKERS #13; verification is over the tree so no acceptance criterion is affected); publisher keys + the signing tool are explicitly out of MVP-039 scope; the real platform public key is config/secret for prod.
+
+## 2026-07-31 — MVP-040 · Transactional installer + API (the L-effort pack install pipeline)
+
+**Ticket:** [MVP-040](../docs/tickets/MVP-040.md) · P0 · "L". Branch `feature/mvp-040-installer` (off main). Founder chose **Option A** (build installer, defer policies/workflows steps whose tables aren't built — 2026-07-31).
+
+**Files (new):** `core/packs/installer.py`, `core/packs/router.py`, `migrations/versions/5dcbda42efca_pack_installation_failed_status.py`, `tests/integration/test_pack_installer.py`. **Files (modified):** `core/api/main.py` (mount packs router).
+
+**Migration `5dcbda42efca`** (revises `83efabba79ee`): additive — adds `'failed'` to `pack_installations.status` CHECK so a rolled-back install is distinguishable from one still `installing`. Round-trip verified.
+
+**Installer** — `install(org_id, pack_dir, config)`: `load_bundle` (verify + parse) → get-or-create `packs` row → **digest idempotency** (an existing `active` install of the same bundle digest → no-op) → create `pack_installations` (`installing`) → **single tenant-scoped txn** running the 6 steps → `active` + `pack.installed` audit. On any step failure the txn rolls back (zero partial artifact rows) and a separate txn marks the install `failed` + records `_error_step`. **Steps:** 1 catalog schema → `catalog_schemas`; 2 pack-migrations (none); 3 prompt layers → `prompt_layers` (candidate, pack-global, NOT active); 4 **policies** (deferred no-op, #14); 5 **workflows** (deferred no-op, #14); 6 bindings → `agent_bindings` (upsert) + paused `agent_instances` (unseeded `support` archetype skipped). `uninstall`: re-pause the org's instances, mark `uninstalled`, retain the catalog schema, leave L3 untouched (attribute freeze + cred revocation deferred, #14). `list_packs`: published registry.
+**API** — `GET /v1/packs` (owner), `POST /v1/packs/installations` (owner, 201), `DELETE /v1/packs/installations/{id}` (owner, 204).
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| install → paused instances + candidate layers + schema + bindings + audit | `test_pack_installer::test_install_seeds_paused_instances_and_candidate_layers` | PASS |
+| failure at each of the 6 steps → zero partial rows + install failed at that step | `::test_failure_at_each_step_rolls_back_fully` (parametrized ×6) | PASS |
+| reinstall same digest → no-op fast path (no dupes) | `::test_reinstall_same_digest_is_noop` | PASS |
+| uninstall: instances re-paused, schema retained, L3 untouched | `::test_uninstall_pauses_instances_retains_schema_and_l3` | PASS |
+| GET /v1/packs lists published | `::test_list_packs_returns_published` | PASS |
+
+**Commands:** ruff (pass) · mypy core (65) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **289 passed, 0 skipped** · migration round-trip OK · routes `/v1/packs(/installations)` registered.
+
+**Deferred (BLOCKERS #14):** policies/workflows seeding step functions (MVP-044, once 014/016 land) — the installer already calls the no-op hooks; uninstall attribute-freeze (MVP-045, catalog_items/012) + credential revocation; upgrade orchestration (post-MVP, out of scope).
