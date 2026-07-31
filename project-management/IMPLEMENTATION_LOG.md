@@ -712,3 +712,25 @@ make -n dev / migrate / test / seed
 **Deferred (BLOCKERS #12):** real clamav + MinIO/S3 clients as deps + docker-compose services + wiring behind the two flags; media rendering in the chat transcript (frontend); Meta media download/upload gated (#3).
 
 **🎯 WhatsApp channel group (MVP-031–037) complete:** connect, ingress + signature verify, normalize, send (4 gates + retries), templates + status sync, opt-out compliance, media — end-to-end, gated-simulated for all real Meta I/O.
+
+## 2026-07-31 — MVP-038 · Pack contract models (typed L0↔L1 contracts)
+
+**Ticket:** [MVP-038](../docs/tickets/MVP-038.md) · P0 · "S". Branch `feature/mvp-038-pack-contracts` (off main). First ticket of the pack subsystem. Founder chose **full scope** (also model onboarding/ui/calendar/evals so every verticals/* file parses).
+
+**Files (new):** `core/packs/contracts.py` (pure pydantic, zero I/O), `tests/unit/test_pack_contracts.py`. No DB, no API, no deps (pydantic already present). No migration.
+
+**Contracts** (per docs/21-platform/core-platform.md §40–92): `PackManifest` (+`SlotSpec`/`PackRequires`/`PackProvides`/`Signing`), `AgentBinding` (+`TaskDef`/`PromptLayerRef`/`ToolGrant`/`PolicyRuleRef`), `BindingsPack`, `CatalogSchema` (+`from_document`), `PricingStrategyDef`, `WorkflowDef`, `IntegrationSpec`, `OnboardingPack`, `UiPack`, `CalendarPack`, `EvalSuite`, plus `CompliancePack`/`KPIPack`/`PromptLayerDef` (no file yet — for later tickets). **Strict** (`extra=forbid`) where the platform owns the shape (manifest, bindings core, catalog, workflow, calendar); **open** where the pack/engine does (integrations, pricing rules, onboarding, ui, evals).
+
+**Doc-vs-data deviations** (§4, DECISIONS 2026-07-31): modelled the pack data (`kpis`+`budgets` not `kpi_defs`; `rules`/`rate_sources` not `rule_schema`/`rate_source_requirements`; `identity_keys` is a list of composite key-lists; `mcp_server` may be a bare string; catalog file is a JSON-Schema-plus split by `from_document`) so every file parses.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| every docs/verticals/* contract file parses (both packs) | `test_pack_contracts::test_every_pack_file_parses` (parametrized over all files) | PASS |
+| manifests validate; slots present | `::test_manifest_fields` | PASS |
+| bindings + catalog schema validate | `::test_bindings_and_catalog` | PASS |
+| one wrong field → path-precise error | `::test_unknown_manifest_field_is_path_precise`, `::test_bad_binding_tier_names_the_path`, `::test_workflow_missing_required_field`, `::test_pricing_engine_enum_enforced` | PASS |
+
+**Commands:** ruff (pass) · mypy core (62) (pass) · guards (5, pass) · `pytest -q` **266 passed, 0 skipped**.
+
+**Deferred:** prompt `.md` anchor-splitting into `PromptLayerDef` records (MVP-039); `templates/` seed is MVP-035 (excluded from the contract walk). Signing verify is dev-mode-first (MVP-039).
