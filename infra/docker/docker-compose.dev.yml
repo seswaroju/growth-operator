@@ -37,6 +37,9 @@ services:
   # Enable via GROWTH_OPERATOR_MEDIA_AV_ENABLED / _MEDIA_STORAGE_ENABLED.
   clamav:
     image: clamav/clamav:1.4
+    # The clamav image publishes no arm64 build; pin amd64 so it runs on Apple-Silicon dev
+    # (emulated) and amd64 servers (native) alike.
+    platform: linux/amd64
     profiles: ["media"]
     ports:
       - "3310:3310"
