@@ -276,3 +276,11 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - Compiled validators + CEL programs are **cached per (pack, version)** for the <10ms budget.
 
 **Decided by:** Claude (flagged) — satisfies the ticket acceptance; jsonschema was already installed.
+
+---
+
+### 2026-07-31 — MVP-048 embeddings built gated-simulated; provider deferred (founder choice)
+
+**Decision (founder-approved):** Build the full semantic-search pipeline now with a **deterministic simulated embedder** (seeded PRNG per text — no paid API), gated behind `embeddings_provider_enabled` (off → simulated; on → the real provider, not yet wired → fails closed). The real hosted embedding provider is the founder's pick later (§9), same pattern as WhatsApp/media. Design points: kNN via pgvector `<=>` (cosine, HNSW); **RRF k=60** fuses BM25 + kNN; a kNN neighbour joins `results` only within `SEMANTIC_MAX_DISTANCE` (0.35) else it's offered as `nearest`; the empty→nearest contract returns the 3 closest when there are no confident results. BLOCKERS #16.
+
+**Decided by:** Founder (2026-07-31, "Build 048 gated-simulated").

@@ -112,3 +112,10 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Severity:** Medium (transient) — broke doc access + 3 event-type tests (topics.yaml unreachable).
 - **Description:** The tracked `docs` symlink (→ ../Growth-Operator-Vault) was replaced in the working tree by an unrelated stray directory; `git status` showed `D docs`. The vault itself was intact.
 - **Resolution (2026-07-31, founder-approved):** moved the stray dir out of the repo to `../growth-operator-docs-stray-backup` (nothing deleted), then `git checkout -- docs` restored the symlink. Verified `docs -> ../Growth-Operator-Vault`, topics.yaml reachable, full suite 315 passed. Not committed (docs was never staged).
+
+### 16. Embedding provider not selected + scheduler not wired (MVP-048)
+
+- **Severity:** Low — semantic search runs gated-simulated; real similarity awaits a provider.
+- **Owner:** Founder (provider choice + §9 dep + credentials) → Engineering (wire adapter + scheduler).
+- **Description:** MVP-048 ships a **deterministic simulated embedder** (no paid API) so the hybrid pipeline (kNN HNSW + RRF + empty→nearest) is fully built and tested. The real hosted embedding provider is **not chosen/wired** — enabling `embeddings_provider_enabled` fails closed (`NotImplementedError`). Also, `run_embeddings_batch` exists + `embed.register_jobs()` registers it, but the scheduler process entrypoint (`core/scheduler.py`) is still the MVP-028 placeholder, so the batch is not actually fired yet.
+- **Next action:** Founder picks an embedding provider (OpenAI / Voyage / Cohere / self-hosted), approves the client dep (§9) + credentials; then implement the real `Embedder` behind the flag and call `embed.register_jobs()` from the scheduler entrypoint once it's wired. The 1024-dim column + HNSW index are already in place (012).
