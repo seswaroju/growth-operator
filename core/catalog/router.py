@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.catalog import crud
+from core.catalog import crud, search
 from core.catalog.crud import (
     DuplicateIdentity,
     ItemInput,
@@ -78,6 +78,11 @@ class ItemListResponse(BaseModel):
     next_cursor: str | None = None
 
 
+class SearchResponse(BaseModel):
+    results: list[CatalogItemOut]
+    nearest: list[CatalogItemOut] = []  # populated on empty results by MVP-048
+
+
 def _to_input(body: CatalogItemIn) -> ItemInput:
     return ItemInput(
         title=body.title, price_mode=body.price_mode, attributes=body.attributes, sku=body.sku,
@@ -137,6 +142,19 @@ async def list_items(
     return ItemListResponse(
         items=[CatalogItemOut(**i) for i in items], next_cursor=next_cursor
     )
+
+
+@router.get("/search", response_model=SearchResponse, summary="Text search catalog items")
+async def search_catalog(
+    q: str = Query(..., min_length=1),
+    k: int = Query(default=8, ge=1, le=50),
+    current: CurrentAuth = Depends(requires(CATALOG_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> SearchResponse:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    results = await search.search_items(session, current.org_id, q, k=k)
+    return SearchResponse(results=[CatalogItemOut(**r) for r in results])
 
 
 @router.get("/items/{item_id}", response_model=CatalogItemOut, summary="Get a catalog item")

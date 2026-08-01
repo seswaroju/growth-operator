@@ -878,3 +878,22 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff (pass) · mypy core (68) (pass) · guards (5, pass) · `pytest -q` **315 passed, 0 skipped**.
 
 **Note:** mid-ticket the `docs/` vault symlink was found replaced by a stray directory (broke 3 event-type tests + doc access); restored with founder approval — moved the stray dir out of the repo, `git checkout -- docs` (BLOCKERS #15, resolved). **Deferred:** search/embeddings (047/048); the restaurant/kirana-specific validation fixtures (only jewelry + kirana packs exist).
+
+## 2026-07-31 — MVP-047 · Text search (BM25)
+
+**Ticket:** [MVP-047](../docs/tickets/MVP-047.md) · P0 · "S". Branch `feature/mvp-047-text-search` (off main).
+
+**Files (new):** `core/catalog/search.py`, `tests/integration/test_catalog_search.py`. **Files (modified):** `core/catalog/crud.py` (search.refresh on create/update; `_active_pack`/`_item_schema` return search_projection), `core/catalog/router.py` (`GET /catalog/search`). No migration (GIN index shipped in 012).
+
+**search.py** — `build_text` composes title + description + projected (`x-search`) attribute values (lists flattened); `refresh` rebuilds `search_text = to_tsvector('simple',t) || to_tsvector('english',t)` after each write (simple keeps exact tokens like "22k" + vernacular aliases; english adds stemming); `search_items` matches `websearch_to_tsquery('simple',q) || ('english',q)` and ranks by `ts_rank` over the GIN index, RLS-scoped. `GET /v1/catalog/search?q=&k=` → `{results, nearest:[]}` (nearest is MVP-048).
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| '22k chain' matches only the item with both tokens | `test_catalog_search::test_query_matches_and_exact_token` | PASS |
+| alias recall via a projected attribute ('aata') | `::test_projected_alias_recall` | PASS |
+| search_text updates on title edit | `::test_search_text_refreshes_on_title_edit` | PASS |
+
+**Commands:** ruff (pass) · mypy core (69) (pass) · guards (5, pass) · `pytest -q` **318 passed, 0 skipped** · route `/v1/catalog/search` registered.
+
+**Deferred:** hybrid embeddings + RRF fusion + nearest-on-empty (MVP-048); attribute filter pushdown (MVP-048); per-locale stemmers beyond en (post-MVP).
