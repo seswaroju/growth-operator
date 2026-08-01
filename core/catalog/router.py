@@ -25,6 +25,7 @@ from core.catalog.crud import (
     PreconditionFailed,
     etag,
 )
+from core.catalog.validate import ValidationProblems
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CATALOG_READ, CATALOG_WRITE
@@ -108,6 +109,11 @@ async def create_item(
         ) from exc
     except NoPackInstalled as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except ValidationProblems as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "attribute_validation", "errors": [p.as_dict() for p in exc.problems]},
+        ) from exc
 
     item = await crud.get_item(session, current.org_id, item_id)
     assert item is not None
@@ -170,6 +176,11 @@ async def update_item(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "item not found") from exc
     except PreconditionFailed as exc:
         raise HTTPException(status.HTTP_412_PRECONDITION_FAILED, str(exc)) from exc
+    except ValidationProblems as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "attribute_validation", "errors": [p.as_dict() for p in exc.problems]},
+        ) from exc
     response.headers["ETag"] = etag(item["updated_at"])
     return CatalogItemOut(**item)
 

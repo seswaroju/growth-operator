@@ -855,3 +855,26 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff (pass) · mypy core (67) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **307 passed, 0 skipped** · migration round-trip OK · routes `/v1/catalog/items(/{id})` registered.
 
 **Deferred:** attribute validation JSON Schema + CEL (MVP-046); search/embeddings (047/048); availability + stale-inputs (049). Identity dedup is app-level (a partial unique index could harden the race later — DECISIONS 2026-07-31).
+
+## 2026-07-31 — MVP-046 · Attribute validation (JSON Schema 2020-12 + CEL constraints)
+
+**Ticket:** [MVP-046](../docs/tickets/MVP-046.md) · P0 · "M". Branch `feature/mvp-046-attr-validation` (off main).
+
+**Files (new):** `core/catalog/validate.py`, `tests/unit/test_catalog_validate.py`. **Files (modified):** `core/catalog/crud.py` (validate on create/update; `_active_pack` returns json_schema; `_item_schema` helper), `core/catalog/router.py` (ValidationProblems → 422), `pyproject.toml` (+jsonschema explicit + mypy overrides), `tests/integration/test_catalog_crud.py` (real schema in fixture + a wiring test). No migration, no DB change.
+
+**validate.py** — `validate_attributes(attributes, json_schema, cache_key)` → `[AttributeProblem(path,error,rule)]`: Draft 2020-12 via `jsonschema` with `additionalProperties:false` injected (unknown attrs rejected); if the shape is clean, each `constraints[].cel` is evaluated over `{attributes}` via celpy (failure → `{path:"$", error:message, rule:cel}`). Compiled validators + CEL programs cached per (pack, version). `assert_valid` raises `ValidationProblems`, which the CRUD create/update endpoints map to **422** carrying the path-precise errors.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| jewelry net>gross → exact message | `test_catalog_validate::test_net_greater_than_gross_exact_message` | PASS |
+| gold purity must be karat (CEL) | `::test_gold_must_be_karat_constraint` | PASS |
+| unknown attribute rejected (additionalProperties) | `::test_unknown_attribute_rejected` | PASS |
+| missing required → path-precise | `::test_missing_required_is_path_precise` | PASS |
+| enum violation reported | `::test_enum_violation_reported` | PASS |
+| valid item → no problems | `::test_valid_item_has_no_problems` | PASS |
+| CRUD rejects invalid attributes (wiring → ValidationProblems) | `test_catalog_crud::test_create_rejects_invalid_attributes` | PASS |
+
+**Commands:** ruff (pass) · mypy core (68) (pass) · guards (5, pass) · `pytest -q` **315 passed, 0 skipped**.
+
+**Note:** mid-ticket the `docs/` vault symlink was found replaced by a stray directory (broke 3 event-type tests + doc access); restored with founder approval — moved the stray dir out of the repo, `git checkout -- docs` (BLOCKERS #15, resolved). **Deferred:** search/embeddings (047/048); the restaurant/kirana-specific validation fixtures (only jewelry + kirana packs exist).

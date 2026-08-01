@@ -21,6 +21,7 @@ from core.catalog.crud import (
     PreconditionFailed,
     etag,
 )
+from core.catalog.validate import ValidationProblems
 from core.common import db as dbmod
 from core.common.config import get_settings
 from core.tenancy.middleware import org_scoped_session
@@ -67,8 +68,10 @@ async def scene() -> AsyncIterator[dict]:
         )
         await conn.execute(
             "INSERT INTO catalog_schemas (pack_id, version, json_schema, identity_keys) "
-            "VALUES ($1, 2, '{}'::jsonb, $2)",
-            pack_id, ["huid", "sku"],
+            "VALUES ($1, 2, $2::jsonb, $3)",
+            pack_id,
+            '{"type":"object","properties":{"huid":{"type":"string"}}}',  # allows test attrs
+            ["huid", "sku"],
         )
     finally:
         await conn.close()
@@ -187,6 +190,16 @@ async def test_soft_delete_archives_and_delists(scene: dict) -> None:
     assert got is not None and got["status"] == "archived"
     assert item_id not in [i["id"] for i in listed]  # archived items are delisted
     assert ("delete", actor) in await _history_ops(org, item_id)
+
+
+async def test_create_rejects_invalid_attributes(scene: dict) -> None:
+    # The fixture schema allows only 'huid'; an unknown attribute fails validation (MVP-046).
+    org = scene["org"]
+    bad = ItemInput(title="x", price_mode="static", attributes={"huid": "H", "bogus": 1})
+    async with org_scoped_session(org) as s:
+        with pytest.raises(ValidationProblems) as ei:
+            await crud.create_item(s, org, bad, actor_id=uuid.uuid4())
+    assert ei.value.problems and ei.value.problems[0].rule == "schema"
 
 
 async def test_create_without_pack_raises() -> None:

@@ -264,3 +264,15 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **Dependency direction:** MVP-045's ticket lists "Dependencies: MVP-042", but 042 (index gen) is *on* catalog_items, so 045 must come first. 045 validates against `catalog_schemas` (registered by the installer, MVP-040). **045 now unblocks 042.** Deep attribute validation (JSON Schema + CEL) is MVP-046.
 
 **Decided by:** Claude (flagged for founder awareness) — all satisfy the ticket's acceptance; the schema-doc deviations are recorded above.
+
+---
+
+### 2026-07-31 — MVP-046 attribute validation: additionalProperties + jsonschema dep
+
+**Decisions (flagged):**
+- **`jsonschema` promoted to an explicit main dependency** (it was already present transitively; now declared so production has it). CEL is `cel-python` (already a dep).
+- **The validator injects `additionalProperties: false`** at the top level — the pack schemas don't set it, but the acceptance requires unknown attributes to be rejected. Platform policy: an attribute not in the pack schema is an error.
+- **JSON Schema (Draft 2020-12) runs first; CEL constraints only if the structure is valid** — a malformed shape would make cross-field CEL misfire. Problems come back as `{path, error, rule}` (rule="schema" for structural, the CEL expr for constraint failures).
+- Compiled validators + CEL programs are **cached per (pack, version)** for the <10ms budget.
+
+**Decided by:** Claude (flagged) — satisfies the ticket acceptance; jsonschema was already installed.

@@ -14,6 +14,7 @@ dependencies = [
     "redis>=5.2",
     "httpx>=0.28",
     "cel-python>=0.2",
+    "jsonschema>=4.20",
     "python-jose[cryptography]>=3.3",
     "argon2-cffi>=23.1",
     "opentelemetry-sdk>=1.28",
@@ -81,6 +82,11 @@ ignore_missing_imports = true
 # Media adapter clients (clamd / boto3) ship no type stubs (BLOCKERS #12).
 [[tool.mypy.overrides]]
 module = ["clamd.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+# jsonschema + celpy ship no (usable) type stubs.
+[[tool.mypy.overrides]]
+module = ["jsonschema.*", "celpy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
