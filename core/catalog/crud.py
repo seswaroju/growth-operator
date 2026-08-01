@@ -19,6 +19,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.catalog.validate import assert_valid
+
 # Columns copied verbatim into a history snapshot (everything but the history metadata).
 _ITEM_COLUMNS = (
     "id, org_id, pack_id, parent_item_id, sku, title, description, media, price_mode, "
@@ -71,8 +73,10 @@ def _decode_cursor(cursor: str) -> tuple[str, str]:
     return created_at, item_id
 
 
-async def _active_pack(session: AsyncSession, org_id: UUID) -> tuple[UUID, int, list[str]]:
-    """The org's active pack + its catalog schema version and identity columns."""
+async def _active_pack(
+    session: AsyncSession, org_id: UUID
+) -> tuple[UUID, int, list[str], dict[str, Any]]:
+    """The org's active pack + its catalog schema version, identity columns, and JSON schema."""
     pack_id = (
         await session.execute(
             text(
@@ -87,15 +91,15 @@ async def _active_pack(session: AsyncSession, org_id: UUID) -> tuple[UUID, int, 
     row = (
         await session.execute(
             text(
-                "SELECT version, identity_keys FROM catalog_schemas WHERE pack_id = :p "
-                "ORDER BY version DESC LIMIT 1"
+                "SELECT version, identity_keys, json_schema FROM catalog_schemas "
+                "WHERE pack_id = :p ORDER BY version DESC LIMIT 1"
             ),
             {"p": str(pack_id)},
         )
     ).mappings().first()
     if row is None:
         raise NoPackInstalled("active pack has no registered catalog schema")
-    return pack_id, row["version"], list(row["identity_keys"] or [])
+    return pack_id, row["version"], list(row["identity_keys"] or []), dict(row["json_schema"] or {})
 
 
 async def _find_duplicate(
@@ -122,6 +126,24 @@ async def _find_duplicate(
         if existing is not None:
             return existing
     return None
+
+
+async def _item_schema(session: AsyncSession, item_id: UUID) -> tuple[UUID, int, dict[str, Any]]:
+    """The (pack_id, schema version, json_schema) an item is validated against."""
+    row = (
+        await session.execute(
+            text(
+                "SELECT ci.pack_id, ci.attributes_schema_ver AS ver, cs.json_schema "
+                "FROM catalog_items ci JOIN catalog_schemas cs "
+                "  ON cs.pack_id = ci.pack_id AND cs.version = ci.attributes_schema_ver "
+                "WHERE ci.id = :id"
+            ),
+            {"id": str(item_id)},
+        )
+    ).mappings().first()
+    if row is None:
+        raise ItemNotFound(str(item_id))
+    return row["pack_id"], row["ver"], dict(row["json_schema"] or {})
 
 
 async def _write_history(
@@ -156,7 +178,8 @@ async def create_item(
         if prior is not None:
             return prior, False
 
-    pack_id, schema_ver, identity_cols = await _active_pack(session, org_id)
+    pack_id, schema_ver, identity_cols, json_schema = await _active_pack(session, org_id)
+    assert_valid(item.attributes, json_schema=json_schema, cache_key=(pack_id, schema_ver))
     dupe = await _find_duplicate(session, org_id, pack_id, item, identity_cols)
     if dupe is not None:
         raise DuplicateIdentity(dupe)
@@ -262,6 +285,9 @@ async def update_item(
     allowed = {"title", "description", "media", "base_price_minor", "currency", "availability",
                "attributes", "status", "sku"}
     fields = {k: v for k, v in patch.items() if k in allowed}
+    if "attributes" in fields:
+        pack_id, ver, json_schema = await _item_schema(session, item_id)
+        assert_valid(fields["attributes"], json_schema=json_schema, cache_key=(pack_id, ver))
     if fields:
         import json
 

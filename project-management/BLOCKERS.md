@@ -106,3 +106,9 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Engineering (unblocks when the migrations land).
 - **Description:** MVP-040's 6-step install pipeline runs 4 steps against existing tables (catalog schema → `catalog_schemas`, prompt layers → `prompt_layers` candidate, bindings → `agent_bindings`, paused instances → `agent_instances`). Steps 4 (**policies** → `approval_policies`, migration 014 / MVP-065) and 5 (**workflows** → `workflow_definitions`, migration 016 / MVP-072) are explicit **deferred no-ops** — those tables don't exist yet (founder decision 2026-07-31). Likewise uninstall's **attribute freeze** (`catalog_items`, migration 012 / MVP-045) and **credential revocation** are deferred. Uninstall currently pauses instances + marks the install `uninstalled` + retains the catalog schema + leaves L3 untouched.
 - **Next action:** MVP-044 implements the policies/workflows seeding step functions once 014/016 land; the installer already calls the (currently no-op) `_seed_policies`/`_seed_workflows` hooks. Attribute freeze wires in with MVP-045 (catalog_items).
+
+### ~~15. docs/ symlink replaced by a stray directory~~ — RESOLVED 2026-07-31
+
+- **Severity:** Medium (transient) — broke doc access + 3 event-type tests (topics.yaml unreachable).
+- **Description:** The tracked `docs` symlink (→ ../Growth-Operator-Vault) was replaced in the working tree by an unrelated stray directory; `git status` showed `D docs`. The vault itself was intact.
+- **Resolution (2026-07-31, founder-approved):** moved the stray dir out of the repo to `../growth-operator-docs-stray-backup` (nothing deleted), then `git checkout -- docs` restored the symlink. Verified `docs -> ../Growth-Operator-Vault`, topics.yaml reachable, full suite 315 passed. Not committed (docs was never staged).
