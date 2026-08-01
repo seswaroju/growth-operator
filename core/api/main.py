@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from core.api.health import router as health_router
+from core.catalog.router import router as catalog_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
 from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
@@ -38,3 +39,4 @@ app.include_router(flags_router)
 app.include_router(whatsapp_ingress_router)
 app.include_router(whatsapp_connect_router)
 app.include_router(packs_router)
+app.include_router(catalog_router)

@@ -100,6 +100,8 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 
 ### 14. Pack installer: policies/workflows seeding + attribute freeze deferred (tables not built)
 
+*(Update 2026-07-31: MVP-045 created `catalog_items` — the installer's uninstall attribute-freeze and **MVP-042 index generation** are now unblockable; policies/workflows still wait on 014/016.)*
+
 - **Severity:** Medium — the installer is complete for existing tables; two pipeline steps + part of uninstall await later migrations.
 - **Owner:** Engineering (unblocks when the migrations land).
 - **Description:** MVP-040's 6-step install pipeline runs 4 steps against existing tables (catalog schema → `catalog_schemas`, prompt layers → `prompt_layers` candidate, bindings → `agent_bindings`, paused instances → `agent_instances`). Steps 4 (**policies** → `approval_policies`, migration 014 / MVP-065) and 5 (**workflows** → `workflow_definitions`, migration 016 / MVP-072) are explicit **deferred no-ops** — those tables don't exist yet (founder decision 2026-07-31). Likewise uninstall's **attribute freeze** (`catalog_items`, migration 012 / MVP-045) and **credential revocation** are deferred. Uninstall currently pauses instances + marks the install `uninstalled` + retains the catalog schema + leaves L3 untouched.

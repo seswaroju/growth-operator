@@ -830,3 +830,28 @@ Founder approved adding `clamd` + `boto3` (§9). `core/channels/whatsapp/media.p
 ## 2026-07-31 — Media adapters live-verified + clamav amd64 platform pin (BLOCKERS #12 closed)
 
 Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified the real adapters end-to-end: **all 5** `tests/integration/test_media_adapters.py` pass — ClamAV detects the EICAR test signature and passes clean bytes, MinIO stores + returns bytes, full ingest → stored, scanner error → quarantined. Full suite **300 passed, 0 skipped**. ClamAV ships no arm64 image, so `infra/docker/docker-compose.dev.yml` pins the clamav service `platform: linux/amd64` (emulated on Apple-Silicon dev, native on amd64 servers). BLOCKERS #12 closed.
+
+## 2026-07-31 — MVP-045 · Catalog migration + CRUD (storage, history, dedup)
+
+**Ticket:** [MVP-045](../docs/tickets/MVP-045.md) · P0 · "M". Branch `feature/mvp-045-catalog-crud` (off main). First catalog ticket; **unblocks MVP-042** (index gen needs catalog_items).
+
+**Files (new):** `migrations/versions/d2cecc53f63c_catalog_items.py` (012), `core/catalog/crud.py`, `core/catalog/router.py`, `tests/integration/test_catalog_crud.py`. **Files (modified):** `core/api/main.py` (mount catalog router).
+
+**Migration 012** (revises `5dcbda42efca`): `CREATE EXTENSION vector`; `catalog_items` (org-scoped +RLS; jsonb attributes, `attributes_schema_ver`, `search_text` tsvector, `embedding vector(1024)`, price_mode/availability/status checks; indexes `(org_id,pack_id,status)`, GIN(search_text), **HNSW**(embedding)); `catalog_items_history` (+RLS; `LIKE … INCLUDING DEFAULTS` + history_id/operation/changed_by/reason/changed_at); `catalog_idempotency` (+RLS). Round-trip verified; roles re-applied.
+
+**crud.py** — `create_item` (Idempotency-Key replay → same item; pack + attributes_schema_ver from the active install; identity-key dedup → `DuplicateIdentity(existing_id)`; history 'insert'), `get_item`, `list_items` (keyset cursor on (created_at,id) desc — stable under concurrent inserts), `update_item` (If-Match on updated_at → `PreconditionFailed`; history 'update'), `delete_item` (soft-delete status='archived'; history 'delete'). Deep attribute validation (JSON Schema + CEL) is MVP-046.
+**API** — `POST /v1/catalog/items` (catalog:write; Idempotency-Key → 201/200; identity clash → **409** {existing_id}; NoPack → 422), `GET /v1/catalog/items` (cursor), `GET/PATCH/DELETE /v1/catalog/items/{id}` (If-Match → 412, soft-delete → 204). ETag = updated_at.
+
+**Requirement → evidence (all live, pg):**
+| Criterion | Test | Result |
+|---|---|---|
+| mutation → history row with actor | `test_catalog_crud::test_create_get_and_history`, `::test_update_if_match_and_history`, `::test_soft_delete_archives_and_delists` | PASS |
+| identity-key duplicate → error with existing id | `::test_identity_duplicate_raises_with_existing_id` | PASS |
+| Idempotency-Key replay → same item, no dupe | `::test_idempotency_key_replays_same_item` | PASS |
+| cursor pagination walks all, stable | `::test_cursor_pagination_walks_all` | PASS |
+| If-Match optimistic concurrency | `::test_update_if_match_and_history` | PASS |
+| no pack installed → refused | `::test_create_without_pack_raises` | PASS |
+
+**Commands:** ruff (pass) · mypy core (67) + migrations (3) (pass) · guards (5, pass) · `pytest -q` **307 passed, 0 skipped** · migration round-trip OK · routes `/v1/catalog/items(/{id})` registered.
+
+**Deferred:** attribute validation JSON Schema + CEL (MVP-046); search/embeddings (047/048); availability + stale-inputs (049). Identity dedup is app-level (a partial unique index could harden the race later — DECISIONS 2026-07-31).
