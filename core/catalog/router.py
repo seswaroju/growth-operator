@@ -144,17 +144,33 @@ async def list_items(
     )
 
 
-@router.get("/search", response_model=SearchResponse, summary="Text search catalog items")
+def _parse_filters(raw: str | None) -> dict[str, str]:
+    """Parse `key:value,key:value` into an attribute filter map."""
+    out: dict[str, str] = {}
+    for pair in (raw or "").split(","):
+        if ":" in pair:
+            key, value = pair.split(":", 1)
+            out[key.strip()] = value.strip()
+    return out
+
+
+@router.get("/search", response_model=SearchResponse, summary="Hybrid catalog search")
 async def search_catalog(
     q: str = Query(..., min_length=1),
     k: int = Query(default=8, ge=1, le=50),
+    filters: str | None = Query(default=None, description="attribute filters: key:value,key:value"),
     current: CurrentAuth = Depends(requires(CATALOG_READ)),
     session: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
     if current.org_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
-    results = await search.search_items(session, current.org_id, q, k=k)
-    return SearchResponse(results=[CatalogItemOut(**r) for r in results])
+    results, nearest = await search.hybrid_search(
+        session, current.org_id, q, k=k, filters=_parse_filters(filters)
+    )
+    return SearchResponse(
+        results=[CatalogItemOut(**r) for r in results],
+        nearest=[CatalogItemOut(**n) for n in nearest],
+    )
 
 
 @router.get("/items/{item_id}", response_model=CatalogItemOut, summary="Get a catalog item")

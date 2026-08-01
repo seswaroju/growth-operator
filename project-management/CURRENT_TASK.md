@@ -15,7 +15,13 @@ Branch `feature/mvp-034-036-send-adapter` (off main). `core/channels/whatsapp/se
 
 **MVP-036 enforcement folded in here** (the suppression+consent join is the same gate).
 
-## MVP-047 · Text search (BM25) — **Completed — awaiting founder review** (2026-07-31)
+## MVP-048 · Embeddings + hybrid RRF — **Completed — awaiting founder review** (2026-07-31)
+
+Branch `feature/mvp-048-embeddings-rrf`. `core/catalog/embed.py`: pluggable `Embedder` — default **SimulatedEmbedder** (deterministic 1024-dim, no paid API; real provider gated behind `embeddings_provider_enabled`, fails closed until picked — BLOCKERS #16); `embed_pending` batch + `run_embeddings_batch` (per-org) + `register_jobs`. `core/catalog/search.py`: `rrf_fuse` (k=60), kNN via pgvector `<=>` (HNSW), `hybrid_search` (BM25 ⊕ kNN, filter pushdown, empty→nearest = 3 closest). `GET /v1/catalog/search` now returns fused `{results, nearest}` + attribute `filters`. **323 pytest.** Real semantic quality awaits the provider; the mechanics (fusion/nearest) are tested.
+
+---
+
+## MVP-047 · Text search (BM25) — Completed — direct commit to main `9c78ceb` (2026-07-31)
 
 Branch `feature/mvp-047-text-search`. `core/catalog/search.py`: `search_text` tsvector built from title + description + the pack's `x-search` projected attributes (`simple` ⊕ `english` configs so exact tokens like "22k" and vernacular aliases match alongside stemmed English), maintained on every write via `search.refresh` (wired into CRUD create/update); `search_items` ranks with `ts_rank` over the GIN index. `GET /v1/catalog/search?q=&k=` returns `{results, nearest:[]}` (nearest filled by MVP-048). **318 pytest.**
 

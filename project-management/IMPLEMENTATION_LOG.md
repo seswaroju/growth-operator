@@ -897,3 +897,24 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff (pass) · mypy core (69) (pass) · guards (5, pass) · `pytest -q` **318 passed, 0 skipped** · route `/v1/catalog/search` registered.
 
 **Deferred:** hybrid embeddings + RRF fusion + nearest-on-empty (MVP-048); attribute filter pushdown (MVP-048); per-locale stemmers beyond en (post-MVP).
+
+## 2026-07-31 — MVP-048 · Embeddings + hybrid RRF (gated-simulated)
+
+**Ticket:** [MVP-048](../docs/tickets/MVP-048.md) · P1 · "M". Branch `feature/mvp-048-embeddings-rrf` (off main). Founder chose to build gated-simulated (2026-07-31).
+
+**Files (new):** `core/catalog/embed.py`, `tests/integration/test_catalog_embed.py`. **Files (modified):** `core/catalog/search.py` (rrf_fuse, kNN, hybrid_search, filter pushdown), `core/catalog/router.py` (`/catalog/search` → hybrid + filters + nearest), `core/common/config.py` (`embeddings_provider_enabled`). No migration (the `embedding vector(1024)` column + HNSW index shipped in 012).
+
+**embed.py** — `Embedder` Protocol; `SimulatedEmbedder` (deterministic seeded-PRNG 1024-dim unit vector — no paid API); `default_embedder` returns it unless `embeddings_provider_enabled` (then the real provider, not wired → NotImplementedError, fail-closed); `to_pgvector`; `embed_pending` (embeds NULL-vector items in the current org context); `run_embeddings_batch` (iterates orgs, each in its own tenant context) + `register_jobs` (scheduler `*/5`). **search.py** — `rrf_fuse` (RRF k=60, deterministic); `_knn` (pgvector `<=>` cosine over HNSW, filterable); `hybrid_search` (BM25 ⊕ kNN with filter pushdown; a neighbour joins `results` only within `SEMANTIC_MAX_DISTANCE`=0.35, else it's `nearest`; empty results → 3 nearest). `GET /v1/catalog/search` returns `{results, nearest}` + `filters=key:value,...`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| RRF fusion determinism + agreement | `test_catalog_embed::test_rrf_fuse_is_deterministic_and_rewards_agreement` | PASS |
+| batch embeds pending items (idempotent) | `::test_embed_pending_fills_vectors` | PASS |
+| hybrid returns BM25 matches | `::test_hybrid_returns_bm25_matches` | PASS |
+| empty results carry 3 nearest (gr-01 shape) | `::test_hybrid_empty_results_carry_three_nearest` | PASS |
+| hybrid deterministic | `::test_hybrid_is_deterministic` | PASS |
+
+**Commands:** ruff (pass) · mypy core (70) (pass) · guards (5, pass — a docstring false-matched session-set-ban; reworded) · `pytest -q` **323 passed, 0 skipped**.
+
+**Deferred (BLOCKERS #16):** real hosted embedding provider (founder picks; §9 dep + creds) behind the flag; scheduler entrypoint wiring (`register_jobs()` + the MVP-028 loop — entrypoint is still a placeholder); cross-encoder rerank + per-locale embedding models (post-MVP). The simulated embedder is not semantic — it validates pipeline mechanics only.
