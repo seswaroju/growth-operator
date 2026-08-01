@@ -251,3 +251,16 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **ClamAV (antivirus) + MinIO/S3 (object store)** for real WhatsApp media handling (MVP-037 follow-up) — resolves #12; wires the real `MediaScanner`/`MediaStore` behind the existing `media_av_enabled`/`media_storage_enabled` flags.
 
 **Decided by:** Founder (2026-07-31), explicitly choosing "add them now" for both.
+
+---
+
+### 2026-07-31 — MVP-045 catalog: history-table shape, idempotency, pack resolution, dep direction
+
+**Decisions (flagged):**
+- **`catalog_items_history` extends the doc's `LIKE catalog_items INCLUDING ALL`** — used `INCLUDING DEFAULTS` (not ALL, which would copy the `id` PK — invalid for a multi-version history) plus history metadata: `history_id` (PK), `operation`, `changed_by` (actor), `reason`, `changed_at`. Required so history rows carry the actor + reason the acceptance mandates (§4: doc schema was a starting point).
+- **`catalog_idempotency (org_id, idempotency_key → item_id)`** backs the POST `Idempotency-Key` header (same key → the same item; no new column on catalog_items).
+- **Pack resolution:** an item's `pack_id` + `attributes_schema_ver` come from the org's single **active** `pack_installation` (by priority) and the latest `catalog_schemas` row — items don't carry pack_id in the API (matches openapi CatalogItem).
+- **Identity dedup is app-level** (SELECT-then-check against the pack's flattened `identity_keys`, e.g. huid/sku) rather than a DB unique constraint — a rare same-identity race could slip a duplicate; a partial unique index can harden it later.
+- **Dependency direction:** MVP-045's ticket lists "Dependencies: MVP-042", but 042 (index gen) is *on* catalog_items, so 045 must come first. 045 validates against `catalog_schemas` (registered by the installer, MVP-040). **045 now unblocks 042.** Deep attribute validation (JSON Schema + CEL) is MVP-046.
+
+**Decided by:** Claude (flagged for founder awareness) — all satisfy the ticket's acceptance; the schema-doc deviations are recorded above.
