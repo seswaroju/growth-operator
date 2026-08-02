@@ -1040,6 +1040,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests) · mypy core (**80 files**) · guards (5: core-not-verticals, industry-nouns, **float-money**, **send-call-sites**, session-set-ban) · `pytest -q` **378 passed, 0 skipped** (+21). Existing MVP-034 gates + send tests unaffected (their bodies carry no figures).
 
+**Commit:** merge `fea254a` (pushed to `origin/main`).
+
 **Security:** the gate is the send-path invariant — an AI-drafted price that was never computed cannot leave. Amounts stay out of logs/audit (count only); override is attributable on the hash chain; no external side effect added (Meta stays gated-simulated).
 
 **Deferred:** the 30-day staging false-positive replay (AC — needs a staging corpus, BLOCKERS); block-explanation UI in takeover mode (frontend, later); `figure_refs` explicit-declaration path (accepted, unused — the real check is on `body`).
