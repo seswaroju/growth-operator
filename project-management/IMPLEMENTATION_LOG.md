@@ -1073,4 +1073,6 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests) · mypy core (**81 files**) · guards (5, incl. **industry-nouns** — availability.py clean) · `pytest -q` **386 passed, 0 skipped** (+8).
 
+**Commit:** merge `33ac11e` (pushed to `origin/main`).
+
 **Deferred (BLOCKERS #17):** the typed `catalog.price_inputs_changed` event — its payload schema must be registered in the vault's read-only `topics.yaml` (§4); `emit()` rejects unregistered types and the drift test enforces it. The MVP-visible `stale_inputs` flag is written synchronously and tested; the async fan-out (concierge auto-recompute) lands once the event is registered + the agent runtime exists. Rollout note in the ticket confirms "stale_inputs starts as a dashboard-visible flag only."
