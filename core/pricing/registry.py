@@ -37,23 +37,29 @@ async def load_strategy(
                 "engine": strategy.get("engine", "rules_v1"),
                 "rschema": json.dumps(strategy.get("rule_schema", {})),
                 "ischema": json.dumps(strategy.get("input_schema", {})),
-                "rules": json.dumps(strategy.get("rules", {})),
+                # Store the whole strategy (stages + rate_sources + tax_rules) so the quote
+                # service can rebuild the engine lookups at compute time.
+                "rules": json.dumps(strategy),
             },
         )
     ).scalar_one()
 
 
 async def get_strategy(session: AsyncSession, strategy_key: str) -> dict[str, Any] | None:
+    """Return {id, engine, pack_id, strategy} where `strategy` is the full definition."""
     row = (
         await session.execute(
             text(
-                "SELECT id, engine, input_schema, rules FROM pricing_strategies "
+                "SELECT id, engine, pack_id, rules FROM pricing_strategies "
                 "WHERE strategy_key = :key"
             ),
             {"key": strategy_key},
         )
     ).mappings().first()
-    return dict(row) if row else None
+    if row is None:
+        return None
+    return {"id": row["id"], "engine": row["engine"], "pack_id": row["pack_id"],
+            "strategy": dict(row["rules"] or {})}
 
 
 def build_source_for(strategy: dict[str, Any]) -> Callable[[str], str]:

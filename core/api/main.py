@@ -10,6 +10,8 @@ from core.common.config import assert_secrets_available, get_settings
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
 from core.packs.router import router as packs_router
+from core.pricing.api import rates_router
+from core.pricing.api import router as pricing_router
 from core.tenancy.api_keys import router as api_keys_router
 from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
@@ -40,3 +42,5 @@ app.include_router(whatsapp_ingress_router)
 app.include_router(whatsapp_connect_router)
 app.include_router(packs_router)
 app.include_router(catalog_router)
+app.include_router(pricing_router)
+app.include_router(rates_router)
