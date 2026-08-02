@@ -1011,3 +1011,35 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** RLS scopes ledger + quotes to the caller's org (`set_org_context`); `computed_by='engine'` CHECK keeps an LLM off the figure; no secrets/PII in figures (amounts + figure-type labels only); external side effects unaffected.
 
 **Deferred:** MVP-049 (`stale_inputs` on rule-referenced attribute change); MVP-054 (send-path extractor → `ledger.match` → 422 `unledgered_figure`); item()/offer_discount() wiring for kirana line-item strategies (jewelry pilot is rate-based, needs neither); params today come from the request/caller — settings-slot resolution is the production path.
+
+---
+
+## 2026-08-02 — MVP-054 · Send-path figure check (the last line of defence)
+
+**Ticket:** [MVP-054](../docs/tickets/MVP-054.md) · P0 · "M". Branch `feature/mvp-054-send-figure-check` (off main). *"No unledgered rupee amount leaves the building."* Completes the enforcement triangle: the engine computes figures (050), quotes write them to the ledger atomically (052/053), and this gate blocks any outbound figure that isn't there.
+
+**Files (new):** `core/pricing/extract.py`, `tests/unit/test_money_extract.py`, `tests/integration/test_send_figure_check.py`. **(modified):** `core/channels/whatsapp/send.py` (Gate 5 + `figure_check`/`figure_override_by` params + `_assert_figures_ledgered`). **No migration** (reads the 053 ledger).
+
+**extract.py** — pure Python, no I/O, no model (IDL-008). `extract_amounts(text) -> list[Figure(minor, raw)]` parses ₹/Rs/Rs./INR/rupee(s), lakh/lac/crore/cr/k/thousand magnitude words, Indian lakh grouping (`1,00,000`) and paise, via `Decimal` (never a float; `float-money` guard stays green). **Conservative** to hold the <0.5% false-positive AC: a digit run is money only with a currency marker, a magnitude word, or unmistakable Indian grouping (a 2-digit group between commas) — so a phone number, an order id, or `8 pm` is not a figure. Western `12,345` without currency stays ambiguous (not extracted).
+
+**send.py Gate 5** — runs after suppression+consent, before the queued row and any Meta call. Every amount in `body` must `ledger.match` (exact, unexpired) or:
+- `block` (default, fail-closed): raise `SendRefused("unledgered_figure")` → **422** (canonical taxonomy), Meta never called;
+- tier-3 `figure_override_by`: proceed, but append `msg.send.figure_override` to the org's audit chain (payload = unledgered **count** only — amounts are never logged or audited, §10.2);
+- `warn` (W2): proceed, redacted breadcrumb (count only);
+- `off`: skip (controlled rollout only). Warn→block flips via the `ledger_check.block` flag at the call site.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| mt-* Indian money formats (₹/Rs/INR, lakh, crore, k, trailing 'rupees', paise) parsed to exact minor | `test_money_extract::test_extracts_indian_money_formats` (8 cases) | PASS |
+| bare numbers (phone / time / id / quantity) are **not** figures; Western grouping not assumed money | `::test_ignores_bare_numbers`, `_western_grouping_without_currency_is_not_assumed_money` | PASS |
+| Indian grouping alone is money; multiple figures; Decimal-exact paise | `::test_indian_grouping_alone_*`, `_multiple_figures_*`, `_paise_rounding_is_decimal_exact` | PASS |
+| ledgered figure sends; **unledgered blocks with `unledgered_figure`, no Meta call** | `test_send_figure_check::test_ledgered_figure_is_allowed`, `_unledgered_figure_blocks_and_never_hits_the_wire` | PASS |
+| partial (one ledgered + one not) still blocks | `::test_partial_match_still_blocks` | PASS |
+| warn mode allows; tier-3 override proceeds **and is audited** | `::test_warn_mode_allows_*`, `_tier3_override_proceeds_and_is_audited` | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**80 files**) · guards (5: core-not-verticals, industry-nouns, **float-money**, **send-call-sites**, session-set-ban) · `pytest -q` **378 passed, 0 skipped** (+21). Existing MVP-034 gates + send tests unaffected (their bodies carry no figures).
+
+**Security:** the gate is the send-path invariant — an AI-drafted price that was never computed cannot leave. Amounts stay out of logs/audit (count only); override is attributable on the hash chain; no external side effect added (Meta stays gated-simulated).
+
+**Deferred:** the 30-day staging false-positive replay (AC — needs a staging corpus, BLOCKERS); block-explanation UI in takeover mode (frontend, later); `figure_refs` explicit-declaration path (accepted, unused — the real check is on `body`).
