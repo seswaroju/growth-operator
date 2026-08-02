@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.writer import AuditEntry, write
 from core.packs.bundle import ParsedPack, compute_manifest, load_bundle, serialize_manifest
+from core.packs.indexes import generate_index_ddl
 from core.tenancy.middleware import org_scoped_session
 
 logger = logging.getLogger("core.packs.installer")
@@ -154,15 +155,18 @@ async def _create_installation(
 async def _register_catalog_schema(session: AsyncSession, ctx: _Ctx) -> None:
     c = ctx.parsed.catalog
     identity_cols = list(dict.fromkeys(col for group in c.identity_keys for col in group))
+    # Generate the attribute indexes from x-index annotations (MVP-042); a scheduler job
+    # applies them CONCURRENTLY later.
+    generated_ddl = generate_index_ddl(ctx.parsed.manifest.pack, ctx.pack_id, c.json_schema)
     await session.execute(
         text(
             "INSERT INTO catalog_schemas "
-            "(pack_id, version, json_schema, search_projection, identity_keys) "
-            "VALUES (:pid, :ver, CAST(:js AS jsonb), :sp, :ik) "
+            "(pack_id, version, json_schema, search_projection, identity_keys, generated_ddl) "
+            "VALUES (:pid, :ver, CAST(:js AS jsonb), :sp, :ik, :ddl) "
             "ON CONFLICT (pack_id, version) DO NOTHING"
         ),
         {"pid": str(ctx.pack_id), "ver": c.version, "js": json.dumps(c.json_schema),
-         "sp": c.search_projection, "ik": identity_cols},
+         "sp": c.search_projection, "ik": identity_cols, "ddl": generated_ddl},
     )
 
 

@@ -15,7 +15,13 @@ Branch `feature/mvp-034-036-send-adapter` (off main). `core/channels/whatsapp/se
 
 **MVP-036 enforcement folded in here** (the suppression+consent join is the same gate).
 
-## MVP-048 · Embeddings + hybrid RRF — **Completed — awaiting founder review** (2026-07-31)
+## MVP-042 · Catalog schema registration + index gen — **Completed — awaiting founder review** (2026-08-01)
+
+Branch `feature/mvp-042-index-gen`. Migration `1b9dc38df16c` (`catalog_schemas.generated_ddl` text[]). `core/packs/indexes.py`: `generate_index_ddl` (partial expression indexes from `x-index`/`x-index-type` — scalar btree, numeric typed-cast, array GIN; deterministic), wired into the installer's schema registration; `apply_generated_indexes` applies them CONCURRENTLY (autocommit migrator conn, `lock_timeout=3s`, IF NOT EXISTS → contended ones deferred to next run). Jewelry generates 6 indexes (the ticket's "three" predates the added weight/gender/occasion x-index attrs; DDL snapshot is the verbatim check). **328 pytest.** Catalog subsystem now complete except 049 (needs quotes/050).
+
+---
+
+## MVP-048 · Embeddings + hybrid RRF — Completed — merged to main `308c578` (2026-07-31)
 
 Branch `feature/mvp-048-embeddings-rrf`. `core/catalog/embed.py`: pluggable `Embedder` — default **SimulatedEmbedder** (deterministic 1024-dim, no paid API; real provider gated behind `embeddings_provider_enabled`, fails closed until picked — BLOCKERS #16); `embed_pending` batch + `run_embeddings_batch` (per-org) + `register_jobs`. `core/catalog/search.py`: `rrf_fuse` (k=60), kNN via pgvector `<=>` (HNSW), `hybrid_search` (BM25 ⊕ kNN, filter pushdown, empty→nearest = 3 closest). `GET /v1/catalog/search` now returns fused `{results, nearest}` + attribute `filters`. **323 pytest.** Real semantic quality awaits the provider; the mechanics (fusion/nearest) are tested.
 

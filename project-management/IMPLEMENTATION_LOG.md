@@ -918,3 +918,17 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff (pass) · mypy core (70) (pass) · guards (5, pass — a docstring false-matched session-set-ban; reworded) · `pytest -q` **323 passed, 0 skipped**.
 
 **Deferred (BLOCKERS #16):** real hosted embedding provider (founder picks; §9 dep + creds) behind the flag; scheduler entrypoint wiring (`register_jobs()` + the MVP-028 loop — entrypoint is still a placeholder); cross-encoder rerank + per-locale embedding models (post-MVP). The simulated embedder is not semantic — it validates pipeline mechanics only.
+
+## 2026-08-01 — MVP-042 · Catalog schema registration + index generation
+
+**Ticket:** [MVP-042](../docs/tickets/MVP-042.md) · P0 · "M". Branch `feature/mvp-042-index-gen` (off main). Unblocked by MVP-045 (catalog_items).
+
+**Files (new):** `core/packs/indexes.py`, `migrations/versions/1b9dc38df16c_catalog_generated_ddl.py`, `tests/integration/test_catalog_indexes.py`. **Files (modified):** `core/packs/installer.py` (store generated_ddl at registration), `pyproject.toml` (asyncpg mypy override).
+
+**Migration `1b9dc38df16c`** adds `catalog_schemas.generated_ddl text[]` (additive). **indexes.py** — `generate_index_ddl(pack_slug, pack_id, json_schema)` emits a partial expression index per `x-index` attribute (sorted, deterministic): scalar → btree on `(attributes->>'f')`, `x-index-type:numeric` → `(((attributes->>'f')::numeric))` (triple-paren cast form), array → GIN on `(attributes->'f')`; all partial on `pack_id` + `attributes ? 'f'`. The installer stores these at schema registration. `apply_generated_indexes` runs them CONCURRENTLY over an autocommit **migrator** connection (app_rw has no DDL rights) with `lock_timeout=3s`; a contended `IF NOT EXISTS` statement is deferred and retried next (off-peak) run.
+
+**Requirement → evidence:** jewelry DDL snapshot (6 indexes, verbatim) — `test_catalog_indexes::test_jewelry_ddl_snapshot` PASS; only x-index fields generate — `::test_only_x_index_fields_generate` PASS; installer stores generated_ddl — `::test_installer_stores_generated_ddl` PASS; apply creates indexes idempotently — `::test_apply_creates_indexes_idempotently` PASS.
+
+**Commands:** ruff · mypy core (71) · guards (5) · `pytest -q` **328 passed, 0 skipped** · migration round-trip OK.
+
+**Note:** the ticket's "three expected indexes" predates the jewelry schema gaining weight/gender/occasion x-index attributes; it now declares 6, and the snapshot is the verbatim source of truth. Index-drop-on-schema-upgrade + real contention retry scheduling are out of scope (per ticket).

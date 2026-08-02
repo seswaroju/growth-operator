@@ -84,9 +84,9 @@ ignore_missing_imports = true
 module = ["clamd.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
-# jsonschema + celpy ship no (usable) type stubs.
+# jsonschema + celpy + asyncpg ship no (usable) type stubs.
 [[tool.mypy.overrides]]
-module = ["jsonschema.*", "celpy.*"]
+module = ["jsonschema.*", "celpy.*", "asyncpg.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
