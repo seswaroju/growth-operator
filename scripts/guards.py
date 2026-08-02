@@ -28,6 +28,7 @@ REPO = Path(__file__).resolve().parents[1]
 CORE = REPO / "core"
 WEB = REPO / "web" / "src"
 ADAPTER_DIR = REPO / "core" / "channels"
+RUNTIME_DIR = REPO / "core" / "runtime"
 ALLOWLIST = REPO / "scripts" / "lint-allowlist.txt"
 
 # Unambiguous vertical nouns only. Generic words that collide with common code/CSS
@@ -87,6 +88,13 @@ _SESSION_SET_SQL = re.compile(r"\bSET\s+(SESSION\s+)?app\.", re.I)
 _SESSION_SETCONFIG = re.compile(
     r"set_config\(\s*'app\.[^']*'\s*,[^,]*,\s*false\s*\)", re.I
 )
+# runtime-not-tools (MVP-060): the agent runtime must reach tools ONLY through the mediation
+# proxy — never by importing a tool implementation directly. `core.mediation.proxy` is allowed;
+# `core.mediation.tools` and the impl modules (catalog/channels/pricing services) are not.
+_RUNTIME_TOOL_IMPORT = re.compile(
+    r"^\s*(from|import)\s+core\."
+    r"(catalog|channels|mediation\.tools|pricing\.(service|ledger|rates|api))(\.|\s|$)"
+)
 
 
 def guard_core_not_verticals(core: Path = CORE) -> list[Violation]:
@@ -132,6 +140,14 @@ def guard_session_set(core: Path = CORE) -> list[Violation]:
     ]
 
 
+def guard_runtime_not_tools(runtime: Path = RUNTIME_DIR) -> list[Violation]:
+    return [
+        Violation("runtime-not-tools", _rel(f), i, line.strip())
+        for f, i, line in _iter_lines(_py_files(runtime))
+        if _RUNTIME_TOOL_IMPORT.search(line)
+    ]
+
+
 def load_allowlist(path: Path = ALLOWLIST) -> tuple[list[tuple[str, str]], list[str]]:
     """Return (entries, errors). Each entry is (path_substring, token); an entry without a
     `# justification` comment is reported as an error (justification is mandatory)."""
@@ -168,6 +184,7 @@ def run_all() -> tuple[list[Violation], list[str]]:
         guard_float_money,
         guard_send_call_sites,
         guard_session_set,
+        guard_runtime_not_tools,
     ):
         violations.extend(v for v in guard() if not _excused(v, entries))
     return violations, errors
@@ -188,7 +205,7 @@ def main() -> int:
         return 1
     print(
         "lint guards passed (core-not-verticals, industry-nouns, float-money, "
-        "send-call-sites, session-set-ban)"
+        "send-call-sites, session-set-ban, runtime-not-tools)"
     )
     return 0
 

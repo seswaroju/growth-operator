@@ -81,6 +81,28 @@ def test_session_set_ban_allows_transaction_local(tmp_path: Path) -> None:
     assert guards.guard_session_set(core=core) == []
 
 
+def test_runtime_not_tools_goes_red_on_direct_tool_import(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "a.py").write_text("from core.catalog.search import hybrid_search\n")
+    (runtime / "b.py").write_text("from core.mediation.tools import REGISTRY\n")
+    (runtime / "c.py").write_text("from core.pricing.service import compute_quote\n")
+    v = guards.guard_runtime_not_tools(runtime=runtime)
+    assert len(v) == 3
+    assert all(n.guard == "runtime-not-tools" for n in v)
+
+
+def test_runtime_not_tools_allows_the_proxy(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(parents=True)
+    # The proxy is the sanctioned path; pure/support modules are fine too.
+    (runtime / "ok.py").write_text(
+        "from core.mediation.proxy import RunContext, call\n"
+        "from core.pricing.engine import compute\n"  # pure money engine, not a tool impl
+    )
+    assert guards.guard_runtime_not_tools(runtime=runtime) == []
+
+
 def test_repo_is_clean() -> None:
     violations, errors = guards.run_all()
     assert violations == []
