@@ -27,6 +27,7 @@ dependencies = [
     "zstandard>=0.23",
     "clamd>=1.0",
     "boto3>=1.35",
+    "langgraph>=0.2,<0.3",
 ]
 
 [dependency-groups]

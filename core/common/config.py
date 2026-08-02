@@ -141,6 +141,11 @@ class Settings(BaseSettings):
     # closed (NotImplementedError). Manual entry works regardless.
     rates_provider_enabled: bool = Field(default=False)
 
+    # Real LLM provider (MVP-055). Off = deterministic SimulatedModel (no paid API). The provider
+    # is chosen at go-live (provider-agnostic decision) — enabling this before a provider is wired
+    # fails closed (provider_unavailable). Tests always use the simulated model.
+    llm_provider_enabled: bool = Field(default=False)
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot

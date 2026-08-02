@@ -1104,3 +1104,35 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security / external effects:** no real network call — the IBJA HTTP source is gated and fails closed (#5); manual entry is owner-permissioned + audited (values redacted from audit); quarantine + alert give a human the final say on an implausible rate.
 
 **Deferred:** real **tier-2 approval** on manual entry (approvals engine is MVP-065; today an owner permission + audit stands in); **scheduler firing** of `fetch_and_store` (the scheduler entrypoint is still the MVP-028 placeholder, cf. #16 — the job function is built and tested, just not yet scheduled); the **org fan-out** of `rate.updated`/`rate.stale` (published globally to the stream; per-org routing awaits the runtime).
+
+---
+
+## 2026-08-02 — MVP-055 · Executor skeleton + checkpoints (the agent runtime core)
+
+**Ticket:** [MVP-055](../docs/tickets/MVP-055.md) · P0 · "L". Branch `feature/mvp-055-executor` (off main). *"Conversation state survives any crash and resumes without duplicate effects."* **Founder-approved (2026-08-02):** adopt LangGraph + land the runtime migration ahead of approvals-014 (DECISIONS).
+
+**Files (new):** `core/runtime/model.py`, `core/runtime/graph.py`, `core/runtime/executor.py`, `core/runtime/ops_router.py`, `migrations/versions/f124e1102952_runtime.py`, `tests/unit/test_runtime_graph.py`, `tests/integration/test_executor.py`. **(modified):** `core/api/main.py` (ops router), `core/common/config.py` (`llm_provider_enabled`), `pyproject.toml`/`uv.lock` (`langgraph>=0.2,<0.3`), `project-management/DECISIONS.md`.
+
+**Dependency (§9):** `langgraph==0.2.76` (MIT) + 17 transitive (langchain-core 0.3.86, langgraph-checkpoint 2.1.2, langsmith, orjson, tenacity, …) — the footprint was disclosed and approved. LangGraph **sequences**; the platform gates stay the authority.
+
+**Migration 015** (`f124e1102952`, revises `63bcec3ea528`): `model_routes` (global), `agent_runs`/`agent_steps`/`agent_memory` (+RLS). `agent_runs` carries `composed_prompt_hash` + `permission_manifest_hash` **NOT NULL** and a `cursor`; `agent_steps` has `state` jsonb + `UNIQUE(run_id, seq)` (idempotent re-checkpoint). Upgrade/downgrade round-tripped; `make db-roles` re-applied grants. Lands ahead of approvals-014 — no FK crosses (founder-approved ordering).
+
+**Design:** `graph.py` declares the LangGraph `StateGraph` route→compose→model_turn→(tool_call↔)respond with a bounded tool loop; the **same** node fns + `model_turn` branch drive `executor.py`, so the declared graph and the durable driver can't diverge. The executor runs one node at a time and writes a **durable checkpoint after every node** (Redis snapshot + `agent_steps` row); before each node it enforces the **kill switch** (feature flag, fail-closed), **budget** (instance `max_steps`), and a per-node **timeout**. Crash model: an in-flight (uncheckpointed) node is re-run on resume — route/compose/model_turn/tool_call are pure, and `respond`'s external effect is **idempotent on the run id** (the real send-path contract), so a replay never double-sends. `model.py` is a gated-simulated, provider-agnostic model (`RealModel` fails closed on `llm_provider_enabled`).
+
+**Checkpointing note (disclosed):** a fully-correct LangGraph durable `BaseCheckpointSaver` (600-line surface, version-fragile) was **not** implemented; instead the executor owns durable Redis+Postgres checkpointing + resume. LangGraph remains the declared orchestration engine (graph + edges + conditional routing) and runs natively in tests.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **chaos-kill 10/10 resume, no duplicate send** (crash at model_turn/tool_call/respond/after-effect) | `test_executor::test_chaos_kill_resume_no_duplicate_send` | PASS |
+| `composed_prompt_hash` + `permission_manifest_hash` on every run | `::test_happy_path_records_both_hashes_and_sends_once` | PASS |
+| checkpoint-conflict retry (re-insert `(run_id,seq)` is a no-op) | `::test_checkpoint_reinsert_is_idempotent` | PASS |
+| kill switch + budget interrupt fail-closed (no send) | `::test_kill_switch_interrupts_before_sending`, `_budget_cap_interrupts` | PASS |
+| run is tenant-isolated (RLS) | `::test_run_is_tenant_isolated` | PASS |
+| LangGraph graph runs route→respond; bounded tool loop; deterministic hash; provider gated | `test_runtime_graph::*` (6) | PASS |
+
+**Commands:** `uv add langgraph` (resolved 0.2.76) · ruff (core+tests) · mypy core (**86 files**) · guards (5, incl. industry-nouns — runtime clean) · alembic upgrade/downgrade/upgrade round-trip + `make db-roles` · `pytest -q` **408 passed, 0 skipped** (+12). `GET /v1/ops/runs/{id}` in the OpenAPI.
+
+**Security:** new runtime tables are RLS-scoped + cross-tenant tested; AI output stays untrusted (model only proposes a tool/text — figures never invented; customer text still faces the MVP-054 send gate); no paid API (simulated model); ops viewer is `PLATFORM_ADMIN` only.
+
+**Deferred:** real LLM provider (go-live, provider-agnostic); **mediation / permission proxy** (MVP-060 — the `tool_call` node runs a simulated tool for now); a LangGraph durable saver; wiring runs into the worker/scheduler + the `respond` node into the real MVP-054 send path.
