@@ -953,3 +953,28 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff · mypy core (73) · guards (5) · `pytest -q` **336 passed, 0 skipped**.
 
 **Deferred:** the settings-change → regeneration hook wiring (enqueue) + the composed smoke-suite gate (needs the eval harness, MVP-095/096); base layers for the other archetypes (only concierge authored here, per ticket).
+
+## 2026-08-02 — MVP-050 · Pricing migration + rules_v1 engine (the money engine)
+
+**Ticket:** [MVP-050](../docs/tickets/MVP-050.md) · P0 · "L". Branch `feature/mvp-050-pricing-engine` (off main). The money invariant: all committable figures computed deterministically, exactly, with provenance.
+
+**Files (new):** `migrations/versions/63bcec3ea528_pricing.py` (013), `core/pricing/functions.py`, `core/pricing/engine.py`, `core/pricing/registry.py`, `tests/unit/test_pricing_engine.py`, `tests/integration/test_pricing_registry.py`.
+
+**Migration 013** (revises `1b9dc38df16c`): `pricing_strategies`/`rate_sources`/`rate_snapshots` (global), `pricing_rules`/`quotes`/`committed_figures_ledger` (+RLS). `quotes.computed_by` CHECK = 'engine' (never an LLM); `quotes.stale_inputs` for MVP-049. Round-trip verified; roles re-applied.
+
+**engine.py** — `compute(strategy_rules, inputs, params, *, rate_lookup, tax_rules, item_lookup, source_for, offer_discount)` runs the ordered stages and returns `Quote(breakdown, total_minor, rate_snapshot_ids)`. Formulas are a CEL-ish DSL evaluated by a **safe AST interpreter** (`_ALLOWED_NODES` whitelist — no `eval`/imports/attribute abuse) after preprocessing (`&&`/`||`/`!`, `x[].f` projection, `map(seq,v,e)`, `c ? a : b`). **Exact:** int minor / `Decimal` only, floats rejected; each money stage must be an integer minor value (residue → `unledgered_figure`); `rate()` pins snapshots into provenance; `stale_rate` fails closed. **functions.py** — Decimal `round`(modes)/`sum`/`min`/`max`, `TaxRule.apply`, `DotItem` (attr access), `to_decimal` (float-reject). **registry.py** — `load_strategy`/`get_strategy` + `build_source_for`/`build_tax_rules` derived from the strategy yaml.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| jewelry goldens (pg-001 full breakdown, pg-002 making-floor, pg-031 silver, stones projection) | `test_pricing_engine::test_pg001_*`, `_pg002_*`, `_pg031_*`, `_stones_projection_summed` | PASS |
+| **kirana goldens on the SAME engine, zero changes** (subtotal, delivery ternary, out-of-radius guard) | `::test_kpg01_*`, `_kpg02_*`, `_kpg04_*` | PASS |
+| exact minor units, no floats, per-stage residue, rounding modes | `::test_float_input_rejected`, `_residue_stage_fails_closed`, `_rounding_modes` | PASS |
+| stale rate fails closed; disallowed syntax rejected | `::test_stale_rate_fails_closed`, `_disallowed_syntax_rejected` | PASS |
+| strategy registry load/get + compute from DB rules | `test_pricing_registry::test_load_and_compute_from_registry` | PASS |
+
+**Commands:** ruff · mypy core (76) · guards (5) · `pytest -q` **351 passed, 0 skipped** · migration round-trip OK.
+
+**Flagged (DECISIONS 2026-08-02):** the sample golden **pg-014** expects a discount of 239600 (5% of metal only) but the authoritative strategy.yaml formula caps at 5% of the full subtotal (incl. making) → 258768; the engine follows the formula, and if "exclude making" is the intended rule the *pack formula* should change, not the engine. The repo golden files are illustrative samples, not the full 200/60 suites.
+
+**Deferred:** WASM strategy execution (do-not-build fence); rate ingestion (MVP-051, gated); quotes API + replay (052); ledger writes (053); item()/offer_discount() wiring to real catalog/offers (052).
