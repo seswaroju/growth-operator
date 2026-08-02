@@ -24,6 +24,7 @@ block the send. Ledger/figure checks (``figure_refs``) plug in here later — MV
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -32,20 +33,27 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.audit.writer import verify_capability, write_outcome
+from core.audit.writer import AuditEntry, verify_capability, write_outcome
+from core.audit.writer import write as audit_write
 from core.channels.whatsapp.credentials import load_credentials
 from core.channels.whatsapp.meta_client import MetaClient, SendResult
 from core.channels.whatsapp.templates import assert_template_sendable
 from core.events.outbox import emit
+from core.pricing import extract, ledger
 from core.tenancy.middleware import org_scoped_session
 
+logger = logging.getLogger("core.channels.whatsapp.send")
+
 SEND_ACTION = "msg.send"
+FIGURE_OVERRIDE_ACTION = "msg.send.figure_override"
 MAX_RETRIES = 3
 _MAX_BACKOFF_S = 30.0
 # Positive marketing consent values (platform default; pack-extensible later — MVP-036).
 _POSITIVE_CONSENT = frozenset({"opted_in", "granted"})
 
 MessageClass = Literal["marketing", "transactional"]
+# Ledger-check enforcement mode (MVP-054): block (default, fail-closed), warn (W2), or off.
+FigureCheck = Literal["block", "warn", "off"]
 
 Sleeper = Callable[[float], Awaitable[None]]
 
@@ -86,6 +94,46 @@ def _assert_consent(consent_status: str, message_class: MessageClass) -> None:
         return  # transactional class is exempt from marketing consent (MVP-036)
     if consent_status not in _POSITIVE_CONSENT:
         raise SendRefused("consent_missing", f"marketing requires consent (is {consent_status!r})")
+
+
+async def _assert_figures_ledgered(
+    session: AsyncSession, org_id: UUID, *, body: str, conversation_id: UUID,
+    mode: FigureCheck, override_by: UUID | None,
+) -> None:
+    """Gate 5 — no unledgered rupee amount leaves. Every figure in the outbound text must match
+    an unexpired ledger row exactly (`core.pricing.ledger.match`).
+
+    - ``block`` (default): an unmatched figure raises ``unledgered_figure`` (→ 422) — unless a
+      tier-3 owner override is supplied, in which case the send proceeds and the override is
+      recorded on the audit chain (count only — amounts are never logged/audited).
+    - ``warn``: unmatched figures are allowed but leave a redacted breadcrumb.
+    - ``off``: skip (kept for a controlled rollout only)."""
+    if mode == "off":
+        return
+    unmatched = [
+        f for f in extract.extract_amounts(body)
+        if not await ledger.match(session, org_id, f.minor)
+    ]
+    if not unmatched:
+        return
+    if override_by is not None:
+        await audit_write(
+            session,
+            AuditEntry(
+                org_id=org_id, actor_type="user", actor_id=str(override_by),
+                action=FIGURE_OVERRIDE_ACTION, resource=str(conversation_id),
+                payload={"unledgered_count": len(unmatched)},
+            ),
+        )
+        return
+    if mode == "block":
+        raise SendRefused(
+            "unledgered_figure", f"{len(unmatched)} amount(s) not in the ledger"
+        )
+    logger.warning(
+        "ledger_check.warn org=%s conv=%s unledgered=%d",
+        org_id, conversation_id, len(unmatched),
+    )
 
 
 async def _suppression_scopes(session: AsyncSession, contact_id: UUID) -> set[str]:
@@ -135,6 +183,8 @@ async def send(
     audit_id: UUID | None,
     execution_token: str | None,
     figure_refs: Sequence[str] = (),
+    figure_check: FigureCheck = "block",
+    figure_override_by: UUID | None = None,
     message_class: MessageClass = "marketing",
     template: tuple[str, str] | None = None,
     meta_client: MetaClient | None = None,
@@ -146,8 +196,9 @@ async def send(
 
     ``template`` = (template_key, language) sends an approved template instead of freeform
     text (``body`` is still stored as the message record); a non-approved template is refused
-    by the MVP-035 gate. ``figure_refs`` (quoted prices etc.) is accepted for the ledger gate
-    that plugs in at MVP-054; it is not yet enforced here.
+    by the MVP-035 gate. Every rupee amount in ``body`` must match an unexpired ledger row
+    (MVP-054); ``figure_check`` selects block/warn/off and ``figure_override_by`` is the
+    tier-3 owner who accepts an unledgered figure (audited).
     """
     client = meta_client or MetaClient()
 
@@ -179,6 +230,12 @@ async def send(
         # Gates 3 + 4 — suppression then consent (both fail-closed).
         _assert_not_suppressed(await _suppression_scopes(s, conv["contact_id"]), message_class)
         _assert_consent(conv["consent_status"], message_class)
+
+        # Gate 5 — no unledgered rupee amount leaves (MVP-054).
+        await _assert_figures_ledgered(
+            s, org_id, body=body, conversation_id=conversation_id,
+            mode=figure_check, override_by=figure_override_by,
+        )
 
         # Template gate (MVP-035) — a non-approved template can never go out.
         if template is not None:
