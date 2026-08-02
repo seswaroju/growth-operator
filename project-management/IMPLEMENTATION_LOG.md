@@ -1164,6 +1164,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests+scripts) · mypy core (**88 files**) · guards (**6** now, incl. runtime-not-tools) · `pytest -q` **419 passed, 0 skipped** (+11).
 
+**Commit:** merge `1169694` (pushed to `origin/main`).
+
 **Security:** the proxy is the structural choke point — manifests/params/rates/budgets/tiers/audit cannot be bypassed (guard-enforced); external actions (messages.send) are tier-gated to human approval by default; denials never leak manifest contents; audit is log-then-act with keys-only payloads.
 
 **Out of scope (ticket):** live policy-engine tier decisions (stubbed conservative-2 until MVP-065). **Deferred (disclosed):** ed25519 manifest **signature** verify (hash integrity is checked now); real destination-aware **PII egress** scrub (pass-through hook); scalar policy constraints (recorded, enforced by the policy engine later); **wiring the executor `tool_call` node through `proxy.call`** — the ApprovalPending/RunAborted handling lands with the approvals engine (MVP-065); the guard already enforces the boundary now so nothing can bypass the proxy in the meantime.
