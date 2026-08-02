@@ -1076,3 +1076,29 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commit:** merge `33ac11e` (pushed to `origin/main`).
 
 **Deferred (BLOCKERS #17):** the typed `catalog.price_inputs_changed` event — its payload schema must be registered in the vault's read-only `topics.yaml` (§4); `emit()` rejects unregistered types and the drift test enforces it. The MVP-visible `stale_inputs` flag is written synchronously and tested; the async fan-out (concierge auto-recompute) lands once the event is registered + the agent runtime exists. Rollout note in the ticket confirms "stale_inputs starts as a dashboard-visible flag only."
+
+---
+
+## 2026-08-02 — MVP-051 · Rate ingestion + manual entry
+
+**Ticket:** [MVP-051](../docs/tickets/MVP-051.md) · P0 · "M". Branch `feature/mvp-051-rate-ingestion` (off main). *"Fresh IBJA rates or a fail-closed refusal — never a guess."* **No migration** (rate_sources/rate_snapshots exist since 013).
+
+**Files (new):** `core/pricing/rates.py`, `tests/unit/test_rate_bounds.py`, `tests/integration/test_rate_ingestion.py`. **(modified):** `core/pricing/api.py` (`POST /v1/rates/manual`), `core/common/config.py` (`rates_provider_enabled` gate).
+
+**rates.py** — `ingest_rate(source_key, value, apply_bounds=True)` writes a `rate_snapshots` row unless any shared key jumps more than the source's `fetch_spec.bounds.max_step_pct` vs the last good value → **quarantined** (no write, so the last good snapshot stays newest and the staleness clock is untouched). `fetch_and_store` fetches (simulated by default), ingests, and — via a global raw-stream publish (`gop:events:<type>`, the DLQ-alert precedent, so no org context is needed) — raises **`alert.ops.v1`** on quarantine and `rate.updated.v1` on success. `record_manual_rate` writes an owner-entered rate (no bounds — a human is authoritative) and appends `rate.manual_entry` to the org's audit chain with **keys only** (never the rate values). **Gated-simulated:** `SimulatedRateFetcher` (deterministic, no network) is the default; `HttpRateFetcher` raises `provider_unavailable` until `rates_provider_enabled` + a chosen IBJA endpoint (BLOCKERS #5).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| staleness boundary — ≤24h fresh, >24h → `stale_rate` (the compute 409) | `test_rate_ingestion::test_staleness_boundary_fresh_then_stale` | PASS |
+| +12% step quarantined, **no snapshot written** (clock unaffected) + `alert.ops` emitted | `::test_out_of_bounds_quarantined_no_snapshot_and_alert` | PASS |
+| bounds math: within/over/at-boundary/new-key | `test_rate_bounds::test_within_bounds_ok`, `_step_over_bound_*`, `_exactly_at_bound_*`, `_new_key_*` | PASS |
+| successful fetch writes a snapshot + publishes `rate.updated` | `test_rate_ingestion::test_fetch_writes_snapshot_and_publishes_updated` | PASS |
+| manual entry: written, audited, **values not in the audit payload** | `::test_manual_entry_writes_snapshot_and_audits` | PASS |
+| real provider fails closed when disabled | `test_rate_bounds::test_http_fetcher_fails_closed_when_disabled` | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**82 files**) · guards (5) · `pytest -q` **396 passed, 0 skipped** (+10). `POST /v1/rates/manual` + `GET /v1/rates/status` in the OpenAPI.
+
+**Security / external effects:** no real network call — the IBJA HTTP source is gated and fails closed (#5); manual entry is owner-permissioned + audited (values redacted from audit); quarantine + alert give a human the final say on an implausible rate.
+
+**Deferred:** real **tier-2 approval** on manual entry (approvals engine is MVP-065; today an owner permission + audit stands in); **scheduler firing** of `fetch_and_store` (the scheduler entrypoint is still the MVP-028 placeholder, cf. #16 — the job function is built and tested, just not yet scheduled); the **org fan-out** of `rate.updated`/`rate.stale` (published globally to the stream; per-org routing awaits the runtime).
