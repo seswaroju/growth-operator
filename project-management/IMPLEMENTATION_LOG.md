@@ -932,3 +932,24 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** ruff · mypy core (71) · guards (5) · `pytest -q` **328 passed, 0 skipped** · migration round-trip OK.
 
 **Note:** the ticket's "three expected indexes" predates the jewelry schema gaining weight/gender/occasion x-index attributes; it now declares 6, and the snapshot is the verbatim source of truth. Index-drop-on-schema-upgrade + real contention retry scheduling are out of scope (per ticket).
+
+## 2026-08-01 — MVP-059 · Composer + tenant layer generator
+
+**Ticket:** [MVP-059](../docs/tickets/MVP-059.md) · P0 · "M". Branch `feature/mvp-059-composer` (off main). Deps MVP-058 (registry) + MVP-021 (settings), both done. No migration (uses prompt_layers/bindings from 010).
+
+**Files (new):** `core/prompts/composer.py`, `core/prompts/tenant_layer.py`, `prompts/base/concierge.md`, `tests/integration/test_prompt_composer.py`.
+
+**composer.py** — `render(session, org_id, binding_id, params)` per docs/21-platform/prompt-registry.md: loads the binding's base/vertical/tenant layer ids, loads each layer (immutable per version → id cache, infinite TTL; `clear_cache` for tests), `check_compat` on `requires{}`, composes `base + vertical + render_template(tenant, params)`, returns `ComposedPrompt(text, layer_versions, content_hash=sha256)`. **Fail-closed:** a missing binding/layer → `LayerMissing`, a missing `{param}` → `MissingParam` (the run refuses to start — no silent blanks, no partial prompts). **tenant_layer.py** — `generate_tenant_layer` resolves tenant facts (persona/store/policies/language via settings, with defaults), bakes them into template v1, versions by content hash (identical facts dedupe; changed facts → new version); `resolve_tenant_facts`. `prompts/base/concierge.md` authors base.concierge@1.0 (industry-agnostic safety/tier/tool rules).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| missing param → run refuses to start | `test_prompt_composer::test_render_template_fills_and_is_strict`, `::test_missing_param_refuses` | PASS |
+| hash reproducible across processes | `::test_hash_reproducible_across_cache_clear` | PASS |
+| compose stacks base+vertical+tenant, versions stamped | `::test_compose_stacks_layers_and_hashes` | PASS |
+| missing binding/layer fails closed | `::test_unknown_binding_fails_closed` | PASS |
+| tenant layer baked from settings, idempotent | `::test_generate_tenant_layer_is_idempotent_and_bakes`, `::test_resolve_tenant_facts_defaults` | PASS |
+
+**Commands:** ruff · mypy core (73) · guards (5) · `pytest -q` **336 passed, 0 skipped**.
+
+**Deferred:** the settings-change → regeneration hook wiring (enqueue) + the composed smoke-suite gate (needs the eval harness, MVP-095/096); base layers for the other archetypes (only concierge authored here, per ticket).

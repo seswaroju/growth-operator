@@ -15,7 +15,13 @@ Branch `feature/mvp-034-036-send-adapter` (off main). `core/channels/whatsapp/se
 
 **MVP-036 enforcement folded in here** (the suppression+consent join is the same gate).
 
-## MVP-042 · Catalog schema registration + index gen — **Completed — awaiting founder review** (2026-08-01)
+## MVP-059 · Composer + tenant layer generator — **Completed — awaiting founder review** (2026-08-01)
+
+Branch `feature/mvp-059-composer`. `core/prompts/composer.py`: `render(binding)` composes base+vertical+tenant per prompt-registry.md — immutable per-version layer cache (fail-closed `LayerMissing`), strict `render_template` (missing `{param}` → `MissingParam`, run refuses to start), `check_compat` on `requires{}`, sha256 `content_hash` reproducible across processes. `core/prompts/tenant_layer.py`: `generate_tenant_layer` bakes settings (persona/store/policies/language) into template v1, hash-versioned (idempotent; regenerates on settings change); `resolve_tenant_facts` with defaults. `prompts/base/concierge.md` (base.concierge@1.0, industry-agnostic hard rules). **336 pytest.**
+
+---
+
+## MVP-042 · Catalog schema registration + index gen — Completed — merged to main `0cee988` (2026-08-01)
 
 Branch `feature/mvp-042-index-gen`. Migration `1b9dc38df16c` (`catalog_schemas.generated_ddl` text[]). `core/packs/indexes.py`: `generate_index_ddl` (partial expression indexes from `x-index`/`x-index-type` — scalar btree, numeric typed-cast, array GIN; deterministic), wired into the installer's schema registration; `apply_generated_indexes` applies them CONCURRENTLY (autocommit migrator conn, `lock_timeout=3s`, IF NOT EXISTS → contended ones deferred to next run). Jewelry generates 6 indexes (the ticket's "three" predates the added weight/gender/occasion x-index attrs; DDL snapshot is the verbatim check). **328 pytest.** Catalog subsystem now complete except 049 (needs quotes/050).
 
