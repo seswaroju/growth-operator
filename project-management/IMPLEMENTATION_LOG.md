@@ -1099,6 +1099,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests) · mypy core (**82 files**) · guards (5) · `pytest -q` **396 passed, 0 skipped** (+10). `POST /v1/rates/manual` + `GET /v1/rates/status` in the OpenAPI.
 
+**Commit:** merge `7d95a7a` (pushed to `origin/main`).
+
 **Security / external effects:** no real network call — the IBJA HTTP source is gated and fails closed (#5); manual entry is owner-permissioned + audited (values redacted from audit); quarantine + alert give a human the final say on an implausible rate.
 
 **Deferred:** real **tier-2 approval** on manual entry (approvals engine is MVP-065; today an owner permission + audit stands in); **scheduler firing** of `fetch_and_store` (the scheduler entrypoint is still the MVP-028 placeholder, cf. #16 — the job function is built and tested, just not yet scheduled); the **org fan-out** of `rate.updated`/`rate.stale` (published globally to the stream; per-org routing awaits the runtime).
