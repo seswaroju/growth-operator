@@ -284,3 +284,15 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 **Decision (founder-approved):** Build the full semantic-search pipeline now with a **deterministic simulated embedder** (seeded PRNG per text — no paid API), gated behind `embeddings_provider_enabled` (off → simulated; on → the real provider, not yet wired → fails closed). The real hosted embedding provider is the founder's pick later (§9), same pattern as WhatsApp/media. Design points: kNN via pgvector `<=>` (cosine, HNSW); **RRF k=60** fuses BM25 + kNN; a kNN neighbour joins `results` only within `SEMANTIC_MAX_DISTANCE` (0.35) else it's offered as `nearest`; the empty→nearest contract returns the 3 closest when there are no confident results. BLOCKERS #16.
 
 **Decided by:** Founder (2026-07-31, "Build 048 gated-simulated").
+
+---
+
+### 2026-08-02 — MVP-050 pricing engine: safe AST evaluator, exactness, and the pg-014 golden flag
+
+**Decisions (flagged):**
+- **The engine evaluates formulas with a safe AST interpreter, not `eval`** — a whitelist of node types (arithmetic, compare, call, attribute, subscript, ternary, list-comp), no imports/builtins. Pack formulas are trusted (installed + signed), but the whitelist is defence-in-depth. A small preprocessor rewrites the pack DSL to Python before parsing: `&&`/`||`/`!` → `and`/`or`/`not`, `x[].f` → a comprehension, `map(seq,v,e)` → `[e for v in seq]`, `c ? a : b` → `(a) if (c) else (b)`.
+- **Exactness (the money invariant):** every value is an int (minor units) or `Decimal` — **floats are rejected** (`config_schema_violation`). Each money stage must resolve to an integer minor value; a non-integer **residue fails closed** (`unledgered_figure`). `rate()` pins its snapshot id into provenance; a stale rate raises `stale_rate`. `compute()` is pure → replayable byte-for-byte.
+- **The repo golden files are illustrative samples** (jewelry 5, kirana 4 — the "200/60 total" full suites aren't in the repo). The engine is verified against the self-consistent samples + engine-property tests.
+- **pg-014 sample golden is inconsistent with the authoritative formula.** The strategy.yaml discount formula caps at 5% of the **full subtotal** (incl. making) → 258768; the sample golden expects 239600 (5% of metal only). The engine follows the **formula** (the executable spec); the sample looks hand-written and wrong. Flagged for founder — if the intended rule is "discount excludes making," the *strategy.yaml formula* should change (`stage.subtotal - stage.making`), not the engine.
+
+**Decided by:** Claude (flagged) — the formula is authoritative per §4; pg-014 is a suspect fixture, not a rule to invent (§29).

@@ -15,7 +15,13 @@ Branch `feature/mvp-034-036-send-adapter` (off main). `core/channels/whatsapp/se
 
 **MVP-036 enforcement folded in here** (the suppression+consent join is the same gate).
 
-## MVP-059 · Composer + tenant layer generator — **Completed — awaiting founder review** (2026-08-01)
+## MVP-050 · Pricing migration + rules_v1 engine — **Completed — awaiting founder review** (2026-08-02)
+
+Branch `feature/mvp-050-pricing-engine`. Migration `63bcec3ea528` (013: pricing_strategies/rate_sources/rate_snapshots global; pricing_rules/quotes/committed_figures_ledger +RLS). `core/pricing/`: `functions.py` (Decimal round/sum/min/max, TaxRule, DotItem, float-reject), `engine.py` (**safe AST interpreter** + DSL preprocessing → exact per-stage compute, residue fail-closed, provenance, stale_rate), `registry.py` (load/get strategy + source_for/tax_rules builders). **Both packs' goldens pass on the SAME engine, zero changes** (jewelry pg-001/002/031, kirana kpg-01/02/04). pg-014 sample flagged as formula-inconsistent (DECISIONS). **351 pytest.** Unlocks 052/053/049/054.
+
+---
+
+## MVP-059 · Composer + tenant layer generator — Completed — merged to main `7a2e0ff` (2026-08-01)
 
 Branch `feature/mvp-059-composer`. `core/prompts/composer.py`: `render(binding)` composes base+vertical+tenant per prompt-registry.md — immutable per-version layer cache (fail-closed `LayerMissing`), strict `render_template` (missing `{param}` → `MissingParam`, run refuses to start), `check_compat` on `requires{}`, sha256 `content_hash` reproducible across processes. `core/prompts/tenant_layer.py`: `generate_tenant_layer` bakes settings (persona/store/policies/language) into template v1, hash-versioned (idempotent; regenerates on settings change); `resolve_tenant_facts` with defaults. `prompts/base/concierge.md` (base.concierge@1.0, industry-agnostic hard rules). **336 pytest.**
 
