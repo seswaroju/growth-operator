@@ -16,11 +16,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.pricing import service
+from core.pricing import rates, service
 from core.pricing.functions import PricingError
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import CATALOG_READ
+from core.tenancy.permissions import CATALOG_READ, ORG_MANAGE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/pricing", tags=["pricing"])
@@ -90,6 +90,37 @@ async def replay(
         quote_id=report.quote_id, matches=report.matches,
         stored_total=report.stored_total, recomputed_total=report.recomputed_total,
     )
+
+
+class ManualRateRequest(BaseModel):
+    source: str = Field(..., min_length=1)
+    value: dict[str, int] = Field(..., min_length=1)
+
+
+class ManualRateResponse(BaseModel):
+    snapshot_id: UUID
+
+
+@rates_router.post("/manual", response_model=ManualRateResponse, summary="Owner manual rate entry")
+async def manual_rate(
+    body: ManualRateRequest,
+    current: CurrentAuth = Depends(requires(ORG_MANAGE)),
+    session: AsyncSession = Depends(get_db),
+) -> ManualRateResponse:
+    """The launch hedge: an owner enters a rate directly (audited, fresh for the staleness window).
+    Real tier-2 approval-workflow gating awaits the approvals engine (MVP-065)."""
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        snapshot_id = await rates.record_manual_rate(
+            session, body.source, body.value, org_id=current.org_id, actor_id=current.user_id
+        )
+    except PricingError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": exc.code, "detail": str(exc)},
+        ) from exc
+    return ManualRateResponse(snapshot_id=snapshot_id)
 
 
 @rates_router.get("/status", summary="Per-source rate freshness")

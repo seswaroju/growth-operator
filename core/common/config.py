@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     # yet (founder picks one, §9) — enabling it before then fails closed (NotImplementedError).
     embeddings_provider_enabled: bool = Field(default=False)
 
+    # Real IBJA rate fetch (MVP-051). Off = deterministic SimulatedRateFetcher (no external
+    # call). Turning it on selects the real HTTP source, which is not wired yet — the founder
+    # must first pick/confirm the IBJA endpoint (BLOCKERS #5); enabling it before then fails
+    # closed (NotImplementedError). Manual entry works regardless.
+    rates_provider_enabled: bool = Field(default=False)
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot
