@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.catalog import search
+from core.catalog import availability, search
 from core.catalog.validate import assert_valid
 
 # Columns copied verbatim into a history snapshot (everything but the history metadata).
@@ -283,13 +283,15 @@ async def update_item(
     """Patch mutable fields (If-Match on `updated_at` for optimistic concurrency) + history."""
     current = (
         await session.execute(
-            text("SELECT updated_at FROM catalog_items WHERE id = :id"), {"id": str(item_id)}
+            text("SELECT updated_at, attributes FROM catalog_items WHERE id = :id"),
+            {"id": str(item_id)},
         )
-    ).scalar_one_or_none()
+    ).mappings().first()
     if current is None:
         raise ItemNotFound(str(item_id))
-    if if_match is not None and if_match != etag(current):
+    if if_match is not None and if_match != etag(current["updated_at"]):
         raise PreconditionFailed("If-Match does not match current version")
+    old_attributes = dict(current["attributes"] or {})
 
     allowed = {"title", "description", "media", "base_price_minor", "currency", "availability",
                "attributes", "status", "sku"}
@@ -311,6 +313,17 @@ async def update_item(
         sets.append("updated_at = now()")
         await session.execute(
             text(f"UPDATE catalog_items SET {', '.join(sets)} WHERE id = :id"), params
+        )
+    if "attributes" in fields:
+        new_attributes = fields["attributes"]
+        changed_keys = {
+            k for k in set(old_attributes) | set(new_attributes)
+            if old_attributes.get(k) != new_attributes.get(k)
+        }
+        # Price-input staleness (MVP-049): if a rule-referenced attribute changed, flag the open
+        # quotes computed from this item so the concierge recomputes before re-asserting.
+        await availability.flag_quotes_if_price_inputs_changed(
+            session, org_id, item_id, pack_id, changed_keys
         )
     await _write_history(session, item_id, operation="update", changed_by=actor_id, reason=reason)
     await search.refresh(session, item_id, projection)

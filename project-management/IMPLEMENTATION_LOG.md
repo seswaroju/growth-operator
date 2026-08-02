@@ -1045,3 +1045,32 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** the gate is the send-path invariant — an AI-drafted price that was never computed cannot leave. Amounts stay out of logs/audit (count only); override is attributable on the hash chain; no external side effect added (Meta stays gated-simulated).
 
 **Deferred:** the 30-day staging false-positive replay (AC — needs a staging corpus, BLOCKERS); block-explanation UI in takeover mode (frontend, later); `figure_refs` explicit-declaration path (accepted, unused — the real check is on `body`).
+
+---
+
+## 2026-08-02 — MVP-049 · Availability + price-input staleness
+
+**Ticket:** [MVP-049](../docs/tickets/MVP-049.md) · P1 · "S". Branch `feature/mvp-049-availability-stale` (off main). *"Quotes must know when their inputs changed under them."* **No migration** (`quotes.stale_inputs` was created in 013).
+
+**Files (new):** `core/catalog/availability.py`, `tests/unit/test_availability.py`, `tests/integration/test_availability_stale.py`. **(modified):** `core/catalog/crud.py` (`update_item` now diffs old vs new attributes → `flag_quotes_if_price_inputs_changed`).
+
+**availability.py** (Rule-Zero clean — no industry noun):
+- **Transitions** — a constant graph over `catalog_items.availability` (`in_stock` ↔ `made_to_order` ↔ `out`; `bookable_slot` is clinic/out-of-MVP, so never a source or target). `transition(session, org, item, to_state, *, actor_id, actor_type, reason)` validates, updates, and appends `catalog.availability_changed` to the org's audit hash-chain — an agent-actor change is attributable.
+- **Price inputs** — `price_input_deps(strategy)` walks each stage's **rule AST** (`ast.parse(to_python(formula))`, reusing the engine's preprocessing) and collects `inputs.<field>` references; nothing is hard-coded (jewelry → `{net_weight_g, purity, stones, requested_discount_minor}`; the same walk yields kirana's own inputs). `flag_stale_quotes_for_item` flags open (draft, unexpired) quotes whose stored `inputs.item_id` matches; `flag_quotes_if_price_inputs_changed` only fires when a changed attribute is in the strategy deps.
+
+**Linkage decision (disclosed):** the ER diagram E3 has **no** quote→item FK, but the catalog-abstraction spec says "open quotes **referencing the item**" are flagged. A quote references an item when its stored `inputs.item_id` equals the item — the natural, no-migration linkage. A rate-only quote (no `item_id`) is correctly unaffected by catalog edits (its staleness is rate staleness, handled by `stale_rate`).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| rule-AST extractor per jewelry stage (metal_value→weight+purity, stones→stones, discount→discount, making/gst/total→none) | `test_availability::test_jewelry_extractor_per_stage`, `_price_input_deps_*` | PASS |
+| extractor is pack-agnostic (kirana inputs, no jewelry knowledge) | `::test_extractor_is_pack_agnostic` | PASS |
+| transition graph closed; bookable_slot excluded | `::test_transition_graph_is_closed_over_known_states` | PASS |
+| **agent transition writes an audit entry** + updates state | `test_availability_stale::test_agent_transition_updates_and_is_audited` | PASS |
+| invalid transition raises | `::test_invalid_transition_raises` | PASS |
+| only open, referencing quotes flagged (not other-item / sent / expired) | `::test_flag_only_open_referencing_quotes` | PASS |
+| **weight edit flags the dependent open quote; unrelated (gender) edit does not** | `::test_weight_edit_flags_dependent_quote_unrelated_edit_does_not` | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**81 files**) · guards (5, incl. **industry-nouns** — availability.py clean) · `pytest -q` **386 passed, 0 skipped** (+8).
+
+**Deferred (BLOCKERS #17):** the typed `catalog.price_inputs_changed` event — its payload schema must be registered in the vault's read-only `topics.yaml` (§4); `emit()` rejects unregistered types and the drift test enforces it. The MVP-visible `stale_inputs` flag is written synchronously and tested; the async fan-out (concierge auto-recompute) lands once the event is registered + the agent runtime exists. Rollout note in the ticket confirms "stale_inputs starts as a dashboard-visible flag only."
