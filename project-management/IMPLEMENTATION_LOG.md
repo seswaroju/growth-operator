@@ -1133,6 +1133,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** `uv add langgraph` (resolved 0.2.76) · ruff (core+tests) · mypy core (**86 files**) · guards (5, incl. industry-nouns — runtime clean) · alembic upgrade/downgrade/upgrade round-trip + `make db-roles` · `pytest -q` **408 passed, 0 skipped** (+12). `GET /v1/ops/runs/{id}` in the OpenAPI.
 
+**Commit:** merge `4824fb6` (pushed to `origin/main`).
+
 **Security:** new runtime tables are RLS-scoped + cross-tenant tested; AI output stays untrusted (model only proposes a tool/text — figures never invented; customer text still faces the MVP-054 send gate); no paid API (simulated model); ops viewer is `PLATFORM_ADMIN` only.
 
 **Deferred:** real LLM provider (go-live, provider-agnostic); **mediation / permission proxy** (MVP-060 — the `tool_call` node runs a simulated tool for now); a LangGraph durable saver; wiring runs into the worker/scheduler + the `respond` node into the real MVP-054 send path.
