@@ -7,7 +7,7 @@ index; the sources of truth stay:
 - **[CURRENT_TASK.md](CURRENT_TASK.md)** — the one active ticket.
 - **[IMPLEMENTATION_AUDIT.md](IMPLEMENTATION_AUDIT.md)** — a one-time **2026-07-10 snapshot** (module-based, not ticket-based; do not treat as current).
 
-_Last updated: 2026-07-30._
+_Last updated: 2026-08-02._
 
 Legend: ✅ done · 🟡 partial · ⬜ not started
 
@@ -52,6 +52,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-059 | Composer + tenant layer generator | ✅ | 2026-08-01 | `7a2e0ff` | `composer.py` base+vertical+tenant render (immutable cache, strict params → MissingParam, sha256 hash reproducible, fail-closed); `tenant_layer.py` settings-baked layer (hash-versioned, idempotent); `prompts/base/concierge.md`; **336 pytest** |
 | MVP-042 | Catalog schema registration + index gen | ✅ | 2026-08-01 | `0cee988` | Migration `1b9dc38df16c` (`generated_ddl`); `indexes.py` DDL gen from x-index (btree/numeric-cast/GIN) wired into installer + `apply_generated_indexes` CONCURRENTLY (lock_timeout 3s, IF NOT EXISTS); jewelry→6 indexes; **328 pytest** |
 | MVP-050 | Pricing migration + rules_v1 engine | ✅ | 2026-08-02 | `48d5052` | Migration `63bcec3ea528` (013 pricing tables +RLS); safe-AST Decimal engine (round/rate/tax_rule/sum/min/max/map/item/offer, residue fail-closed, provenance, stale_rate) + registry; **both packs' goldens pass on one engine**; **351 pytest** |
+| MVP-052 | Quote service/API + replay | ✅ | 2026-08-02 | `(pending)` | `service.py` `compute_quote` (pre-load fresh snapshots → sync rate lookup; write quote+ledger **atomically**) + `replay_quote` (**byte-exact** from pinned `rate_snapshot_ids`); `api.py` `POST /v1/pricing/compute`(409 stale_rate)/`replay`, `GET /v1/rates/status` (`requires(CATALOG_READ)`); no migration; **357 pytest** |
+| MVP-053 | Committed-figures ledger | ✅ | 2026-08-02 | `(pending)` | `ledger.py` `write` (total + every positive breakdown line, with expiry) + `match` **exact tolerance 0**, unexpired, 48h window → off-by-one/expired fail closed (input to MVP-054 send gate); `figures_from_breakdown`; covered by `test_pricing_service` |
 | MVP-045 | Catalog migration + CRUD | ✅ | 2026-07-31 | `170eec0` | Migration `d2cecc53f63c` (012: catalog_items+history+idempotency, RLS, GIN+HNSW, pgvector); `crud.py` create/get/list-cursor/update-ifmatch/soft-delete + history + identity dedup + Idempotency-Key; `POST/GET/PATCH/DELETE /v1/catalog/items`; **307 pytest** (unblocks 042) |
 | MVP-043 | Kirana dry-run CI gate | ✅ | 2026-07-31 | `b70a4b1` | `installer.dry_run` (full pipeline in a rolled-back txn, validates+plans, no writes); `verticals/kirana/install.yaml` + `tests/e2e/test_kirana_dryrun.py`; CI gate proves 2nd pack installs with zero core changes; **291 pytest** |
 | MVP-041 | Jewelry install e2e fixture | ✅ | 2026-07-31 | `527412a` | `verticals/jewelry/install.yaml` + `tests/e2e/test_jewelry_install.py` (assert expected_result field-by-field, <60s); wired into CI `migrate` job (app_rw + e2e) as a required check; **290 pytest** |

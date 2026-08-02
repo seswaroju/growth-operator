@@ -78,9 +78,9 @@ async def test_load_and_compute_from_registry(pack: uuid.UUID) -> None:
         loaded = await registry.get_strategy(s, strategy["strategy_key"])
     assert loaded is not None and loaded["engine"] == "rules_v1"
 
-    # The rules read back from the DB compute a golden correctly.
+    # The strategy read back from the DB computes a golden correctly.
     q = compute(
-        loaded["rules"],
+        loaded["strategy"]["rules"],
         {"purity": "22K", "net_weight_g": "12.4", "stones": [], "requested_discount_minor": 0},
         {"making_pct": 8, "making_min_minor": 50000, "wastage_pct": 0, "discount_ceiling_pct": 5},
         rate_lookup=lambda src, key: (732000, uuid.uuid4()),

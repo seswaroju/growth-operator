@@ -978,3 +978,34 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Flagged (DECISIONS 2026-08-02):** the sample golden **pg-014** expects a discount of 239600 (5% of metal only) but the authoritative strategy.yaml formula caps at 5% of the full subtotal (incl. making) → 258768; the engine follows the formula, and if "exclude making" is the intended rule the *pack formula* should change, not the engine. The repo golden files are illustrative samples, not the full 200/60 suites.
 
 **Deferred:** WASM strategy execution (do-not-build fence); rate ingestion (MVP-051, gated); quotes API + replay (052); ledger writes (053); item()/offer_discount() wiring to real catalog/offers (052).
+
+---
+
+## 2026-08-02 — MVP-052 + MVP-053 · Quote service/API + committed-figures ledger
+
+**Tickets:** [MVP-052](../docs/tickets/MVP-052.md) (quote compute/replay + API) · [MVP-053](../docs/tickets/MVP-053.md) (committed-figures ledger). Branch `feature/mvp-052-quotes-api` (off main). Built together — 053's ledger is written *by* 052's compute and read by the send gate (054). **No migration** (migration 013 already created `quotes` + `committed_figures_ledger`).
+
+**Files (new):** `core/pricing/service.py`, `core/pricing/api.py`, `core/pricing/ledger.py`, `tests/integration/test_pricing_service.py`. **(modified):** `core/pricing/registry.py` (`get_strategy` now returns the full strategy dict so engine lookups rebuild at compute time; `load_strategy` stores the whole strategy in `rules`), `core/api/main.py` (wire `pricing_router` + `rates_router`), `tests/integration/test_pricing_registry.py` (follow the `get_strategy` shape change).
+
+**service.py** — `compute_quote(session, org_id, *, strategy_key, inputs, params, lead_id?, conversation_id?, valid_hours)` resolves the strategy, **pre-loads the pack's freshest in-window snapshot per source** into a dict so the synchronous engine gets a synchronous `rate_lookup` (no async call inside `compute`), runs `engine.compute`, then writes the `quotes` row (inputs+params, breakdown, pinned `rate_snapshot_ids`, total, `valid_until`) **and** `ledger.write(figures_from_breakdown(...))` in **one transaction** — the caller commits, so a ledger failure rolls back the quote too. `replay_quote(session, org_id, quote_id)` reloads the stored inputs/params + strategy, **pins the exact snapshots the quote used** (`_pinned_rate_lookup`), recomputes, and returns a byte-for-byte `matches`. `rates_status` reports per-source freshness.
+
+**ledger.py (MVP-053)** — `Figure(figure_type, amount_minor?, value_text?)`; `write` records the quote total + every **positive** breakdown line with an expiry; `match(org, amount_minor, window_hours=48)` is **exact (tolerance 0)**, unexpired, within the window — an off-by-one or expired figure fails closed (this is the input to the MVP-054 send gate). `figures_from_breakdown` excludes zero lines and the `total` breakdown id (added once as `figure_type='total'`).
+
+**api.py** — `POST /v1/pricing/compute` → 200 `{quote_id}` / **409 `stale_rate`** / 422 other `PricingError`; `POST /v1/pricing/replay` → `{matches, stored_total, recomputed_total}`; `GET /v1/rates/status`. All `requires(CATALOG_READ)` (enforcement itself already covered by `test_rbac`). The agent `pricing.compute` tool will call the service in-process, not over HTTP.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| quote persists with pinned rate provenance | `test_pricing_service::test_compute_writes_quote_with_provenance` | PASS |
+| ledger written; **every** breakdown-visible amount matchable; off-by-one fails closed | `::test_ledger_written_and_every_figure_matchable` | PASS |
+| **replay is byte-exact** from the pinned snapshots | `::test_replay_is_byte_exact` | PASS |
+| compute + ledger are **atomic** (ledger failure ⇒ zero quotes) | `::test_compute_is_atomic_when_ledger_fails` | PASS |
+| **stale rate fails closed** (409-mapped) | `::test_stale_rate_fails_closed` | PASS |
+| expired ledger row no longer matches | `::test_expired_ledger_row_no_longer_matches` | PASS |
+| registry round-trip still computes a golden after the shape change | `test_pricing_registry::test_load_and_compute_from_registry` | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**79 files**) · guards (`test_scaffold`, 2) · `pytest -q` **357 passed, 0 skipped** (+6). App builds; OpenAPI shows `/v1/pricing/compute|replay`, `/v1/rates/status`.
+
+**Security:** RLS scopes ledger + quotes to the caller's org (`set_org_context`); `computed_by='engine'` CHECK keeps an LLM off the figure; no secrets/PII in figures (amounts + figure-type labels only); external side effects unaffected.
+
+**Deferred:** MVP-049 (`stale_inputs` on rule-referenced attribute change); MVP-054 (send-path extractor → `ledger.match` → 422 `unledgered_figure`); item()/offer_discount() wiring for kirana line-item strategies (jewelry pilot is rate-based, needs neither); params today come from the request/caller — settings-slot resolution is the production path.
