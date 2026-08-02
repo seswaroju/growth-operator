@@ -1006,6 +1006,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests) · mypy core (**79 files**) · guards (`test_scaffold`, 2) · `pytest -q` **357 passed, 0 skipped** (+6). App builds; OpenAPI shows `/v1/pricing/compute|replay`, `/v1/rates/status`.
 
+**Commit:** feature `e4b639e` → merge `d57eab5` (pushed to `origin/main`).
+
 **Security:** RLS scopes ledger + quotes to the caller's org (`set_org_context`); `computed_by='engine'` CHECK keeps an LLM off the figure; no secrets/PII in figures (amounts + figure-type labels only); external side effects unaffected.
 
 **Deferred:** MVP-049 (`stale_inputs` on rule-referenced attribute change); MVP-054 (send-path extractor → `ledger.match` → 422 `unledgered_figure`); item()/offer_discount() wiring for kirana line-item strategies (jewelry pilot is rate-based, needs neither); params today come from the request/caller — settings-slot resolution is the production path.
