@@ -296,3 +296,14 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **pg-014 sample golden is inconsistent with the authoritative formula.** The strategy.yaml discount formula caps at 5% of the **full subtotal** (incl. making) → 258768; the sample golden expects 239600 (5% of metal only). The engine follows the **formula** (the executable spec); the sample looks hand-written and wrong. Flagged for founder — if the intended rule is "discount excludes making," the *strategy.yaml formula* should change (`stage.subtotal - stage.making`), not the engine.
 
 **Decided by:** Claude (flagged) — the formula is authoritative per §4; pg-014 is a suspect fixture, not a rule to invent (§29).
+
+---
+
+### 2026-08-02 — MVP-055 executor: LangGraph adopted; runtime migration lands ahead of approvals-014
+
+**Decisions (founder-approved, 2026-08-02):**
+- **LangGraph is the agent-executor orchestration engine.** `langgraph>=0.2,<0.3` added as a main dependency (resolved `langgraph==0.2.76`, MIT). It sequences the `route→compose→model_turn→tool_call→respond` graph and provides checkpoint/resume. **Footprint disclosed at approval:** it pulls in `langchain-core==0.3.86`, `langgraph-checkpoint==2.1.2`, `langsmith`, `orjson`, `tenacity`, and ~12 more transitive packages (17 total) — the largest dependency added to date. **Boundary:** LangGraph only *sequences*; the platform gates (mediation/approval/committed-figures ledger/audit) remain the authority, and every node fails closed the same as the rest of the system. The custom-orchestrator alternative was offered and declined.
+- **The LLM stays gated-simulated** (deterministic, provider-agnostic `core/runtime/model.py`); the real provider is chosen at go-live (prior decision, 2026-08-02). No paid API in tests.
+- **Migration ordering:** the runtime migration (`agent_runs`/`agent_steps`/`agent_memory`/`model_routes`) chains off `63bcec3ea528` (013) **now**, ahead of the approvals migration (014, MVP-065) which is not yet built. Safe because no runtime table FKs into the approvals tables; approvals will slot in later with no FK conflict. This deviates from the doc's 014-then-015 file order — founder approved landing runtime first.
+
+**Decided by:** Founder (2026-08-02, "Yes, please do both of the recommended actions… I approve").
