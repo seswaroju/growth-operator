@@ -1138,3 +1138,32 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** new runtime tables are RLS-scoped + cross-tenant tested; AI output stays untrusted (model only proposes a tool/text — figures never invented; customer text still faces the MVP-054 send gate); no paid API (simulated model); ops viewer is `PLATFORM_ADMIN` only.
 
 **Deferred:** real LLM provider (go-live, provider-agnostic); **mediation / permission proxy** (MVP-060 — the `tool_call` node runs a simulated tool for now); a LangGraph durable saver; wiring runs into the worker/scheduler + the `respond` node into the real MVP-054 send path.
+
+---
+
+## 2026-08-02 — MVP-060 · Mediation proxy (the only model→tool path)
+
+**Ticket:** [MVP-060](../docs/tickets/MVP-060.md) · P0 · "L". Branch `feature/mvp-060-mediation-proxy` (off main). *"As the only path from model to tools I enforce manifests, params, rates, budgets, tiers, and audit — in that order."* **No migration, no new dependency.**
+
+**Files (new):** `core/mediation/proxy.py`, `core/mediation/tools.py`, `tests/integration/test_mediation_proxy.py`. **(modified):** `scripts/guards.py` + `tests/unit/test_lint_guards.py` (the `runtime-not-tools` guard).
+
+**proxy.py** — `call(ctx, tool_name, params, *, session, redis, registry?, tier_eval?)` runs the authoritative chain in order (tool-permission-model.md): **1** manifest integrity (sha256 vs `ctx.manifest_hash`) → **2** grant lookup → **3** untrusted-content narrowing → **4** param constraints (jsonschema on schema-shaped constraints) → **5** rate limit (redis per-min window) → **6** budgets (per-day send cap) → **7** tier (if `requires_tier_eval`, ≥2 ⇒ `ApprovalPending`, run checkpointed) → **8** audit intent (log-then-act, keys-only payload) → **9** execute registry impl → **10** egress scrub. A denial returns a structured **recoverable `ToolError`** the model can adapt to (never the manifest); manifest-scope denials are **audited + `alert.ops`**, bump a per-run violation counter, and **abort the run (`RunAborted`) at ≥3**.
+
+**tools.py** — `REGISTRY`: `catalog.search`→hybrid_search, `pricing.compute`→compute_quote, `ledger.read`→ledger.match are wired; `messages.send` is registered but reached only past a tier-2 approval (never fires unapproved, §19); `calendar.book`/`crm.read`/`crm.write` are gated stubs (`provider_unavailable`) until built.
+
+**runtime-not-tools guard** — the ticket's "import-linter contract runtime↛tool impls", implemented via the existing AST lint-guard pattern (no `import-linter` dependency, §9): `core/runtime/` may import `core.mediation.proxy` but not `core.catalog`/`core.channels`/`core.mediation.tools`/`core.pricing.{service,ledger,rates,api}`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **out-of-manifest call denied + audited + alerted** | `test_mediation_proxy::test_out_of_manifest_denied_audited_alerted` | PASS |
+| **≥3 manifest violations abort the run** | `::test_three_manifest_violations_abort_run` | PASS |
+| check order — integrity / param / rate / budget-before-tier / tier→pending / narrowing | `::test_manifest_integrity_failure_*`, `_param_constraint_violation`, `_rate_limit_*`, `_budget_checked_before_tier`, `_tier_eval_returns_approval_pending`, `_untrusted_narrowing_*` | PASS |
+| successful read tool executes + audits intent (log-then-act) | `::test_successful_read_tool_executes_and_audits_intent` | PASS |
+| runtime↛tools contract enforced (red on direct import, green on proxy) | `test_lint_guards::test_runtime_not_tools_*` | PASS |
+
+**Commands:** ruff (core+tests+scripts) · mypy core (**88 files**) · guards (**6** now, incl. runtime-not-tools) · `pytest -q` **419 passed, 0 skipped** (+11).
+
+**Security:** the proxy is the structural choke point — manifests/params/rates/budgets/tiers/audit cannot be bypassed (guard-enforced); external actions (messages.send) are tier-gated to human approval by default; denials never leak manifest contents; audit is log-then-act with keys-only payloads.
+
+**Out of scope (ticket):** live policy-engine tier decisions (stubbed conservative-2 until MVP-065). **Deferred (disclosed):** ed25519 manifest **signature** verify (hash integrity is checked now); real destination-aware **PII egress** scrub (pass-through hook); scalar policy constraints (recorded, enforced by the policy engine later); **wiring the executor `tool_call` node through `proxy.call`** — the ApprovalPending/RunAborted handling lands with the approvals engine (MVP-065); the guard already enforces the boundary now so nothing can bypass the proxy in the meantime.
