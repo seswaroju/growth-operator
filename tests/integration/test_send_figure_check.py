@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 import asyncpg
 import pytest
 
+from core.approvals import tokens
 from core.audit.writer import AuditEntry, write
 from core.channels.whatsapp.credentials import store_credentials
 from core.channels.whatsapp.meta_client import SendResult
@@ -94,6 +95,15 @@ class Scene:
             )
         return aid.id
 
+    async def mint_token(self, conversation_id: uuid.UUID) -> str:
+        async with org_scoped_session(self.org) as s:
+            tok = await tokens.mint(
+                s, org_id=self.org, tier=0,
+                ctx_hash=tokens.action_hash(self.org, "msg.send", str(conversation_id)),
+            )
+            await s.commit()
+        return tok
+
     async def ledger(self, amount_minor: int) -> None:
         async with org_scoped_session(self.org) as s:
             await ledger.write(
@@ -160,7 +170,8 @@ async def test_ledgered_figure_is_allowed(scene: Scene) -> None:
     meta = FakeMeta()
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body=LEDGERED_BODY,
-        audit_id=audit, execution_token="t", meta_client=meta, message_class="transactional",
+        audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
     )
     assert outcome.sent is True
     assert len(meta.calls) == 1  # matched the ledger -> went out
@@ -174,7 +185,8 @@ async def test_unledgered_figure_blocks_and_never_hits_the_wire(scene: Scene) ->
     with pytest.raises(SendRefused) as ei:
         await send(
             org_id=scene.org, conversation_id=conv, body=UNLEDGERED_BODY,
-            audit_id=audit, execution_token="t", meta_client=meta, message_class="transactional",
+            audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
         )
     assert ei.value.code == "unledgered_figure"
     assert meta.calls == []  # blocked before any Meta call
@@ -189,7 +201,8 @@ async def test_partial_match_still_blocks(scene: Scene) -> None:
     with pytest.raises(SendRefused) as ei:
         await send(
             org_id=scene.org, conversation_id=conv, body=body,
-            audit_id=audit, execution_token="t", meta_client=meta, message_class="transactional",
+            audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
         )
     assert ei.value.code == "unledgered_figure"
     assert meta.calls == []
@@ -201,7 +214,8 @@ async def test_warn_mode_allows_unledgered_figure(scene: Scene) -> None:
     meta = FakeMeta()
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body=UNLEDGERED_BODY,
-        audit_id=audit, execution_token="t", meta_client=meta, message_class="transactional",
+        audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
         figure_check="warn",
     )
     assert outcome.sent is True  # warn does not block
@@ -216,7 +230,8 @@ async def test_tier3_override_proceeds_and_is_audited(scene: Scene) -> None:
     assert await _override_audits(scene.org) == 0
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body=UNLEDGERED_BODY,
-        audit_id=audit, execution_token="t", meta_client=meta, message_class="transactional",
+        audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
         figure_override_by=owner,
     )
     assert outcome.sent is True

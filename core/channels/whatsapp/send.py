@@ -5,7 +5,7 @@ fails:
 
   1. audit capability  — a fresh (<10min) audit entry authorising this exact msg.send
                          → refuse ``approval_required``
-  2. execution token   — proof the send came from an approved action (stub → MVP-066)
+  2. execution token   — a single-use, ctx-bound ed25519 token from the policy engine (MVP-066)
                          → refuse ``approval_required``
   3. suppression       — contact is not on the suppression list for this class
                          → refuse ``suppressed_contact``
@@ -33,6 +33,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.approvals import tokens
 from core.audit.writer import AuditEntry, verify_capability, write_outcome
 from core.audit.writer import write as audit_write
 from core.channels.whatsapp.credentials import load_credentials
@@ -73,13 +74,6 @@ class SendOutcome:
     message_id: UUID | None
     provider_message_id: str | None = None
     retryable: bool = False
-
-
-def _verify_execution_token(token: str | None, audit_id: UUID | None) -> bool:
-    """Interim execution-token gate. Fail-closed: a send must carry a non-empty token proving
-    it originated from an approved action. Real single-use binding to the audit capability
-    lands with the approval execution-token store — MVP-066."""
-    return bool(token)
 
 
 def _assert_not_suppressed(scopes: set[str], message_class: MessageClass) -> None:
@@ -223,9 +217,14 @@ async def send(
         ):
             raise SendRefused("approval_required", "missing or invalid audit capability")
 
-        # Gate 2 — execution token (stub, fail-closed).
-        if not _verify_execution_token(execution_token, audit_id):
-            raise SendRefused("approval_required", "missing execution token")
+        # Gate 2 — execution token: a single-use, ctx-bound token from the policy engine (MVP-066).
+        try:
+            await tokens.verify(
+                s, execution_token, org_id=org_id,
+                expected_ctx_hash=tokens.action_hash(org_id, SEND_ACTION, str(conversation_id)),
+            )
+        except tokens.TokenInvalid as exc:
+            raise SendRefused("approval_required", f"execution token: {exc}") from exc
 
         # Gates 3 + 4 — suppression then consent (both fail-closed).
         _assert_not_suppressed(await _suppression_scopes(s, conv["contact_id"]), message_class)
