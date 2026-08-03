@@ -307,3 +307,11 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **Migration ordering:** the runtime migration (`agent_runs`/`agent_steps`/`agent_memory`/`model_routes`) chains off `63bcec3ea528` (013) **now**, ahead of the approvals migration (014, MVP-065) which is not yet built. Safe because no runtime table FKs into the approvals tables; approvals will slot in later with no FK conflict. This deviates from the doc's 014-then-015 file order — founder approved landing runtime first.
 
 **Decided by:** Founder (2026-08-02, "Yes, please do both of the recommended actions… I approve").
+
+---
+
+### 2026-08-03 — MVP-068 approvals: notification-state migration (ticket said "none")
+
+**Decision (flagged):** MVP-068's ticket states "Database changes: None — approvals table (014) carries notification state columns already." It does **not** — neither the split migration 014 (MVP-065) nor the `approvals` object (MVP-067, built from `docs/06-database/schema.sql`, which also lacks them) defined notification-state columns. The escalation ladder needs to track its progress, so a small **additive** migration (`bb65660f0771`) adds `notified_at`, `reminded_at`, `escalated_at`, `notify_ref`, `notify_channel` to `approvals`. RLS was already on the table; round-tripped. The founder pre-approved "MVP-068 and further" with this migration flagged in the check-in.
+
+**Decided by:** Claude (flagged) — the ticket's "carries these already" premise was incorrect against the authoritative schema; the columns are required for the ladder. Founder pre-approved the ticket with the migration disclosed.
