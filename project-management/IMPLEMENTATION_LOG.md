@@ -1238,6 +1238,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff (core+tests) · mypy core (**90 files**) · guards (6) · `pytest -q` **442 passed, 0 skipped** (+6, plus 21 send tests migrated to real tokens).
 
+**Commit:** merge `8bc4b5a` (pushed to `origin/main`).
+
 **Security:** the execution token is the second required capability at the send exit (with the audit capability); it is signed (unforgeable), single-use (no replay), ctx-bound (can't be repurposed), and short-lived (10 min). The signing seed is config/SOPS, never logged. No secrets in tokens (only jti/ctx-hash/tier/exp).
 
 **Deferred (disclosed):** **campaign-executor** verification — no campaign executor exists yet (latent); the **proxy token-attach** is at the send caller (normalizer today, the approval-execution flow later) since no side-effecting tool runs through the proxy at tier<2 yet; the **daily jti prune** job awaits the scheduler entrypoint (#16). The approval-object lifecycle (create→notify→approve→execute) remains a later ticket.
