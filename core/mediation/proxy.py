@@ -146,10 +146,19 @@ async def _budget_ok(
     return None
 
 
-def _default_tier(ctx: RunContext, tool: str, params: dict[str, Any]) -> int:
-    """Conservative stub: any tier-eval tool needs approval (tier 2) until the policy engine wires
-    real per-action tiers (MVP-065). Keeps external actions human-gated by default (§19)."""
-    return 2
+async def _engine_tier(
+    session: AsyncSession, ctx: RunContext, tool: str, params: dict[str, Any]
+) -> int:
+    """Live tier from the policy engine (MVP-065): the tool call becomes an ActionContext."""
+    from core.approvals.engine import ActionContext, evaluate
+
+    action_ctx = ActionContext(
+        org_id=ctx.org_id, action_type=tool, actor_instance_id=ctx.instance_id,
+        amount_minor=params.get("amount_minor"), currency=params.get("currency"),
+        recipients=list(params.get("recipients", [])), attributes=params,
+        untrusted_content=ctx.untrusted,
+    )
+    return (await evaluate(session, action_ctx)).tier
 
 
 async def _publish_alert(redis: Redis, kind: str, detail: dict[str, Any]) -> None:
@@ -201,8 +210,7 @@ async def call(
     a recoverable ToolError); raises RunAborted only when the violation threshold is crossed."""
     from core.mediation.tools import REGISTRY
 
-    registry = registry if registry is not None else REGISTRY
-    tier_eval = tier_eval or _default_tier
+    registry = registry if registry is not None else REGISTRY  # tier_eval None → live engine
 
     # 1. manifest integrity (hash) — tamper fails closed and counts as a violation.
     if _manifest_hash(ctx.manifest) != ctx.manifest_hash:
@@ -232,9 +240,13 @@ async def call(
     if berr is not None:
         return ToolResult(ok=False, error=ToolError("budget_exceeded", berr, recoverable=False))
 
-    # 7. tier — an action needing approval checkpoints the run (no side effect yet).
+    # 7. tier — the live policy engine (MVP-065) decides; an injected evaluator overrides it for
+    # hermetic tests. Tier ≥ 2 checkpoints the run for approval (no side effect yet).
     if grant.get("requires_tier_eval"):
-        tier = tier_eval(ctx, tool_name, params)
+        if tier_eval is not None:
+            tier = tier_eval(ctx, tool_name, params)
+        else:
+            tier = await _engine_tier(session, ctx, tool_name, params)
         if tier >= 2:
             return ToolResult(
                 ok=False, pending=ApprovalPending(tier, f"{tool_name} needs approval")

@@ -1169,3 +1169,33 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** the proxy is the structural choke point — manifests/params/rates/budgets/tiers/audit cannot be bypassed (guard-enforced); external actions (messages.send) are tier-gated to human approval by default; denials never leak manifest contents; audit is log-then-act with keys-only payloads.
 
 **Out of scope (ticket):** live policy-engine tier decisions (stubbed conservative-2 until MVP-065). **Deferred (disclosed):** ed25519 manifest **signature** verify (hash integrity is checked now); real destination-aware **PII egress** scrub (pass-through hook); scalar policy constraints (recorded, enforced by the policy engine later); **wiring the executor `tool_call` node through `proxy.call`** — the ApprovalPending/RunAborted handling lands with the approvals engine (MVP-065); the guard already enforces the boundary now so nothing can bypass the proxy in the meantime.
+
+---
+
+## 2026-08-02 — MVP-065 · Policy engine (deterministic action tiers)
+
+**Ticket:** [MVP-065](../docs/tickets/MVP-065.md) · P0 · "L". Branch `feature/mvp-065-policy-engine` (off main). *"Every side effect gets a deterministic tier from declarative rules."*
+
+**Files (new):** `core/approvals/engine.py`, `migrations/versions/1993ba538f4f_approvals_policy.py`, `tests/unit/test_approval_determinism.py`, `tests/integration/test_approval_engine.py`. **(modified):** `core/mediation/proxy.py` (tier check now calls the engine by default).
+
+**Migration 014** (`1993ba538f4f`, revises `f124e1102952`): `approval_policies` (core/pack **global** rows with `org_id NULL` + **tenant** rows; a **custom RLS** policy reads globals + own and writes only own — the standard helper would hide the globals), `trust_ledger`, `incident_tightening`, `execution_token_jti` (the 066 token store), all +RLS. Round-tripped; `make db-roles` re-applied. Chains off the runtime migration (015) — no FK crosses (founder-approved ordering).
+
+**engine.py** — `evaluate(session, ctx: ActionContext) -> Decision`: sets org context, loads contributors for the `action_type` — **core tier-4 minimums** (`CORE_TIER4_ACTIONS`, platform code), **pack + tenant** rows from `approval_policies`, and any active **incident-tightening** — filters each rule by its **CEL** expression against the ctx (compiled once per expr, cached in `_PROGRAM_CACHE`), and returns the **max tier** with the matched rule ids. `select_decision` is a **pure, order-independent** max (ties broken by a stable key) → the determinism property. `validate_tenant_rule` computes the core/pack `baseline_tier` and rejects a tenant rule that would lower it (**tighten-only**). No matching rule ⇒ fail-safe `DEFAULT_UNKNOWN_TIER=2`.
+
+**Live wiring** — `core/mediation/proxy.py` step 7 now calls `engine.evaluate` by default (a tool call becomes an `ActionContext`); an injected `tier_eval` still overrides it for hermetic tests. The MVP-060 proxy tests stay green because an org with no rules resolves tier-eval tools to the fail-safe tier 2.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| ap-01 core tier-4 never autonomous | `test_approval_engine::test_ap01_core_tier4_never_autonomous` | PASS |
+| ap-02 pack default; ap-03 CEL-guarded tier; ap-04 **max-tier-wins** | `::test_ap02_*`, `_ap03_cel_guarded_tier`, `_ap04_max_tier_wins` | PASS |
+| ap-05 **tighten-only** validator (tighten ok, loosen rejected) | `::test_ap05_tighten_only_validator` | PASS |
+| ap-13 incident tightening active→expired; ap-15 unknown fail-safe; tenant tightens over pack | `::test_ap13_*`, `_ap15_unknown_action_fails_safe`, `_tenant_rule_tightens_over_pack` | PASS |
+| **determinism: 10k shuffled orderings identical** | `test_approval_determinism::test_determinism_over_10k_shuffles` | PASS |
+| CEL compile cache reused; **5 ms budget** (p95 measured) | `::test_cel_compile_cache_reuses_program`, `_evaluation_budget_p95` (**0.878 ms**) | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**89 files**) · guards (6) · alembic upgrade/downgrade/upgrade + `make db-roles` · `pytest -q` **433 passed, 0 skipped** (+14).
+
+**Security:** tenant rules can only tighten (validator); global policy rows are migrator-written (the NOBYPASSRLS app can't forge core/pack rules); RLS scopes tenant rows + trust/incident/jti to the org; the engine is now the authority the mediation proxy consults for every tier-eval action (§19).
+
+**Out of scope (ticket):** `execution_token` minting + the approval-object lifecycle (requested→notified→approved→executed) → **MVP-066** (the jti table is created here for it). **Deferred (disclosed):** the DB rules-**loading** version cache (the **compile** cache is the named deliverable and is in; evaluation p95 is already 0.88 ms — DB load is not the 5 ms target); the exact ap-* fixture suite is in the vault (illustrative — tested the documented semantics); 48h staging shadow-compare against the yaml-stub before flipping the enforcement flag (rollout note).
