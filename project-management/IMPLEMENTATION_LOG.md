@@ -1199,3 +1199,17 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** tenant rules can only tighten (validator); global policy rows are migrator-written (the NOBYPASSRLS app can't forge core/pack rules); RLS scopes tenant rows + trust/incident/jti to the org; the engine is now the authority the mediation proxy consults for every tier-eval action (§19).
 
 **Out of scope (ticket):** `execution_token` minting + the approval-object lifecycle (requested→notified→approved→executed) → **MVP-066** (the jti table is created here for it). **Deferred (disclosed):** the DB rules-**loading** version cache (the **compile** cache is the named deliverable and is in; evaluation p95 is already 0.88 ms — DB load is not the 5 ms target); the exact ap-* fixture suite is in the vault (illustrative — tested the documented semantics); 48h staging shadow-compare against the yaml-stub before flipping the enforcement flag (rollout note).
+
+---
+
+## 2026-08-02 — MVP-065b · Audit hardening (CEL fail-safe + isolation tests)
+
+**Context:** batch-audit follow-up (founder-approved: "fix findings, then MVP-066"). Branch `feature/mvp-065b-hardening` (off main). Two audit findings, both minor/non-blocking, now closed. No migration, no dependency.
+
+**Files (modified):** `core/approvals/engine.py`, `tests/unit/test_approval_determinism.py`. **(new):** `tests/isolation/test_batch_rls.py`.
+
+**Finding 1 — CEL not fail-safe (fixed).** `engine._matches` caught only `CELEvalError`; a policy whose CEL failed to **compile** raised `CELParseError` and crashed `evaluate()`. Worse, the eval-error path returned `False` (rule dropped), which could **loosen** a broken tightening rule. Fix: any compile/eval failure now **fails safe by treating the rule as matching**, so its declared `tier` still contributes — and because the engine takes the max, an unresolved guard can only tighten, never loosen. Not triggerable in the designed system (certified pack rules, templated tenant rules), so defence-in-depth. Test: `test_approval_determinism::test_malformed_cel_fails_safe_to_matching`.
+
+**Finding 2 — isolation-test coverage gap (fixed).** RLS was enabled+forced on `quotes` / `committed_figures_ledger` / `approval_policies` (and manually probed during the audit), but only `agent_runs` had an automated cross-tenant test. Added `tests/isolation/test_batch_rls.py` (probes as the real non-bypass `app_rw` role): `quotes` + `committed_figures_ledger` show own rows only and fail closed without context; `approval_policies` (mixed scope) shows **globals + own tenant rows, never another org's**, and only globals without context.
+
+**Commands:** ruff · mypy core (89) · guards (6) · `pytest -q` **436 passed, 0 skipped** (+3). Batch audit otherwise verified clean (migrations round-trip, RLS forced on all 10 batch tables, `get_db` one-tx atomicity, `quotes.computed_by='engine'` CHECK, no secrets).

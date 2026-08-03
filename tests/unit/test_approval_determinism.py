@@ -73,6 +73,15 @@ def test_cel_compile_cache_reuses_program() -> None:
     assert engine._PROGRAM_CACHE["amount_minor > 50"] is prog  # same cached program
 
 
+def test_malformed_cel_fails_safe_to_matching() -> None:
+    """A rule whose CEL cannot compile or evaluate must not crash the engine and must not be
+    silently dropped — it fails safe by being treated as matching (its tier still counts)."""
+    act = engine._activation(ActionContext(org_id=uuid.uuid4(), action_type="x", amount_minor=100))
+    assert engine._matches("amount_minor >>> bad(", act) is True   # compile error → safe
+    assert engine._matches("no_such_field > 1", act) is True       # eval error → safe
+    assert engine._matches("amount_minor > 999999", act) is False  # a valid, non-matching guard
+
+
 def test_evaluation_budget_p95(capsys: object) -> None:
     """Non-blocking benchmark: with programs compiled once, matching + selection over a realistic
     rule set should sit well under the 5 ms evaluation budget. Reports p95; asserts only a loose
