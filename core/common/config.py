@@ -25,6 +25,13 @@ _DEV_CREDENTIAL_KEY = base64.urlsafe_b64encode(
     hashlib.sha256(b"growth-operator-dev-credential-key").digest()
 ).decode()
 
+# A deterministic 32-byte ed25519 seed for LOCAL dev/tests only (the execution-token signing key,
+# MVP-066). Stable so tokens minted before a restart still verify. Production supplies a real seed
+# via SOPS (GROWTH_OPERATOR_EXECUTION_TOKEN_SIGNING_SEED).
+_DEV_EXEC_TOKEN_SEED = base64.urlsafe_b64encode(
+    hashlib.sha256(b"growth-operator-dev-exec-token-seed").digest()
+).decode()
+
 
 class SopsSecretsSource(PydanticBaseSettingsSource):
     """Reads a plaintext YAML file at the path named by `GROWTH_OPERATOR_SECRETS_FILE`.
@@ -108,6 +115,8 @@ class Settings(BaseSettings):
     whatsapp_live_enabled: bool = Field(default=False)
     # Fernet key used to encrypt channel credentials (WABA access token) at rest.
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
+    # ed25519 seed (base64, 32 bytes) that signs execution tokens (MVP-066). Prod via SOPS.
+    execution_token_signing_seed: str = Field(default=_DEV_EXEC_TOKEN_SEED)
 
     # WhatsApp media handling (MVP-037). Both OFF by default → simulated adapters (dev/tests).
     # When enabled, the real clamav scanner + S3/MinIO store below are used; if the service is

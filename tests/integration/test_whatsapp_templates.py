@@ -19,6 +19,7 @@ import pytest
 import yaml
 from sqlalchemy import text
 
+from core.approvals import tokens
 from core.audit.writer import AuditEntry, write
 from core.channels.whatsapp import normalizer, templates
 from core.channels.whatsapp.connect import templates as list_templates_endpoint
@@ -140,6 +141,15 @@ async def _mint_audit(org: uuid.UUID, conv: uuid.UUID) -> uuid.UUID:
     return aid.id
 
 
+async def _mint_token(org: uuid.UUID, conv: uuid.UUID) -> str:
+    async with org_scoped_session(org) as s:
+        tok = await tokens.mint(
+            s, org_id=org, tier=0, ctx_hash=tokens.action_hash(org, "msg.send", str(conv)),
+        )
+        await s.commit()
+    return tok
+
+
 async def test_lifecycle_draft_submit_approve_reject(scene: dict) -> None:
     org, waba = scene["org"], scene["waba"]
     async with org_scoped_session(org) as s:
@@ -203,7 +213,8 @@ async def test_send_with_rejected_template_refused_no_meta_call(scene: dict) -> 
     with pytest.raises(TemplateNotSendable):
         await send(
             org_id=org, conversation_id=conv, body="hi", audit_id=audit,
-            execution_token="t", template=("reactivation", "en"), meta_client=meta,
+            execution_token=await _mint_token(org, conv),
+            template=("reactivation", "en"), meta_client=meta,
         )
     assert meta.template_calls == 0 and meta.text_calls == 0  # never hit the wire
 
@@ -223,8 +234,8 @@ async def test_send_with_approved_template_uses_template_path(scene: dict) -> No
     meta = FakeMeta(SendResult(ok=True, provider_message_id="wamid.TPL"))
     outcome = await send(
         org_id=org, conversation_id=conv, body="visit today", audit_id=audit,
-        execution_token="t", template=("visit_reminder", "en"), message_class="transactional",
-        meta_client=meta,
+        execution_token=await _mint_token(org, conv),
+        template=("visit_reminder", "en"), message_class="transactional", meta_client=meta,
     )
     assert outcome.sent is True
     assert meta.template_calls == 1 and meta.text_calls == 0  # template path, not freeform

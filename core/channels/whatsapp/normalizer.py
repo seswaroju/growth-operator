@@ -23,6 +23,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.approvals import tokens
 from core.audit.writer import AuditEntry, write
 from core.channels.whatsapp import media
 from core.channels.whatsapp.credentials import load_credentials
@@ -39,8 +40,6 @@ STOP_CONFIRM_TEXT = (
     "You've been unsubscribed and won't receive further marketing messages. "
     "Reply START to opt back in."
 )
-# Interim execution token for the automated confirm; real one-time binding lands MVP-066.
-_AUTO_CONFIRM_TOKEN = "auto-stop-confirm"  # noqa: S105 - not a secret
 
 
 def _messages(payload: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
@@ -220,8 +219,9 @@ async def _normalize_one(
     return confirms
 
 
-async def _mint_send_capability(org_id: UUID, conversation_id: UUID) -> UUID:
-    """Commit an audit capability authorising the automated confirmation send."""
+async def _mint_send_authorization(org_id: UUID, conversation_id: UUID) -> tuple[UUID, str]:
+    """Commit the two capabilities the send gate requires — an audit capability and a single-use
+    execution token bound to this exact send — in one transaction."""
     async with org_scoped_session(org_id) as s:
         audit = await write(
             s,
@@ -231,16 +231,20 @@ async def _mint_send_capability(org_id: UUID, conversation_id: UUID) -> UUID:
                 payload={"reason": "stop_confirmation"},
             ),
         )
-    return audit.id
+        token = await tokens.mint(
+            s, org_id=org_id, tier=0,
+            ctx_hash=tokens.action_hash(org_id, "msg.send", str(conversation_id)),
+        )
+    return audit.id, token
 
 
 async def _send_stop_confirmation(org_id: UUID, conversation_id: UUID) -> None:
     """Send the fixed transactional opt-out confirmation through the gated send adapter."""
-    audit_id = await _mint_send_capability(org_id, conversation_id)
+    audit_id, token = await _mint_send_authorization(org_id, conversation_id)
     try:
         await send(
             org_id=org_id, conversation_id=conversation_id, body=STOP_CONFIRM_TEXT,
-            audit_id=audit_id, execution_token=_AUTO_CONFIRM_TOKEN,
+            audit_id=audit_id, execution_token=token,
             message_class="transactional",
         )
     except SendRefused as exc:  # e.g. channel not connected — don't fail the batch

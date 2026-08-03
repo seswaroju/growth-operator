@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 import asyncpg
 import pytest
 
+from core.approvals import tokens
 from core.audit.writer import AuditEntry, write
 from core.channels.whatsapp import send as send_mod
 from core.channels.whatsapp.credentials import store_credentials
@@ -113,6 +114,16 @@ class Scene:
             )
         return aid.id
 
+    async def mint_token(self, conversation_id: uuid.UUID) -> str:
+        """A fresh single-use execution token bound to this send (Gate 2 needs a real one now)."""
+        async with org_scoped_session(self.org) as s:
+            tok = await tokens.mint(
+                s, org_id=self.org, tier=0,
+                ctx_hash=tokens.action_hash(self.org, "msg.send", str(conversation_id)),
+            )
+            await s.commit()
+        return tok
+
 
 @pytest.fixture()
 async def scene() -> AsyncIterator[Scene]:
@@ -180,7 +191,7 @@ async def test_success_emits_sent_and_records_outcome(scene: Scene) -> None:
 
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body="hello",
-        audit_id=audit, execution_token="exec-tok", meta_client=meta,
+        audit_id=audit, execution_token=await scene.mint_token(conv), meta_client=meta,
     )
 
     assert outcome.sent is True and outcome.provider_message_id == "wamid.TEST"
@@ -232,7 +243,8 @@ async def test_suppressed_marketing_blocked_transactional_allowed(scene: Scene) 
     with pytest.raises(SendRefused) as ei:
         await send(
             org_id=scene.org, conversation_id=conv, body="promo",
-            audit_id=audit, execution_token="t", meta_client=meta, message_class="marketing",
+            audit_id=audit, execution_token=await scene.mint_token(conv),
+            meta_client=meta, message_class="marketing",
         )
     assert ei.value.code == "suppressed_contact"
     assert meta.calls == []
@@ -241,7 +253,8 @@ async def test_suppressed_marketing_blocked_transactional_allowed(scene: Scene) 
     audit2 = await scene.mint_audit(conv)
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body="your order shipped",
-        audit_id=audit2, execution_token="t", meta_client=meta, message_class="transactional",
+        audit_id=audit2, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
     )
     assert outcome.sent is True and len(meta.calls) == 1
 
@@ -254,7 +267,8 @@ async def test_consent_unknown_marketing_blocked_transactional_allowed(scene: Sc
     with pytest.raises(SendRefused) as ei:
         await send(
             org_id=scene.org, conversation_id=conv, body="promo",
-            audit_id=audit, execution_token="t", meta_client=meta, message_class="marketing",
+            audit_id=audit, execution_token=await scene.mint_token(conv),
+            meta_client=meta, message_class="marketing",
         )
     assert ei.value.code == "consent_missing"
     assert meta.calls == []
@@ -262,7 +276,8 @@ async def test_consent_unknown_marketing_blocked_transactional_allowed(scene: Sc
     audit2 = await scene.mint_audit(conv)
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body="receipt",
-        audit_id=audit2, execution_token="t", meta_client=meta, message_class="transactional",
+        audit_id=audit2, execution_token=await scene.mint_token(conv),
+        meta_client=meta, message_class="transactional",
     )
     assert outcome.sent is True
 
@@ -278,7 +293,8 @@ async def test_429_retry_after_is_honored(scene: Scene) -> None:
 
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body="x",
-        audit_id=audit, execution_token="t", meta_client=meta, sleeper=sleeper,
+        audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, sleeper=sleeper,
     )
     assert outcome.sent is True
     assert len(meta.calls) == 2
@@ -293,7 +309,8 @@ async def test_5xx_retried_thrice_then_failed(scene: Scene) -> None:
 
     outcome = await send(
         org_id=scene.org, conversation_id=conv, body="x",
-        audit_id=audit, execution_token="t", meta_client=meta, sleeper=sleeper,
+        audit_id=audit, execution_token=await scene.mint_token(conv),
+        meta_client=meta, sleeper=sleeper,
     )
     assert outcome.sent is False and outcome.retryable is True
     assert len(meta.calls) == 4  # 1 initial + 3 retries

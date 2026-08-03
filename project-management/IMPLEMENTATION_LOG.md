@@ -1213,3 +1213,31 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Finding 2 — isolation-test coverage gap (fixed).** RLS was enabled+forced on `quotes` / `committed_figures_ledger` / `approval_policies` (and manually probed during the audit), but only `agent_runs` had an automated cross-tenant test. Added `tests/isolation/test_batch_rls.py` (probes as the real non-bypass `app_rw` role): `quotes` + `committed_figures_ledger` show own rows only and fail closed without context; `approval_policies` (mixed scope) shows **globals + own tenant rows, never another org's**, and only globals without context.
 
 **Commands:** ruff · mypy core (89) · guards (6) · `pytest -q` **436 passed, 0 skipped** (+3). Batch audit otherwise verified clean (migrations round-trip, RLS forced on all 10 batch tables, `get_db` one-tx atomicity, `quotes.computed_by='engine'` CHECK, no secrets).
+
+---
+
+## 2026-08-03 — MVP-066 · Execution tokens (no token, no side effect)
+
+**Ticket:** [MVP-066](../docs/tickets/MVP-066.md) · P0 · "S". Branch `feature/mvp-066-execution-tokens` (off main). *"Side-effect services execute only decisions the engine actually made."* **No new migration** (`execution_token_jti` created in migration 014); **no new dependency** (ed25519 via `cryptography`, already used for pack signing).
+
+**Files (new):** `core/approvals/tokens.py`, `tests/integration/test_execution_tokens.py`. **(modified):** `core/common/config.py` (`execution_token_signing_seed`), `core/channels/whatsapp/send.py` (Gate 2 stub → real verify), `core/channels/whatsapp/normalizer.py` (mint a real token for the STOP-confirm), `tests/integration/test_whatsapp_send.py` / `test_whatsapp_templates.py` / `test_send_figure_check.py` (mint real per-send tokens).
+
+**tokens.py** — `mint(session, *, org_id, ctx_hash, tier, ttl_s=600)` builds `{jti, ctx_hash, tier, exp}`, signs it with the platform **ed25519** key (seed from config), persists the unused jti in `execution_token_jti`, and returns `base64(body).base64(sig)`. `verify(session, token, *, org_id, expected_ctx_hash)` checks, in order: signature (forged/tampered → `bad signature`), ctx hash (`ctx mismatch` — a token for one action can't authorize another), expiry (`expired`), then **claims the jti atomically** (`UPDATE … WHERE used_at IS NULL AND expires_at > now() RETURNING` → no row ⇒ `replayed or unknown`). `action_hash(org, action, resource)` is the deterministic binding. Twin of the audit-capability gate: both required before a side effect.
+
+**Stub removal (flag day):** `send.py` Gate 2 now calls `tokens.verify(...)` bound to `action_hash(org, "msg.send", conversation_id)` (refuses `approval_required` on any `TokenInvalid`); the `_verify_execution_token` stub and the normalizer's `_AUTO_CONFIRM_TOKEN` constant are **deleted** — the STOP-confirm mints a real token alongside its audit capability in one transaction. `grep` confirms **zero execution-token stub references** in `core/`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **token replay rejected** (jti single-use) | `test_execution_tokens::test_replay_is_rejected` | PASS |
+| **ctx mismatch rejected** (token bound to one action) | `::test_ctx_mismatch_is_rejected` | PASS |
+| **payload swap rejected** (breaks the signature) | `::test_swapped_payload_breaks_signature` | PASS |
+| **expiry rejected** | `::test_expired_token_is_rejected` | PASS |
+| valid token verifies once; missing/malformed rejected | `::test_valid_token_verifies_once`, `_missing_and_malformed_rejected` | PASS |
+| send path enforces a real token (all send/template/figure tests mint tokens) | `test_whatsapp_send` / `_templates` / `_send_figure_check` (21) | PASS |
+
+**Commands:** ruff (core+tests) · mypy core (**90 files**) · guards (6) · `pytest -q` **442 passed, 0 skipped** (+6, plus 21 send tests migrated to real tokens).
+
+**Security:** the execution token is the second required capability at the send exit (with the audit capability); it is signed (unforgeable), single-use (no replay), ctx-bound (can't be repurposed), and short-lived (10 min). The signing seed is config/SOPS, never logged. No secrets in tokens (only jti/ctx-hash/tier/exp).
+
+**Deferred (disclosed):** **campaign-executor** verification — no campaign executor exists yet (latent); the **proxy token-attach** is at the send caller (normalizer today, the approval-execution flow later) since no side-effecting tool runs through the proxy at tier<2 yet; the **daily jti prune** job awaits the scheduler entrypoint (#16). The approval-object lifecycle (create→notify→approve→execute) remains a later ticket.
