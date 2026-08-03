@@ -1334,3 +1334,29 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** notification content is templated (no LLM); reply routing resolves through the same `service.resolve` (RLS-scoped, `FOR UPDATE` idempotent, edit-re-eval); notifications carry no secrets (a rendered preview + the approval id).
 
 **Deferred (disclosed):** real WhatsApp **interactive send** via Meta (gated) + the `tap→sent <10s` staging measurement; **scheduler firing** of the ladder (entrypoint is the MVP-028 placeholder, #16); the webhook **normalizer** inbound button/text → `handle_*_reply` wiring; the full pack **`commitment_card`** layout render (text summary now); the **backup-approver** identity/routing on escalate (currently re-notifies the same owner channel).
+
+---
+
+## 2026-08-03 — MVP-070 · Trust ledger job (earned autonomy bookkeeping)
+
+**Ticket:** [MVP-070](../docs/tickets/MVP-070.md) · P1 · "S". Branch `feature/mvp-070-trust-ledger` (off main). *"Clean approvals accumulate; incidents reset and tighten."* The scheduler counterpart to the policy engine's `trust_ledger`/`incident_tightening` tables (MVP-065).
+
+**Files (new):** `core/approvals/trust.py`, `migrations/versions/30b7edf76a9d_approvals_trust_settled.py`, `tests/integration/test_trust_ledger.py`. **(modified):** `project-management/DECISIONS.md`.
+
+**Migration** (`30b7edf76a9d`, revises `bb65660f0771`): `approvals.trust_settled boolean NOT NULL DEFAULT false` + a partial index on the unsettled tier-2 set. **Flagged deviation** — the ticket said DB = "trust_ledger rows"; the marker is required so the hourly increment is idempotent (a per-run watermark alternative is more fragile). Additive; RLS already on the table; round-tripped; `make db-roles` re-applied. Founder pre-approved (DECISIONS 2026-08-03).
+
+**trust.py** — `settle(session, org, now?)`: over tier-2 approvals with `status='approved' AND NOT trust_settled AND decided_at + 72h <= now`, add +1 to `clean_approvals` for the action type **iff** no incident touched it in `[decided_at, decided_at+72h]` (via `trust_ledger.last_incident_at`), and mark each `trust_settled` (counted once). `record_incident(session, org, action_type, reason?, now?)`: reset `clean_approvals=0` + stamp `last_incident_at`, and insert a self-expiring `incident_tightening` row (tier 2, +14 days) that the engine already honours. `demotion_offers(session, org)`: action types at/over the threshold → a `loosen_one_tier` offer marked `requires: owner_approval` — **read-only**, for the digest; never writes a policy (IDL-007). `run_trust_settle` registered hourly (`register_jobs`), per-org fan-out.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| +1 per tier-2 approval past a clean 72h window; **idempotent**; skips inside the window | `test_trust_ledger::test_settle_increments_a_72h_clean_approval`, `_settle_is_idempotent`, `_settle_skips_inside_the_window` | PASS |
+| **ap-12** incident → reset + 14-day self-expiring tightening | `::test_incident_resets_and_writes_14d_tightening` | PASS |
+| **72h boundary** — an incident at 71h59m blocks the increment | `::test_72h_boundary_incident_at_71h59m_blocks_increment` | PASS |
+| **ap-11** demotion offer is digest-only, never auto-applied (no policy written) | `::test_demotion_offer_is_digest_only_never_applied` | PASS |
+
+**Commands:** ruff · mypy core (**95 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **484 passed, 0 skipped** (+6).
+
+**Security:** pure policy bookkeeping (no agent/customer surface); autonomy only ever **tightens** automatically (incident → tier 2, 14d) — loosening is offer-only + owner-approved (IDL-007); RLS scopes all reads/writes to the org.
+
+**Deferred (disclosed):** the **incident detector** that calls `record_incident` (out of scope — the incident signal is an input); scheduler **firing** of the hourly job (#16); the pack-configurable demotion **threshold** (constant 20 now); the **digest** surface that renders the offers (insights, later); the demotion-**apply** meta-approval flow (out of scope per ticket).
