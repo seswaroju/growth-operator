@@ -10,6 +10,7 @@ import pathlib
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 import yaml
 
 from core.events import outbox
@@ -22,6 +23,8 @@ _TOPICS_YAML = (
 
 
 def test_allowed_types_match_topics_yaml() -> None:
+    if not _TOPICS_YAML.exists():  # docs/ is a private-vault symlink, absent in CI
+        pytest.skip("topics.yaml unavailable (private docs/ vault not checked out)")
     data = yaml.safe_load(_TOPICS_YAML.read_text())
     yaml_types = {t["type"] for t in data["topics"]}
     assert ALLOWED_EVENT_TYPES == yaml_types
