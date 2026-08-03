@@ -83,13 +83,17 @@ def _activation(ctx: ActionContext) -> dict[str, Any]:
 
 
 def _matches(cel_expr: str | None, activation: dict[str, Any]) -> bool:
-    """A rule with no expr (or 'true') always matches; a non-evaluating expr does not contribute."""
+    """A rule with no expr (or 'true') always matches. A rule whose CEL cannot be **compiled or
+    evaluated** FAILS SAFE: it is treated as matching, so its declared `tier` still contributes.
+    Because the engine takes the max tier, an unresolved guard can only tighten, never loosen — a
+    broken tightening rule is never silently dropped. (Pack rules are compile-checked at
+    certification and tenant rules come from templates, so this is defence-in-depth.)"""
     if cel_expr is None or cel_expr.strip() in ("", "true"):
         return True
     try:
         return bool(_program(cel_expr).evaluate(activation))
-    except celpy.CELEvalError:
-        return False
+    except Exception:  # noqa: BLE001 - any compile/eval failure fails safe (rule still counts)
+        return True
 
 
 async def evaluate(session: AsyncSession, ctx: ActionContext) -> Decision:
