@@ -1386,6 +1386,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**96 files**) · guards (6) · `pytest -q` **493 passed, 0 skipped** (+9). MVP-060/069 tests migrated to signed manifests and stay green.
 
+**Commit:** merge `870d565` (pushed to `origin/main`).
+
 **Security:** the permission manifest is now unforgeable (ed25519, platform key from SOPS) and un-stale-able (freshness pin) — the proxy trusts it on every call; the executor pins the body hash into each run; a tamper aborts the run. Read-only tools skip the tier gate; everything else consults the engine.
 
 **Deferred (disclosed):** the **level-3 tenant-grants source** (no tenant-grants table/UI — `tenant_allow` narrowing is a no-op by default); the **automatic recompile-on-grant-change** trigger (`recompile_instance` exists; firing it on a grant change is the seam — AC "recompile on grant change is automatic" is partial); budgets sourced from `budget_caps` (may lack tokens/spend/sends-day keys); `requires_tier_eval`/`read_only` by name heuristic (no explicit grant flag in `ToolGrant`).
