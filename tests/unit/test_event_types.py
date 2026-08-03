@@ -20,6 +20,8 @@ _TOPICS_YAML = (
 
 
 def test_types_in_sync_with_topics_yaml() -> None:
+    if not _TOPICS_YAML.exists():  # docs/ is a private-vault symlink, absent in CI
+        pytest.skip("topics.yaml unavailable (private docs/ vault not checked out)")
     data = yaml.safe_load(_TOPICS_YAML.read_text())
     specs = {t["type"]: dict(t.get("payload") or {}) for t in data["topics"]}
     checksum = hashlib.sha256(

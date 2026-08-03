@@ -56,10 +56,13 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen
-      - run: uv run alembic upgrade head
-      # Runtime RLS role, then the reference pack install (MVP-041) as a required check.
+      # The app_rw role + its DEFAULT PRIVILEGES must exist BEFORE migrations run: later
+      # migrations REVOKE/GRANT on app_rw (e.g. 006 audit_log), and app_rw needs the default
+      # grants on every migration-created table. roles.sql is idempotent and guards its own
+      # audit_log REVOKE with IF EXISTS, so it is safe to run first (mirrors `make bootstrap`).
       - name: Create app_rw runtime role
         run: psql "postgresql://growth_operator:growth_operator@localhost:5432/growth_operator" -f infra/db/roles.sql
+      - run: uv run alembic upgrade head
       - name: Reference install + kirana dry-run e2e (MVP-041 / MVP-043)
         env:
           GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@localhost:5432/growth_operator
