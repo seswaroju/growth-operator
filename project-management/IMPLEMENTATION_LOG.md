@@ -1268,6 +1268,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**92 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **449 passed, 0 skipped** (+7). `GET /v1/approvals` + `POST /v1/approvals/{id}/resolve` in the OpenAPI; approval events already registered (no vault change).
 
+**Commit:** merge `bd84d39` (pushed to `origin/main`).
+
 **Security:** `approvals` is org-scoped (+RLS forced); resolve is `APPROVALS_RESOLVE` (staff can read, not resolve — RBAC); an edit cannot lower the authority bar (re-evaluated, escalation rejected); idempotent under concurrency (`FOR UPDATE`).
 
 **Out of scope (ticket):** owner **notification** (WhatsApp interactive + escalation ladder) → MVP-068; the **parked-run resume** (executor parks on `ApprovalPending`, resumes on `approval.resolved`, wires `tool_call`→proxy) → **MVP-069**, next.
