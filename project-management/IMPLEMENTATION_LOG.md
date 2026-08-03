@@ -1299,6 +1299,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**93 files**) · guards (6, incl. runtime-not-tools — the executor imports `core.mediation.proxy` + `core.approvals.service`, never a tool impl) · `pytest -q` **454 passed, 0 skipped** (+5). MVP-055 chaos/isolation tests stay green.
 
+**Commit:** merge `4d63e69` (pushed to `origin/main`).
+
 **Security:** the tier-2 contract is now enforced end-to-end — a side effect that needs approval cannot run until an owner resolves it; the approved tool skips only *its own* tier gate (all other proxy checks still apply); resume is exactly-once (dedupe + run-status + the single-use jti of MVP-066 on any real send).
 
 **Deferred (disclosed):** registering the resume consumer **in the worker** process (registration is by import; the worker/scheduler entrypoint is still the MVP-028 placeholder, cf. #16); the parked-tool → **real send** wiring (the `messages.send` registry impl still routes to the approval flow — executing an approved `messages.send` through the MVP-054 gates + a minted MVP-066 token is the remaining integration; exactly-once is proven here with a benign tool + the terminal respond).
