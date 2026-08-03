@@ -17,6 +17,7 @@ import pytest
 
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.mediation import manifest as manifest_mod
 from core.mediation import proxy
 from core.mediation.proxy import RunAborted, RunContext, ToolResult
 from core.tenancy.middleware import org_scoped_session
@@ -62,12 +63,13 @@ class FakeRedis:
 
 
 def _manifest(tools: list[dict], *, budgets: dict | None = None) -> tuple[dict, str]:
-    m = {
+    body = {
         "manifest_version": 3, "tools": tools,
         "budgets": budgets or {"sends_day": 300},
         "untrusted_narrowing": {"allow": ["catalog.search"]},
     }
-    return m, proxy._manifest_hash(m)
+    m = manifest_mod.sign(body)  # the proxy verifies the ed25519 signature (MVP-061)
+    return m, manifest_mod.manifest_hash(m)
 
 
 @pytest.fixture()

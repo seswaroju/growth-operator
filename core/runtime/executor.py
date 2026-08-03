@@ -25,9 +25,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.approvals.service import create_approval
-from core.audit.writer import canonical_json
 from core.common.config import get_settings
 from core.common.errors import GrowthOperatorError
+from core.mediation import manifest as manifest_module
 from core.mediation import proxy
 from core.mediation.proxy import RunAborted, RunContext
 from core.runtime import graph as g
@@ -57,7 +57,9 @@ def _checkpoint_key(run_id: UUID) -> str:
 
 
 def _manifest_hash(manifest: Any) -> str:
-    return hashlib.sha256(canonical_json(manifest or {}).encode()).hexdigest()
+    # The pinned hash is over the manifest *body* (excludes its own hash/signature) so it matches
+    # what the proxy verifies (MVP-061).
+    return manifest_module.manifest_hash(dict(manifest or {}))
 
 
 async def _default_respond(state: RunState) -> str:

@@ -18,7 +18,6 @@ enforced by the policy engine later; schema-shaped constraints are enforced now.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -28,10 +27,12 @@ from uuid import UUID, uuid4
 
 import jsonschema
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.audit.writer import AuditEntry, canonical_json
+from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
+from core.mediation import manifest as manifest_module
 
 MAX_MANIFEST_VIOLATIONS = 3  # AC: ≥3 manifest violations aborts the run
 DEFAULT_TOOL_TIMEOUT_S = 30
@@ -88,10 +89,6 @@ ToolImpl = Callable[[RunContext, dict[str, Any], AsyncSession, UUID], Awaitable[
 
 # Tier evaluator (stubbed until the policy engine, MVP-065). Conservative default below.
 TierEvaluator = Callable[[RunContext, str, dict[str, Any]], int]
-
-
-def _manifest_hash(manifest: dict[str, Any]) -> str:
-    return hashlib.sha256(canonical_json(manifest).encode()).hexdigest()
 
 
 def _find_grant(manifest: dict[str, Any], tool_name: str) -> dict[str, Any] | None:
@@ -214,9 +211,24 @@ async def call(
 
     registry = registry if registry is not None else REGISTRY  # tier_eval None → live engine
 
-    # 1. manifest integrity (hash) — tamper fails closed and counts as a violation.
-    if _manifest_hash(ctx.manifest) != ctx.manifest_hash:
+    # 1. manifest integrity — the run's pinned hash matches, the manifest's own hash matches its
+    #    body, and the ed25519 signature is valid (MVP-061). Any failure denies + counts a
+    #    violation (a forged/stale/tampered manifest fails closed and can abort the run).
+    if ctx.manifest_hash != manifest_module.manifest_hash(ctx.manifest) or \
+            not manifest_module.verify(ctx.manifest):
         return await _manifest_denied(session, redis, ctx, tool_name, "manifest integrity failed")
+
+    # 1b. freshness — the pinned manifest must match the instance's CURRENT compiled manifest; a
+    #     grant change recompiles the instance, so a run on the old hash is denied until it does
+    #     too (MVP-061). Skipped when the instance is not persisted (hermetic proxy tests).
+    current = (
+        await session.execute(
+            text("SELECT permission_manifest ->> 'hash' FROM agent_instances WHERE id = :i"),
+            {"i": str(ctx.instance_id)},
+        )
+    ).scalar_one_or_none()
+    if current is not None and current != f"sha256:{ctx.manifest_hash}":
+        return await _manifest_denied(session, redis, ctx, tool_name, "stale manifest (recompile)")
 
     # 2. grant present?
     grant = _find_grant(ctx.manifest, tool_name)

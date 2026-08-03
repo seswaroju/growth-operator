@@ -1362,3 +1362,30 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** pure policy bookkeeping (no agent/customer surface); autonomy only ever **tightens** automatically (incident → tier 2, 14d) — loosening is offer-only + owner-approved (IDL-007); RLS scopes all reads/writes to the org.
 
 **Deferred (disclosed):** the **incident detector** that calls `record_incident` (out of scope — the incident signal is an input); scheduler **firing** of the hourly job (#16); the pack-configurable demotion **threshold** (constant 20 now); the **digest** surface that renders the offers (insights, later); the demotion-**apply** meta-approval flow (out of scope per ticket).
+
+---
+
+## 2026-08-03 — MVP-061 · Manifest compiler + signing (real manifest verification)
+
+**Ticket:** [MVP-061](../docs/tickets/MVP-061.md) · P0 · "M". Branch `feature/mvp-061-manifest-compiler` (off main). *"An instance's allowed tool surface is compiled, signed, and pinned to every run."* Makes the mediation proxy's manifest verification real (MVP-060 deferred the signature). **No new migration** (`agent_instances.permission_manifest` exists since 008).
+
+**Files (new):** `core/mediation/manifest.py`, `tests/unit/test_manifest.py`, `tests/integration/test_manifest_compiler.py`. **(modified):** `core/common/config.py` (`manifest_signing_seed`), `core/mediation/proxy.py` (verify sig + hash + freshness; dropped the hash-only `_manifest_hash`), `core/runtime/executor.py` (pin the body hash via `manifest.manifest_hash`), `tests/integration/test_mediation_proxy.py` + `test_executor_approval.py` (sign their manifests).
+
+**manifest.py** — `compile_manifest(*, instance_id, org_id, allowlist, tool_grants, tier_defaults?, budgets?, tenant_allow?)` intersects **L1 archetype `capability_allowlist` ∩ L2 pack `tool_grants` ∩ L3 tenant** (optional): a read-only tool (`.read`/`.search`) gets `read_only`, every other granted tool `requires_tier_eval`; `untrusted_narrowing.allow` = the read-only set. `sign(body)` adds `hash` (`sha256:` of the canonical **body** — excludes hash/sig) + `signature` (`ed25519:` over the body); `verify` checks both. `manifest_hash` is the body hash (what gets pinned). `recompile_instance` reloads grants (archetype ∩ binding), compiles, signs, and re-pins `agent_instances.permission_manifest`.
+
+**Proxy (step 1, hardened):** the run's `manifest_hash` must equal `manifest_hash(ctx.manifest)`, the manifest's own hash must match its body, the **ed25519 signature** must verify, and the pin must be **fresh** — equal to the instance's *current* compiled manifest hash (a grant change recompiles → an old pin is stale → denied until re-pinned). The freshness lookup is skipped when the instance isn't persisted (hermetic proxy tests). Any failure → `permission_denied_manifest` + a violation; ≥3 → `RunAborted`. The executor now pins the **body** hash so it matches.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| intersection (archetype ∩ pack) + tenant narrowing; read-only vs tier-eval | `test_manifest::test_intersection_*`, `_tenant_grants_narrow_further`, `_read_only_skips_*` | PASS |
+| ed25519 sign/verify roundtrip; **any tamper fails verify** | `::test_sign_then_verify_roundtrips`, `_tampering_any_part_fails_verify` | PASS |
+| recompile pins a signed intersection on the instance | `test_manifest_compiler::test_recompile_pins_a_signed_intersection` | PASS |
+| **stale manifest after (re)compile → denied until re-pinned** | `::test_stale_manifest_denied_until_recompile` | PASS |
+| **forged/tampered manifest → sig fail → denied, run aborts after 3** | `::test_tampered_manifest_denied_and_aborts_after_three` | PASS |
+
+**Commands:** ruff · mypy core (**96 files**) · guards (6) · `pytest -q` **493 passed, 0 skipped** (+9). MVP-060/069 tests migrated to signed manifests and stay green.
+
+**Security:** the permission manifest is now unforgeable (ed25519, platform key from SOPS) and un-stale-able (freshness pin) — the proxy trusts it on every call; the executor pins the body hash into each run; a tamper aborts the run. Read-only tools skip the tier gate; everything else consults the engine.
+
+**Deferred (disclosed):** the **level-3 tenant-grants source** (no tenant-grants table/UI — `tenant_allow` narrowing is a no-op by default); the **automatic recompile-on-grant-change** trigger (`recompile_instance` exists; firing it on a grant change is the seam — AC "recompile on grant change is automatic" is partial); budgets sourced from `budget_caps` (may lack tokens/spend/sends-day keys); `requires_tier_eval`/`read_only` by name heuristic (no explicit grant flag in `ToolGrant`).

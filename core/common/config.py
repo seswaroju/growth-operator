@@ -32,6 +32,13 @@ _DEV_EXEC_TOKEN_SEED = base64.urlsafe_b64encode(
     hashlib.sha256(b"growth-operator-dev-exec-token-seed").digest()
 ).decode()
 
+# A deterministic 32-byte ed25519 seed for LOCAL dev/tests only (the platform key that signs
+# compiled permission manifests, MVP-061). Production supplies a real seed via SOPS
+# (GROWTH_OPERATOR_MANIFEST_SIGNING_SEED). Distinct from the execution-token key (separate purpose).
+_DEV_MANIFEST_SEED = base64.urlsafe_b64encode(
+    hashlib.sha256(b"growth-operator-dev-manifest-seed").digest()
+).decode()
+
 
 class SopsSecretsSource(PydanticBaseSettingsSource):
     """Reads a plaintext YAML file at the path named by `GROWTH_OPERATOR_SECRETS_FILE`.
@@ -117,6 +124,8 @@ class Settings(BaseSettings):
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
     # ed25519 seed (base64, 32 bytes) that signs execution tokens (MVP-066). Prod via SOPS.
     execution_token_signing_seed: str = Field(default=_DEV_EXEC_TOKEN_SEED)
+    # ed25519 seed (base64, 32 bytes) that signs compiled permission manifests (MVP-061). SOPS prod.
+    manifest_signing_seed: str = Field(default=_DEV_MANIFEST_SEED)
 
     # WhatsApp media handling (MVP-037). Both OFF by default → simulated adapters (dev/tests).
     # When enabled, the real clamav scanner + S3/MinIO store below are used; if the service is
