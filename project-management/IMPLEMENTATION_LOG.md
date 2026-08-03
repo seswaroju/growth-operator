@@ -1329,6 +1329,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**94 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **478 passed, 0 skipped** (+24).
 
+**Commit:** merge `22023dd` (pushed to `origin/main`).
+
 **Security:** notification content is templated (no LLM); reply routing resolves through the same `service.resolve` (RLS-scoped, `FOR UPDATE` idempotent, edit-re-eval); notifications carry no secrets (a rendered preview + the approval id).
 
 **Deferred (disclosed):** real WhatsApp **interactive send** via Meta (gated) + the `tap→sent <10s` staging measurement; **scheduler firing** of the ladder (entrypoint is the MVP-028 placeholder, #16); the webhook **normalizer** inbound button/text → `handle_*_reply` wiring; the full pack **`commitment_card`** layout render (text summary now); the **backup-approver** identity/routing on escalate (currently re-notifies the same owner channel).
