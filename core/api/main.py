@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from core.api.health import router as health_router
+from core.approvals.api import router as approvals_router
 from core.catalog.router import router as catalog_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
 from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
@@ -46,3 +47,4 @@ app.include_router(catalog_router)
 app.include_router(pricing_router)
 app.include_router(rates_router)
 app.include_router(ops_router)
+app.include_router(approvals_router)
