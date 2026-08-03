@@ -1243,3 +1243,31 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** the execution token is the second required capability at the send exit (with the audit capability); it is signed (unforgeable), single-use (no replay), ctx-bound (can't be repurposed), and short-lived (10 min). The signing seed is config/SOPS, never logged. No secrets in tokens (only jti/ctx-hash/tier/exp).
 
 **Deferred (disclosed):** **campaign-executor** verification — no campaign executor exists yet (latent); the **proxy token-attach** is at the send caller (normalizer today, the approval-execution flow later) since no side-effecting tool runs through the proxy at tier<2 yet; the **daily jti prune** job awaits the scheduler entrypoint (#16). The approval-object lifecycle (create→notify→approve→execute) remains a later ticket.
+
+---
+
+## 2026-08-03 — MVP-067 · Approval service + resolve API
+
+**Ticket:** [MVP-067](../docs/tickets/MVP-067.md) · P0 · "M". Branch `feature/mvp-067-approval-service` (off main). *"An owner approves/rejects/edits pending actions; edits are re-evaluated."* First of the founder-approved 067-then-069 pair.
+
+**Files (new):** `core/approvals/service.py`, `core/approvals/api.py`, `migrations/versions/9f90c8831001_approvals_object.py`, `tests/integration/test_approval_service.py`. **(modified):** `core/api/main.py` (approvals router).
+
+**Migration** (`9f90c8831001`, revises `1993ba538f4f`): the `approvals` object table (+RLS) — listed under migration 014 in the order doc but split out as the next revision (founder-approved 2026-08-03, DECISIONS); additive, no FK conflict. Columns include `run_id` (the parked run for MVP-069), `payload`/`edited_payload`, `matched_rules`, `audit_id` (the resumed side effect's capability), `status`, `expires_at`. Round-tripped; `make db-roles` re-applied.
+
+**service.py** — `create_approval(...)` inserts a pending row and emits `approval.requested.v1` (preview + timeout). `resolve(...)` locks the row `FOR UPDATE`: a **double-tap** finds `status != pending` and returns the first outcome (`idempotent_replay=True`) with no second event; an **expired** row is marked `expired` and raises `ApprovalExpired` (→ 410); an **approve-with-edit** re-runs `engine.evaluate` on the edited payload — if the new tier **exceeds the approval's tier** the resolve is turned into a **rejection with an explanation** (the ceiling is the authority already granted; an escalated edit needs fresh, higher approval), else the edit is approved. Emits `approval.resolved.v1` (the MVP-069 trigger). `list_approvals` is the queue.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| create → announce; list the queue | `test_approval_service::test_create_lists_and_announces` | PASS |
+| approve/reject emit `approval.resolved` | `::test_approve_then_resolved_event`, `_reject` | PASS |
+| **double-resolve idempotent** (first outcome, one event) | `::test_double_resolve_is_idempotent` | PASS |
+| **edit raises tier → rejected with explanation** | `::test_edit_raising_tier_is_rejected_with_explanation` | PASS |
+| edit same tier → approved | `::test_edit_same_tier_is_approved` | PASS |
+| **expired → 410** | `::test_resolve_expired_is_410` | PASS |
+
+**Commands:** ruff · mypy core (**92 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **449 passed, 0 skipped** (+7). `GET /v1/approvals` + `POST /v1/approvals/{id}/resolve` in the OpenAPI; approval events already registered (no vault change).
+
+**Security:** `approvals` is org-scoped (+RLS forced); resolve is `APPROVALS_RESOLVE` (staff can read, not resolve — RBAC); an edit cannot lower the authority bar (re-evaluated, escalation rejected); idempotent under concurrency (`FOR UPDATE`).
+
+**Out of scope (ticket):** owner **notification** (WhatsApp interactive + escalation ladder) → MVP-068; the **parked-run resume** (executor parks on `ApprovalPending`, resumes on `approval.resolved`, wires `tool_call`→proxy) → **MVP-069**, next.
