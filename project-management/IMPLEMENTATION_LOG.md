@@ -1304,3 +1304,31 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** the tier-2 contract is now enforced end-to-end — a side effect that needs approval cannot run until an owner resolves it; the approved tool skips only *its own* tier gate (all other proxy checks still apply); resume is exactly-once (dedupe + run-status + the single-use jti of MVP-066 on any real send).
 
 **Deferred (disclosed):** registering the resume consumer **in the worker** process (registration is by import; the worker/scheduler entrypoint is still the MVP-028 placeholder, cf. #16); the parked-tool → **real send** wiring (the `messages.send` registry impl still routes to the approval flow — executing an approved `messages.send` through the MVP-054 gates + a minted MVP-066 token is the remaining integration; exactly-once is proven here with a benign tool + the terminal respond).
+
+---
+
+## 2026-08-03 — MVP-068 · WhatsApp interactive approvals + escalation ladder
+
+**Ticket:** [MVP-068](../docs/tickets/MVP-068.md) · P0 · "M". Branch `feature/mvp-068-whatsapp-approvals` (off main). *"An owner approves from a WhatsApp tap in seconds."* The owner-notification delivery + inbound routing for the MVP-067 approval object.
+
+**Files (new):** `core/approvals/notify.py`, `migrations/versions/bb65660f0771_approvals_notify_state.py`, `tests/unit/test_approval_notify.py`, `tests/integration/test_approval_notify_db.py`. **(modified):** `project-management/DECISIONS.md`.
+
+**Migration** (`bb65660f0771`, revises `9f90c8831001`): adds `notified_at`/`reminded_at`/`escalated_at`/`notify_ref`/`notify_channel` to `approvals`. **Flagged deviation:** the ticket said "Database changes: None — approvals table (014) carries notification state columns already," but they never existed (nor in schema.sql); the ladder needs them. Additive; RLS already on the table; round-tripped; `make db-roles` re-applied. Founder pre-approved (DECISIONS 2026-08-03).
+
+**notify.py** — `render_card(action_type, payload)` is a text form of the pack commitment card (breakdown lines + total); `compose_interactive(approval_id, body)` builds the ✅ Approve / ❌ Reject buttons carrying `approve:<id>` / `reject:<id>`. `notify_approval` renders, sends via a **gated-simulated `SimulatedNotifier`** (Meta not live), and stamps the ladder column. A consumer on `approval.requested.v1` (org from the CloudEvents `subject`) notifies the owner. **Reply routing:** `parse_button` + `parse_text_decision` (✅/❌ and approve/reject/yes/no/haan/nahi — the Meta-template hedge; ambiguous or both → no action) feed `handle_button_reply` / `handle_text_reply` → `service.resolve` (text resolves the org's latest pending). **Ladder** `run_approval_ladder` (registered every minute via `register_jobs`, per-org fan-out like the embeddings batch): **remind** at 50% of the window, **escalate** at 75%, **expire** (safe-hold) at the deadline — one transition per tick, most-advanced first.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| button routing (`approve:`/`reject:` → decision; non-approval ignored) | `test_approval_notify::test_parse_button_*` | PASS |
+| text fallback parser (✅/❌/words; ambiguous → none) | `::test_text_fallback_parses_decision`, `_is_none_when_ambiguous` | PASS |
+| card render + interactive compose | `::test_render_card_*`, `_compose_interactive_*` | PASS |
+| notify stamps `notified_at` + sends; requested-consumer notifies | `test_approval_notify_db::test_notify_stamps_and_sends`, `_requested_consumer_notifies` | PASS |
+| button + text reply resolve (latest pending for text) | `::test_button_reply_resolves`, `_text_reply_resolves_latest_pending` | PASS |
+| **ladder fires remind → escalate → expire on schedule** (ap-10) | `::test_ladder_remind_escalate_expire` | PASS |
+
+**Commands:** ruff · mypy core (**94 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **478 passed, 0 skipped** (+24).
+
+**Security:** notification content is templated (no LLM); reply routing resolves through the same `service.resolve` (RLS-scoped, `FOR UPDATE` idempotent, edit-re-eval); notifications carry no secrets (a rendered preview + the approval id).
+
+**Deferred (disclosed):** real WhatsApp **interactive send** via Meta (gated) + the `tap→sent <10s` staging measurement; **scheduler firing** of the ladder (entrypoint is the MVP-028 placeholder, #16); the webhook **normalizer** inbound button/text → `handle_*_reply` wiring; the full pack **`commitment_card`** layout render (text summary now); the **backup-approver** identity/routing on escalate (currently re-notifies the same owner channel).
