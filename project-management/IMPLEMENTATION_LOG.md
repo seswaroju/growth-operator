@@ -1273,3 +1273,32 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** `approvals` is org-scoped (+RLS forced); resolve is `APPROVALS_RESOLVE` (staff can read, not resolve — RBAC); an edit cannot lower the authority bar (re-evaluated, escalation rejected); idempotent under concurrency (`FOR UPDATE`).
 
 **Out of scope (ticket):** owner **notification** (WhatsApp interactive + escalation ladder) → MVP-068; the **parked-run resume** (executor parks on `ApprovalPending`, resumes on `approval.resolved`, wires `tool_call`→proxy) → **MVP-069**, next.
+
+---
+
+## 2026-08-03 — MVP-069 · Approval-parked run resume (the runtime half of the tier-2 loop)
+
+**Ticket:** [MVP-069](../docs/tickets/MVP-069.md) · P0 · "M". Branch `feature/mvp-069-parked-resume` (off main). *"A parked run resumes exactly where it stopped with exactly one side effect."* Second of the founder-approved 067-then-069 pair; closes the mediation→approval→resume loop. **No migration.**
+
+**Files (new):** `core/runtime/resume.py`, `tests/integration/test_executor_approval.py`. **(modified):** `core/mediation/proxy.py` (`RunContext.approved` + tier-skip for an approved tool), `core/runtime/executor.py` (proxy-backed tool path + park + `resume_after_approval`).
+
+**Executor → proxy.** The `tool_call` node's default `execute_tool` now calls `proxy.call` (built from the instance's permission manifest in `start_run`/`resume_run`); it returns a status dict the driver reads — `pending` parks, `aborted` interrupts, `ok`/`error` continue. `deps` still fully overrides for hermetic tests (the MVP-055 chaos/happy tests inject deps and are untouched); `model`/`respond` override just those node behaviours over the real proxy tool.
+
+**Park.** `_park` creates the approval (MVP-067) linked to `run_id`, then checkpoints with the cursor **left at the node before `tool_call`** and `pending_tool` restored (and the un-executed attempt rolled back), so a resume re-issues the *same* call; the run interrupts.
+
+**Resume.** `resume_after_approval(run_id, org, decision)` reloads the checkpoint; it is **idempotent** — a run that is no longer `interrupted` is a no-op, so a double-resolve resumes once. **approve** rebuilds the `RunContext` with `approved={tool}` (the proxy skips the tier gate for it) and re-drives → the parked tool executes exactly once → the run completes. **reject** routes straight to a customer-safe close (`SAFE_CLOSE_TEXT`); the original action never runs. `resume.py` registers a consumer on `approval.resolved.v1` (org from the CloudEvents `subject`) that finds the parked `run_id` and drives the resume; the consumer framework dedupes per event id and the run-status guard makes it exactly-once.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| tier-2 tool → **parks** (approval row created, tool not executed) | `test_executor_approval::test_tier2_tool_parks_the_run` | PASS |
+| **approve → exactly one execution**, run succeeds | `::test_approve_resumes_and_executes_exactly_once` | PASS |
+| **reject → customer-safe close, original never runs** | `::test_reject_closes_safe_without_executing` | PASS |
+| **double-resolve → single resume** | `::test_double_resolve_resumes_once` | PASS |
+| resume consumer wires `approval.resolved` → resume | `::test_resume_consumer_wires_resolved_event` | PASS |
+
+**Commands:** ruff · mypy core (**93 files**) · guards (6, incl. runtime-not-tools — the executor imports `core.mediation.proxy` + `core.approvals.service`, never a tool impl) · `pytest -q` **454 passed, 0 skipped** (+5). MVP-055 chaos/isolation tests stay green.
+
+**Security:** the tier-2 contract is now enforced end-to-end — a side effect that needs approval cannot run until an owner resolves it; the approved tool skips only *its own* tier gate (all other proxy checks still apply); resume is exactly-once (dedupe + run-status + the single-use jti of MVP-066 on any real send).
+
+**Deferred (disclosed):** registering the resume consumer **in the worker** process (registration is by import; the worker/scheduler entrypoint is still the MVP-028 placeholder, cf. #16); the parked-tool → **real send** wiring (the `messages.send` registry impl still routes to the approval flow — executing an approved `messages.send` through the MVP-054 gates + a minted MVP-066 token is the remaining integration; exactly-once is proven here with a benign tool + the terminal respond).

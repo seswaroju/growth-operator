@@ -46,6 +46,8 @@ class RunContext:
     manifest_hash: str
     untrusted: bool = False
     actor_id: UUID | None = None
+    # Tools already approved for this (resumed) run — the tier gate is skipped for them (MVP-069).
+    approved: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -241,8 +243,9 @@ async def call(
         return ToolResult(ok=False, error=ToolError("budget_exceeded", berr, recoverable=False))
 
     # 7. tier — the live policy engine (MVP-065) decides; an injected evaluator overrides it for
-    # hermetic tests. Tier ≥ 2 checkpoints the run for approval (no side effect yet).
-    if grant.get("requires_tier_eval"):
+    # hermetic tests. Tier ≥ 2 checkpoints the run for approval (no side effect yet). A tool that
+    # was already approved for this resumed run (MVP-069) skips the gate and executes.
+    if grant.get("requires_tier_eval") and tool_name not in ctx.approved:
         if tier_eval is not None:
             tier = tier_eval(ctx, tool_name, params)
         else:
