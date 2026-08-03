@@ -18,6 +18,7 @@ import pytest
 
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.mediation import manifest as manifest_mod
 from core.mediation import tools as tools_mod
 from core.runtime import resume as resume_mod
 from core.runtime.executor import SAFE_CLOSE_TEXT, resume_after_approval, start_run
@@ -68,8 +69,9 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
     dbmod.get_engine.cache_clear()
     dbmod.get_sessionmaker.cache_clear()
     org = uuid.uuid4()
-    manifest = {"tools": [{"name": TOOL, "requires_tier_eval": True}],
-                "budgets": {}, "untrusted_narrowing": {"allow": []}}
+    manifest = manifest_mod.sign({  # signed so the proxy's MVP-061 verification passes
+        "tools": [{"name": TOOL, "requires_tier_eval": True}],
+        "budgets": {}, "untrusted_narrowing": {"allow": []}})
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'AR')", org)
