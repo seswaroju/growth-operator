@@ -1357,6 +1357,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**95 files**) · guards (6) · alembic up/down/up + `make db-roles` · `pytest -q` **484 passed, 0 skipped** (+6).
 
+**Commit:** merge `ef0ce5e` (pushed to `origin/main`).
+
 **Security:** pure policy bookkeeping (no agent/customer surface); autonomy only ever **tightens** automatically (incident → tier 2, 14d) — loosening is offer-only + owner-approved (IDL-007); RLS scopes all reads/writes to the org.
 
 **Deferred (disclosed):** the **incident detector** that calls `record_incident` (out of scope — the incident signal is an input); scheduler **firing** of the hourly job (#16); the pack-configurable demotion **threshold** (constant 20 now); the **digest** surface that renders the offers (insights, later); the demotion-**apply** meta-approval flow (out of scope per ticket).
