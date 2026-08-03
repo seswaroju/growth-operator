@@ -1174,7 +1174,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-02 — MVP-065 · Policy engine (deterministic action tiers)
 
-**Ticket:** [MVP-065](../docs/tickets/MVP-065.md) · P0 · "L". Branch `feature/mvp-065-policy-engine` (off main). *"Every side effect gets a deterministic tier from declarative rules."*
+**Ticket:** [MVP-065](../docs/tickets/MVP-065.md) · P0 · "L". *"Every side effect gets a deterministic tier from declarative rules."* **⚠️ Process deviation (disclosed):** committed **directly to `main`** (`528bcbe`) — the feature branch was never created (a §7.1 violation, same class as the earlier MVP-047 slip). Code is complete + green; pushed history is left as-is (no force-push); branch discipline resumed for subsequent work.
 
 **Files (new):** `core/approvals/engine.py`, `migrations/versions/1993ba538f4f_approvals_policy.py`, `tests/unit/test_approval_determinism.py`, `tests/integration/test_approval_engine.py`. **(modified):** `core/mediation/proxy.py` (tier check now calls the engine by default).
 
