@@ -315,3 +315,11 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 **Decision (flagged):** MVP-068's ticket states "Database changes: None — approvals table (014) carries notification state columns already." It does **not** — neither the split migration 014 (MVP-065) nor the `approvals` object (MVP-067, built from `docs/06-database/schema.sql`, which also lacks them) defined notification-state columns. The escalation ladder needs to track its progress, so a small **additive** migration (`bb65660f0771`) adds `notified_at`, `reminded_at`, `escalated_at`, `notify_ref`, `notify_channel` to `approvals`. RLS was already on the table; round-tripped. The founder pre-approved "MVP-068 and further" with this migration flagged in the check-in.
 
 **Decided by:** Claude (flagged) — the ticket's "carries these already" premise was incorrect against the authoritative schema; the columns are required for the ladder. Founder pre-approved the ticket with the migration disclosed.
+
+---
+
+### 2026-08-03 — MVP-070 trust ledger: `approvals.trust_settled` marker (ticket said "trust_ledger rows")
+
+**Decision (flagged):** the hourly settle job must add +1 to `clean_approvals` **at most once** per tier-2 approval, no matter how often it runs. The robust way is a per-approval settled marker, so migration `30b7edf76a9d` adds `approvals.trust_settled boolean NOT NULL DEFAULT false` (+ a partial index on the unsettled tier-2 set). The ticket lists DB changes as "trust_ledger rows" only; this is a small additive deviation. The alternative (a per-run watermark on `trust_ledger.updated_at`) is more fragile (a missed run window is harder to reason about) and the per-approval "no incident in the 72h window" check is cleaner with the marker. This is the third small approvals-column addition across the approvals cluster (068 notification state, 070 settle marker) — all additive, all flagged.
+
+**Decided by:** Claude (flagged) — required for idempotent settlement; founder pre-approved MVP-070 with the migration disclosed in the check-in.
