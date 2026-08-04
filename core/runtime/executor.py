@@ -34,6 +34,7 @@ from core.runtime import failure
 from core.runtime import graph as g
 from core.runtime.graph import Deps, RunState, next_node
 from core.runtime.model import default_model
+from core.runtime.routing import RoutingModel
 from core.tenancy import flags
 from core.tenancy.middleware import org_scoped_session
 
@@ -239,8 +240,8 @@ async def start_run(
     redis = redis or Redis.from_url(get_settings().redis_url)
     if deps is None:
         ctx = _run_context(org_id, run_id, agent_instance_id, instance)
-        deps = _deps(persona, model=model, execute_tool=_make_proxy_tool(ctx, redis),
-                     respond=respond)
+        deps = _deps(persona, model=model or RoutingModel(org_id, run_id, redis),
+                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
     max_steps = int((instance.get("budget_caps") or {}).get("max_steps", DEFAULT_MAX_STEPS))
     state: RunState = {"input": input, "run_id": str(run_id)}  # type: ignore[typeddict-unknown-key]
     return await _drive(
@@ -295,7 +296,8 @@ async def resume_run(
     if deps is None:
         ctx = _run_context(org_id, run_id, run["agent_instance_id"],
                            {"permission_manifest": run["permission_manifest"]})
-        deps = _deps(run["persona_name"], execute_tool=_make_proxy_tool(ctx, redis))
+        deps = _deps(run["persona_name"], model=RoutingModel(org_id, run_id, redis),
+                     execute_tool=_make_proxy_tool(ctx, redis))
     max_steps = int((run["budget_caps"] or {}).get("max_steps", DEFAULT_MAX_STEPS))
     return await _drive(
         run_id, org_id, cursor=ckpt["cursor"], state=ckpt["state"], seq=ckpt["seq"],
@@ -488,7 +490,7 @@ async def resume_after_approval(
             org_id, run_id, instance_id, {"permission_manifest": run["permission_manifest"]},
             approved=frozenset({tool}) if tool else frozenset(),
         )
-        deps = _deps(run["persona_name"], model=model,
+        deps = _deps(run["persona_name"], model=model or RoutingModel(org_id, run_id, redis),
                      execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
     else:  # reject → route straight to a customer-safe close; the original tool never executes
         state["decision"] = "respond"

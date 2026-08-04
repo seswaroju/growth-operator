@@ -78,3 +78,46 @@ class RealModel:
 
 def default_model() -> Model:
     return RealModel() if get_settings().llm_provider_enabled else SimulatedModel()
+
+
+# ---- Providers (MVP-064) ----------------------------------------------------
+# A provider is one vendor endpoint the router can call for a turn. It takes the route's `model` +
+# `params`; the router walks primary → fallbacks, so a provider raising means "try the next one".
+
+
+class Provider(Protocol):
+    async def complete(
+        self, *, node_key: str, prompt: str, context: dict[str, Any], model: str,
+        params: dict[str, Any],
+    ) -> ModelResult: ...
+
+
+class SimulatedProvider:
+    """Deterministic provider (no network, no cost). Its `name` is recorded for cost attribution;
+    behaviour mirrors `SimulatedModel` regardless of the requested `model`."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self._model = SimulatedModel()
+
+    async def complete(
+        self, *, node_key: str, prompt: str, context: dict[str, Any], model: str,
+        params: dict[str, Any],
+    ) -> ModelResult:
+        return await self._model.turn(node_key=node_key, prompt=prompt, context=context)
+
+
+# Real vendor clients register here at go-live (each fails closed until then, like RealModel).
+_REAL_PROVIDERS: dict[str, Provider] = {}
+
+
+def get_provider(name: str) -> Provider:
+    """Resolve a provider by name. **Gated:** until `llm_provider_enabled`, every provider name
+    resolves to the deterministic simulated client — so routing + failover run with no vendor, no
+    network, no spend. At go-live, real clients populate `_REAL_PROVIDERS` behind the flag."""
+    if not get_settings().llm_provider_enabled:
+        return SimulatedProvider(name)
+    provider = _REAL_PROVIDERS.get(name)
+    if provider is None:
+        raise GrowthOperatorError("provider_unavailable", f"provider '{name}' not wired")
+    return provider
