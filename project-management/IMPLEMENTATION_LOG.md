@@ -1458,7 +1458,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-04 — #16 · Worker + scheduler process entrypoints (over MVP-026 / MVP-028 frameworks)
 
-**Branch:** `feature/mvp-028-scheduler-worker-entrypoints` (off main). **Commit:** *pending founder approval.*
+**Branch:** `feature/mvp-028-scheduler-worker-entrypoints` (off main). **Commit:** merge `ac4ab52` (pushed to `origin/main`).
 
 **Objective:** the consumer/scheduler/outbox frameworks shipped and were tested (MVP-026/027/028), but the two process entrypoints (`core/worker.py`, `core/scheduler.py`) were still `sleep(3600)` placeholders — so no registered consumer, job, or outbox event ever fired (BLOCKER #16). Wire the entrypoints. **No migration, no dependency.**
 
