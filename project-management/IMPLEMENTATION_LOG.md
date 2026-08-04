@@ -1490,7 +1490,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-04 — MVP-064 · Model routes + failover (Option A, gated-simulated)
 
-**Branch:** `feature/mvp-064-model-routes-failover` (off main). **Commit:** *pending founder approval.*
+**Branch:** `feature/mvp-064-model-routes-failover` (off main). **Commit:** merge `232f8e5` (pushed to `origin/main`).
 
 **Objective:** each task class uses the right model with a resilient failover chain — primary → secondary → holding template — with per-route/run cost logging. Built over simulated providers (the LLM stays gated-simulated per the 2026-08-02 decision); real vendors drop in at go-live with no change to the routing code. **No dependency.**
 
