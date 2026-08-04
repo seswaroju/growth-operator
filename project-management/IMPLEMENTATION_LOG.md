@@ -1414,6 +1414,8 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 **Commands:** ruff · mypy core (**97 files**) · guards (6) · `pytest -q` **500 passed, 0 skipped** (+7). MVP-060/061/069 proxy+executor tests stay green.
 
+**Commit:** merge `3752c3f` (pushed to `origin/main`).
+
 **Security:** ib-08 structural defence — a run that ingests external content can only use the narrowing allow-list (indirect-injection containment) until a human boundary; sliding-window rate + daily send cap bound the blast radius; breaches carry no customer data (instance + kind + cap).
 
 **Deferred (disclosed):** the budget **record** at the real send boundary (in the `messages.send` tool impl once it's wired to the MVP-054 send path — same seam as MVP-069); the `telemetry_events` dashboard table (breach → structured log now); **tokens/spend** daily budgets (sends is the hard external cap wired; tokens/spend are run-level on `agent_runs`).
