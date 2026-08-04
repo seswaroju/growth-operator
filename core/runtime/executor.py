@@ -30,6 +30,7 @@ from core.common.errors import GrowthOperatorError
 from core.mediation import limits, proxy
 from core.mediation import manifest as manifest_module
 from core.mediation.proxy import RunAborted, RunContext
+from core.runtime import failure
 from core.runtime import graph as g
 from core.runtime.graph import Deps, RunState, next_node
 from core.runtime.model import default_model
@@ -39,6 +40,10 @@ from core.tenancy.middleware import org_scoped_session
 NODE_TIMEOUT_S = 30.0
 DEFAULT_MAX_STEPS = 40
 KILL_SWITCH_FLAG = "runtime.kill"
+STEP_RETRY_LIMIT = 1  # a failed step is retried once; a 2nd consecutive failure trips the breaker
+# Only infrastructure/provider failures trip the circuit breaker (MVP-063); manifest/param/rate/
+# budget denials are policy outcomes the model adapts to, not failures.
+HARD_FAILURE_CODES = frozenset({"provider_unavailable"})
 # Customer-safe close used when a parked action is rejected — the original (unapproved) action
 # is never sent (MVP-069).
 SAFE_CLOSE_TEXT = "Thank you — I'll have a team member follow up with you shortly."
@@ -68,9 +73,19 @@ async def _default_respond(state: RunState) -> str:
     return str(state.get("response") or "")
 
 
+def _entry_tier(manifest: dict[str, Any], name: str) -> int:
+    """Consequence tier of a manifest tool entry: tier-eval (consequential) tools are ≥ 2, read
+    tools are 1. Used to classify a step failure for the incident/circuit path (MVP-063)."""
+    for entry in manifest.get("tools", []):
+        if entry.get("name") == name:
+            return 2 if entry.get("requires_tier_eval") else 1
+    return 1
+
+
 def _make_proxy_tool(ctx: RunContext, redis: Redis) -> Any:
     """The default tool executor: every tool call goes through the mediation proxy (MVP-060/069).
-    Returns a status dict the driver reads — `pending` parks the run, `aborted` interrupts it."""
+    Returns a status dict the driver reads — `pending` parks the run, `aborted` interrupts it, and a
+    hard `error` (provider failure) feeds the circuit breaker (MVP-063)."""
     async def execute(name: str, args: dict[str, Any]) -> dict[str, Any]:
         async with org_scoped_session(ctx.org_id) as s:
             try:
@@ -83,7 +98,7 @@ def _make_proxy_tool(ctx: RunContext, redis: Redis) -> Any:
             return {"status": "pending", "tool": name, "args": args, "tier": result.pending.tier}
         if not result.ok:
             err = result.error
-            return {"status": "error", "tool": name,
+            return {"status": "error", "tool": name, "tier": _entry_tier(ctx.manifest, name),
                     "error": {"code": err.code, "message": err.message} if err else None}
         return {"status": "ok", "tool": name, "output": result.output}
 
@@ -192,6 +207,7 @@ async def start_run(
     while `model`/`respond` override just those node behaviours over the real proxy tool path."""
     async with org_scoped_session(org_id) as s:
         instance = await _load_instance(s, agent_instance_id)
+        circuit_open = await failure.is_circuit_open(s, org_id, agent_instance_id)
     persona = instance["persona_name"]
     _, composed_hash = g.compose_prompt(persona, {"input": input, "route_name": "concierge"})
     manifest_hash = _manifest_hash(instance["permission_manifest"])
@@ -211,6 +227,13 @@ async def start_run(
                  "ch": composed_hash, "mh": manifest_hash},
             )
         ).scalar_one()
+        # Planner hold: an instance with an open circuit does not run — record the held run and
+        # return without driving it (MVP-063). A manual resume (failure.close_circuit) reopens it.
+        if circuit_open:
+            await _finish(s, run_id, "interrupted",
+                          error={"code": "circuit_open", "detail": "instance circuit open"})
+            await s.commit()
+            return RunOutcome(run_id, "interrupted", None, 0)
         await s.commit()
 
     redis = redis or Redis.from_url(get_settings().redis_url)
@@ -287,7 +310,9 @@ async def _drive(
     instance_id: UUID | None = None,
 ) -> RunOutcome:
     """The step loop: kill/budget/timeout guards, run the node, durably checkpoint, advance. A
-    tool that returns `pending` (tier ≥ 2) parks the run for approval (MVP-069)."""
+    tool that returns `pending` (tier ≥ 2) parks the run for approval (MVP-069); a tool that fails
+    hard is retried once and trips the circuit breaker on a 2nd consecutive failure (MVP-063)."""
+    tool_retries = 0
     while True:
         node = next_node(cursor, state)
         if node is None:  # RESPOND completed → done
@@ -339,6 +364,49 @@ async def _drive(
                                   error={"code": "run_aborted", "detail": "manifest violations"})
                     await s.commit()
                 return RunOutcome(run_id, "interrupted", None, steps_taken)
+            # MVP-063: a hard (provider) failure feeds the breaker. Each failed attempt increments
+            # the consecutive counter (tier ≥ 2 also auto-opens an incident); the step is retried
+            # once, and the 2nd consecutive failure opens the circuit and interrupts the run.
+            if (
+                isinstance(tool_out, dict) and tool_out.get("status") == "error"
+                and (tool_out.get("error") or {}).get("code") in HARD_FAILURE_CODES
+                and instance_id is not None
+            ):
+                last = state.get("last_tool") or {}
+                async with org_scoped_session(org_id) as s:
+                    opened = await failure.note_failure(
+                        s, redis, org_id=org_id, instance_id=instance_id, run_id=run_id,
+                        action_type=str(last.get("name") or tool_out.get("tool")),
+                        tier=int(tool_out.get("tier", 1)), detail=tool_out.get("error"),
+                    )
+                    await s.commit()
+                if opened:
+                    async with org_scoped_session(org_id) as s:
+                        await _finish(s, run_id, "interrupted",
+                                      error={"code": "circuit_open", "detail": "circuit tripped"})
+                        await s.commit()
+                    return RunOutcome(run_id, "interrupted", None, steps_taken)
+                if tool_retries < STEP_RETRY_LIMIT:  # re-issue the same tool once, in place
+                    tool_retries += 1
+                    retry: dict[str, Any] = dict(state)
+                    retry["pending_tool"] = {
+                        "name": last.get("name"), "args": last.get("input") or {}}
+                    retry["decision"] = "tool"
+                    retry["tool_calls_made"] = max(0, int(state.get("tool_calls_made", 1)) - 1)
+                    state = cast(RunState, retry)
+                    cursor = g.MODEL_TURN
+                    continue
+                async with org_scoped_session(org_id) as s:  # retries spent, circuit still closed
+                    await _finish(s, run_id, "interrupted", error={"code": "provider_unavailable",
+                                  "detail": "step failed after retry"})
+                    await s.commit()
+                return RunOutcome(run_id, "interrupted", None, steps_taken)
+            if (
+                isinstance(tool_out, dict) and tool_out.get("status") == "ok"
+                and instance_id is not None
+            ):
+                await failure.note_success(redis, instance_id)  # a clean step resets the counter
+                tool_retries = 0
 
         seq += 1
         steps_taken += 1

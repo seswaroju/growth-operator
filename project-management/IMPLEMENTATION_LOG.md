@@ -1419,3 +1419,37 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** ib-08 structural defence — a run that ingests external content can only use the narrowing allow-list (indirect-injection containment) until a human boundary; sliding-window rate + daily send cap bound the blast radius; breaches carry no customer data (instance + kind + cap).
 
 **Deferred (disclosed):** the budget **record** at the real send boundary (in the `messages.send` tool impl once it's wired to the MVP-054 send path — same seam as MVP-069); the `telemetry_events` dashboard table (breach → structured log now); **tokens/spend** daily budgets (sends is the hard external cap wired; tokens/spend are run-level on `agent_runs`).
+
+---
+
+## 2026-08-04 — MVP-063 · Failure contract + circuit breaker
+
+**Branch:** `feature/mvp-063-failure-circuit` (off main). **Commit:** *pending founder approval.*
+
+**Objective:** a failing agent pauses itself loudly instead of flailing at customers — a step failure is retried once; two consecutive failures open the circuit (instance `circuit_open`, owner alert, incident); a tier-2 failure auto-opens an incident with the run link and tightens autonomy; a manual resume drains held work.
+
+**Migration `da3474bd3cdb` (incidents).** Creates the org-scoped `incidents` table (+RLS, forced, 2 policies) — `org_id`, `run_id`→`agent_runs` (SET NULL), `instance_id`→`agent_instances` (SET NULL), `kind`, `severity`, `title`, `action_type`, `detail jsonb`, `status` (`open`/`resolved`), `opened_at`, `closed_at`; two indexes (open-by-org, by-run). Lands ahead of its scheduled slot (018/MVP-074) — additive, flagged (DECISIONS 2026-08-04). `circuit_open` was already an allowed `agent_instances.status` value → **no status migration**. Upgrade + downgrade both verified; `make db-roles` re-applied.
+
+**core/runtime/failure.py (new).** The breaker state machine: consecutive-failure count in Redis (per instance, 1h TTL), incidents + instance status in Postgres (RLS-scoped). `note_failure` — tier-2+ auto-opens a `tier2_failure` incident (with the run link) + `trust.record_incident` (reset + 14d tighten, MVP-070); increments the streak; the 2nd consecutive failure opens the circuit. `_open_circuit` sets the instance `circuit_open`, writes a `circuit_open` incident, and fires `alert.ops.v1`. `note_success` resets the streak. `is_circuit_open` reads the instance status. `close_circuit` (manual resume) clears the counter, reactivates the instance, and resolves the open circuit incident so held conversations drain.
+
+**Executor wiring (`core/runtime/executor.py`).** `start_run` **holds** when the instance's circuit is open — it records an interrupted run (`circuit_open`) and returns without driving (planner hold). The `_drive` loop now handles a hard (`provider_unavailable`) tool result: `note_failure` counts it, the step is **retried once in place** (re-issues the same tool without re-consulting the model), and the 2nd consecutive failure opens the circuit and interrupts the run; a clean tool result calls `note_success`. `_make_proxy_tool` tags the tool's consequence tier onto an error result (tier-eval tools → 2, read tools → 1) so a failed tier-2 send is classified for the incident path.
+
+**Proxy (`core/mediation/proxy.py`).** The execute step now wraps the tool call: an implementation that raises becomes a structured, recoverable `provider_unavailable` `ToolResult` (the failure contract) instead of propagating out of the run.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| forced double (consecutive) failure → circuit_open + owner alert | `test_runtime_failure::test_second_consecutive_failure_opens_circuit_with_alert` | PASS |
+| tier ≥ 2 failure → incident row **with run link** + autonomy tightened | `::test_tier2_failure_opens_incident_and_tightens` | PASS |
+| a clean step resets the streak (transient failure ≠ trip) | `::test_clean_step_resets_the_counter` | PASS |
+| recovery: `close_circuit` reactivates the instance + resolves the incident | `::test_close_circuit_reactivates_and_resolves` | PASS |
+| **end-to-end**: persistently-failing tool retried once → breaker trips → run interrupts; next run **held**; drives again after recovery | `::test_persistent_tool_failure_trips_breaker_then_holds` | PASS |
+| `incidents` tenant isolation (own rows only; fail-closed without context) as `app_rw` | `tests/isolation/test_incidents_rls::test_incidents_isolated_under_app_rw` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (**98 files**, pass) · `mypy migrations` (pass) · guards **17 passed** (runtime-not-tools clean — `failure.py` imports only `core.approvals.trust` + `core.tenancy.repository`) · `alembic upgrade/downgrade` round-trip (pass) · `pytest -q` **506 passed, 0 skipped** (+6 vs MVP-062's 500). MVP-055/060/061/069 executor+proxy suites stay green.
+
+**Security:** the breaker is a blast-radius control — a provider-failing instance stops driving customer-facing work after two attempts; incidents + status are RLS-scoped; the `alert.ops` payload carries only ids (no customer data). Provider exceptions no longer crash the run (fail-closed to a recorded, recoverable failure).
+
+**Deferred (disclosed):** the **<30s alert-delivery** measurement (the alert is emitted immediately to `alert.ops.v1`; the ops-dashboard/notification consumer that surfaces it to the owner is #16 scheduler/worker wiring); the **incident-detector → `record_incident`** path for non-runtime incidents (an input, out of scope); the pack-configurable **retry/threshold** (constants `STEP_RETRY_LIMIT=1`, `CIRCUIT_THRESHOLD=2`); migration **018 (MVP-074) must skip** re-creating `incidents`.
+
+**Next recommended action:** founder review + approve commit/merge/push; then MVP-064 (model routes + failover) or the worker/scheduler wiring (#16).

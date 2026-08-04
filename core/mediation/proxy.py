@@ -258,7 +258,13 @@ async def call(
             ok=False, error=ToolError("provider_unavailable", f"{tool_name} not wired"),
             audit_id=audit_id,
         )
-    output = await impl(ctx, params, session, audit_id)
+    try:
+        output = await impl(ctx, params, session, audit_id)
+    except Exception as exc:  # a provider failure → structured, recoverable hard failure (MVP-063)
+        return ToolResult(
+            ok=False, audit_id=audit_id,
+            error=ToolError("provider_unavailable", f"{tool_name} failed: {type(exc).__name__}"),
+        )
 
     # A tool that returned external content narrows the run until the next human boundary (MVP-062).
     if limits.result_is_untrusted(tool_name, output):
