@@ -1,4 +1,4 @@
-"""AUTO-GENERATED from docs/implementation/events/topics.yaml — do not edit by hand.
+"""AUTO-GENERATED from spec/events/topics.yaml — do not edit by hand.
 
 Regenerate with `uv run python scripts/gen_events.py`. A drift test (tests/unit/
 test_event_types.py) fails if this file is out of sync with topics.yaml.

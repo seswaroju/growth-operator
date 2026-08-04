@@ -1,0 +1,39 @@
+# Event topic registry (MVP). CloudEvents 1.0 envelope; producers publish via outbox only.
+envelope: {specversion: "1.0", id: uuid, source: "gop/{service}", subject: "{org_id}", time: rfc3339}
+topics:
+  - {type: msg.received.v1,        producer: channels.whatsapp, consumers: [runtime.planner],
+     payload: {conversation_id: uuid, contact_id: uuid, body: string, media: array, classified_intent: "string|null"}}
+  - {type: msg.sent.v1,            producer: channels.whatsapp, consumers: [workflows, metrics],
+     payload: {message_id: uuid, conversation_id: uuid, audit_id: uuid}}
+  - {type: msg.failed.v1,          producer: channels.whatsapp, consumers: [runtime, alerts],
+     payload: {message_id: uuid, error: string, retryable: bool}}
+  - {type: agent.action.v1,        producer: mediation, consumers: [metrics],
+     payload: {run_id: uuid, tool: string, tier: int, outcome: string, latency_ms: int}}
+  - {type: approval.requested.v1,  producer: approvals, consumers: [notifier],
+     payload: {approval_id: uuid, action_type: string, tier: int, preview: object, timeout_at: rfc3339}}
+  - {type: approval.resolved.v1,   producer: approvals, consumers: [runtime.resume, trust_ledger],
+     payload: {approval_id: uuid, decision: string, edited: bool}}
+  - {type: approval.expired.v1,    producer: scheduler.approval_ladder, consumers: [runtime, notifier]}
+  - {type: lead.stage_changed.v1,  producer: crm, consumers: [workflows],
+     payload: {lead_id: uuid, stage: string, last_customer_msg_at: rfc3339}}
+  - {type: lead.reengaged.v1,      producer: workflows, consumers: [crm, metrics]}
+  - {type: quote.created.v1,       producer: pricing, consumers: [crm, metrics],
+     payload: {quote_id: uuid, total_minor: int, strategy: string}}
+  - {type: rate.updated.v1,        producer: scheduler.rate_fetch, consumers: [pricing.cache, workflows, ui.banner]}
+  - {type: rate.stale.v1,          producer: scheduler.rate_fetch, consumers: [workflows, alerts, ui.banner],
+     payload: {source: string, last_captured_at: rfc3339}}
+  - {type: rate.recovered.v1,      producer: workflows, consumers: [ui.banner]}
+  - {type: pack.installed.v1,      producer: packs.installer, consumers: [runtime.bindings, scheduler.index_builds]}
+  - {type: import.batch_state.v1,  producer: ingestion, consumers: [ui.sse_relay],
+     payload: {batch_id: uuid, state: string, stats: object}}
+  - {type: campaign.approved.v1,   producer: approvals, consumers: [campaigns.executor]}
+  - {type: campaign.executed.v1,   producer: campaigns, consumers: [metrics],
+     payload: {campaign_id: uuid, sent: int, failed: int}}
+  - {type: workflow.run_state.v1,  producer: workflows, consumers: [metrics]}
+  - {type: calendar.window_opened.v1, producer: scheduler, consumers: [workflows],
+     payload: {pack: string, key: string, campaign_window_days: int}}
+  - {type: attribution.confirm_requested.v1, producer: workflows, consumers: [notifier]}
+  - {type: attribution.confirmed.v1, producer: api, consumers: [metrics]}
+  - {type: alert.ops.v1,           producer: any, consumers: [notifier],
+     payload: {severity: string, kind: string, detail: object}}
+consumer_rules: {idempotency: dedupe_table(consumer,event_id), retry: exp_backoff_5, dlq_after: 5, tolerant_reader: true}
