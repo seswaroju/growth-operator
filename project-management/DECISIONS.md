@@ -334,3 +334,15 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **A tool implementation that raises is converted to a structured `provider_unavailable` `ToolResult`** at the proxy's execute step (was: the exception propagated out of the run). This is the failure contract — a flaky provider becomes a recoverable, breaker-countable failure instead of crashing the executor. Only infrastructure failures (`provider_unavailable`) trip the breaker; policy denials (manifest/param/rate/budget) do not. No new error code (`provider_unavailable` is canonical).
 
 **Decided by:** Claude (flagged) — required for the breaker to record + count failures; founder pre-approved the runtime-hardening cluster ("approve continuing into the runtime-hardening cluster… Later we can move on to worker/scheduler wiring and approvals schema reconciliation later").
+
+---
+
+### 2026-08-04 — MVP-064 model routes + failover: `costs_lite` lands early; realistic provider names, gated-simulated (Option A)
+
+**Decisions (founder-approved posture — "move on with option A", 2026-08-04):**
+- **Provider posture = gated-simulated (Option A).** The failover chain runs over the deterministic simulated provider: `get_provider(name)` resolves **every** provider name to `SimulatedProvider` until `llm_provider_enabled`, at which point real clients (registered in `_REAL_PROVIDERS`) take over and fail closed until wired — the same gate as `RealModel`/embeddings. So routing + failover + cost logging are fully built and tested with **no vendor, no network, no spend**; the real-vendor swap at go-live changes nothing in `routing.py`. The real-provider alternative (wire a vendor now) was explained and declined.
+- **Seed uses realistic provider names.** `model_routes` is seeded with `anthropic`/`openai` primary/fallback pairs (not placeholder names) so the go-live swap is a registry change only. Names are inert today — they resolve to the simulated client.
+- **`costs_lite` lands now (`3680972ace7a`), ahead of the migration-order doc.** The doc doesn't enumerate a cost table; MVP-064 needs one for per-route/run cost attribution, so it lands as the next revision — org-scoped, **+RLS**, additive, no FK conflict (flagged; same pattern as `incidents`). The `model_routes` seed ships in the same migration (idempotent `ON CONFLICT (node_key) DO NOTHING`) so staging/prod and CI get the routes automatically.
+- **Cost is a placeholder estimate.** `cost_usd` is computed from a static per-1k-token price map (anthropic/openai) until real pricing at go-live; tokens are real (from the model turn). The point is route/run **attribution**, not billing accuracy.
+
+**Decided by:** Founder (2026-08-04, "I agree lets move on with option A") + Claude (flagged the `costs_lite` early-landing, same additive pattern as prior runtime tables).

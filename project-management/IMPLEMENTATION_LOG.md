@@ -1485,3 +1485,38 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** the real **embedding provider** (BLOCKER #16 stays open — founder picks provider + approves dep/creds; the batch is wired, only the simulated→real `Embedder` swap remains); the `jobs_runs` observability table (MVP-028 already deferred — structured logs cover the acceptance); the **flags fast-path subscriber** loop (not built — the executor loads flags per-run via `load_snapshot`, so the kill switch works, just not sub-2s push); the docker-compose **env-var prefix mismatch** (BLOCKER #1) that a full app-container `make dev` boot needs.
 
 **Next recommended action:** founder review + approve commit/merge/push; then MVP-064 (model routes + failover).
+
+---
+
+## 2026-08-04 — MVP-064 · Model routes + failover (Option A, gated-simulated)
+
+**Branch:** `feature/mvp-064-model-routes-failover` (off main). **Commit:** *pending founder approval.*
+
+**Objective:** each task class uses the right model with a resilient failover chain — primary → secondary → holding template — with per-route/run cost logging. Built over simulated providers (the LLM stays gated-simulated per the 2026-08-02 decision); real vendors drop in at go-live with no change to the routing code. **No dependency.**
+
+**Migration `3680972ace7a` (costs_lite + model_routes seed).** `costs_lite` — org-scoped (+RLS, forced, 2 policies): `run_id`→`agent_runs` (SET NULL), `node_key`, `provider`, `model`, `outcome` (ok/failed), `tokens_in/out`, `cost_usd numeric(10,6)`, index on `(org_id, run_id, created_at)`. Lands ahead of the migration-order doc (additive, flagged — DECISIONS 2026-08-04). Idempotent **seed** of `model_routes` (created global in 015): `default`, `classify`, `converse`, `campaign`, each with an `anthropic` primary + `openai` fallback. Upgrade + downgrade verified; `make db-roles` re-applied.
+
+**core/runtime/model.py.** Added the provider layer: a `Provider` protocol (`complete(node_key, prompt, context, model, params)`), a `SimulatedProvider(name)` (deterministic, no cost — mirrors `SimulatedModel`), and `get_provider(name)` — the **gated seam**: until `llm_provider_enabled` every provider name resolves to the simulated client; at go-live real clients register in `_REAL_PROVIDERS` (fail closed until wired).
+
+**core/runtime/routing.py (new).** `RoutingModel` (a `Model`): per turn it loads the `model_routes` row for the `node_key` (falling back to the seeded `default`, then a hard-coded fail-safe chain), walks **primary → fallbacks**, returns the first provider that answers, and logs each attempt to `costs_lite` (route + run attribution). If **every** provider fails it returns the **holding template** — a static no-tool reply that closes the turn with zero successful LLM output — and emits an `alert.ops`. `_estimate_cost` applies the placeholder per-provider price.
+
+**Executor wiring.** `start_run`, `resume_run`, and `resume_after_approval` now build `RoutingModel(org_id, run_id, redis)` where they previously used `default_model()` — so production runs route + log cost; an injected `model=`/`deps=` (all runtime tests) still overrides, so the existing executor suites are untouched.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| primary 500 → secondary transparently (same turn succeeds) | `test_model_routing::test_primary_failure_fails_over_to_secondary` | PASS |
+| all-down → holding template, zero successful LLM calls, alert emitted | `::test_all_providers_down_returns_holding_template_and_alerts` | PASS |
+| cost rows attribute to the correct route + run | `::test_cost_row_attributes_to_run_and_route` | PASS |
+| unrouted node_key resolves via the seeded default chain | `::test_unrouted_node_key_uses_the_default_chain` | PASS |
+| per-provider cost estimate (+ default/zero) | `test_routing_cost::test_estimate_cost_*` | PASS |
+| `costs_lite` tenant isolation (own rows; fail-closed) as `app_rw` | `test_costs_lite_rls::test_costs_lite_isolated_under_app_rw` | PASS |
+| **end-to-end**: `start_run` (no model injected) → executor builds RoutingModel → routes + logs cost rows | live smoke (run succeeded, 2 `costs_lite` rows attributed to the run) | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (99 files, pass) · `mypy migrations` (pass) · `alembic upgrade/downgrade` round-trip (pass) · `pytest -q` **518 passed, 0 skipped** (+7) · live executor→routing smoke (pass). MVP-055/063/069 executor suites stay green (they inject models).
+
+**Security / side effects:** no real external call — providers are gated-simulated (no vendor, no key, no spend). `costs_lite` is org-scoped (+RLS) — a tenant's cost/usage is tenant data; cross-tenant isolation tested. The all-down path fails safe (holding template, no fabricated content) + alerts.
+
+**Deferred (disclosed):** the real vendor clients (go-live — register in `_REAL_PROVIDERS` behind `llm_provider_enabled`); real per-token **pricing** (placeholder estimate now); **dynamic routing** (out of scope per ticket — static routes only); routing on a **task-class** node_key (the graph passes the constant `priya.reason`, which resolves via `default`; wiring per-class node keys into `model_turn` is a follow-up); a costs **dashboard/rollup** (rows are written; the digest surface is later, insights).
+
+**Next recommended action:** founder review + approve commit/merge/push.
