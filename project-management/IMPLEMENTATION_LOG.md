@@ -1424,7 +1424,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-04 — MVP-063 · Failure contract + circuit breaker
 
-**Branch:** `feature/mvp-063-failure-circuit` (off main). **Commit:** *pending founder approval.*
+**Branch:** `feature/mvp-063-failure-circuit` (off main). **Commit:** merge `288427e` (pushed to `origin/main`).
 
 **Objective:** a failing agent pauses itself loudly instead of flailing at customers — a step failure is retried once; two consecutive failures open the circuit (instance `circuit_open`, owner alert, incident); a tier-2 failure auto-opens an incident with the run link and tightens autonomy; a manual resume drains held work.
 
