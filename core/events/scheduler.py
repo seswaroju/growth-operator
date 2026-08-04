@@ -55,6 +55,12 @@ def registered() -> list[JobSpec]:
     return list(_registry)
 
 
+def clear() -> None:
+    """Empty the registry — the scheduler entrypoint calls this before installing its canonical
+    job set so registration is authoritative and idempotent across process (re)starts."""
+    _registry.clear()
+
+
 # ---- Cron matching ---------------------------------------------------------
 
 

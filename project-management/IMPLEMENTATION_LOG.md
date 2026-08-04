@@ -1453,3 +1453,35 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** the **<30s alert-delivery** measurement (the alert is emitted immediately to `alert.ops.v1`; the ops-dashboard/notification consumer that surfaces it to the owner is #16 scheduler/worker wiring); the **incident-detector → `record_incident`** path for non-runtime incidents (an input, out of scope); the pack-configurable **retry/threshold** (constants `STEP_RETRY_LIMIT=1`, `CIRCUIT_THRESHOLD=2`); migration **018 (MVP-074) must skip** re-creating `incidents`.
 
 **Next recommended action:** founder review + approve commit/merge/push; then MVP-064 (model routes + failover) or the worker/scheduler wiring (#16).
+
+---
+
+## 2026-08-04 — #16 · Worker + scheduler process entrypoints (over MVP-026 / MVP-028 frameworks)
+
+**Branch:** `feature/mvp-028-scheduler-worker-entrypoints` (off main). **Commit:** *pending founder approval.*
+
+**Objective:** the consumer/scheduler/outbox frameworks shipped and were tested (MVP-026/027/028), but the two process entrypoints (`core/worker.py`, `core/scheduler.py`) were still `sleep(3600)` placeholders — so no registered consumer, job, or outbox event ever fired (BLOCKER #16). Wire the entrypoints. **No migration, no dependency.**
+
+**`core/worker.py`.** `_install_consumers()` imports the three `@consumer` modules (import registers them; idempotent via the module cache): the `msg.received` logger, `approval.requested → notify_approval` (gated-simulated notifier), `approval.resolved → resume_after_approval`. `run_worker(stop, redis=None, consumer_name=None)` launches `run_publisher(stop)` (outbox → Redis-streams relay) + one `run_consumer` per registered handler and `gather`s them; `main()` installs SIGINT/SIGTERM handlers that set the stop event. Graceful: the framework finishes the in-flight batch and acks before exiting (no ack loss).
+
+**`core/scheduler.py`.** `_install_jobs()` calls `scheduler.clear()` then registers the canonical set — `approval_ladder` (`* * * * *`), `trust_ledger_settle` (`0 * * * *`), `embeddings_batch` (`*/5 * * * *`, `SimulatedEmbedder`), `dedupe_prune` (`30 3 * * *`, new daily maintenance wrapper over `consumer.prune_dedupe`). `run_scheduler_process(stop, redis=None, tick_s=60)` ticks `run_scheduler` under the per-(job, minute) Redis lock. Same graceful-signal `main()`.
+
+**`core/events/scheduler.py`.** Added a one-line public `clear()` so the entrypoint installs its job set authoritatively and idempotently across (re)starts.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| worker registers every `@consumer` handler (logger, approval-notify, runtime-resume) | `test_worker_entrypoint::test_install_consumers_registers_all_handlers` | PASS |
+| worker assembles publisher + consumers and stops gracefully | `::test_run_worker_assembles_and_stops_gracefully` | PASS |
+| scheduler installs the full job set (ladder/trust/embeddings/prune) | `test_scheduler_entrypoint::test_install_jobs_registers_the_full_set` | PASS |
+| **lock proof** — installed jobs fire once at their minute; a 2nd scheduler that minute is a no-op | `::test_installed_jobs_fire_once_under_the_lock` | PASS |
+| scheduler installs + ticks + stops gracefully | `::test_run_scheduler_process_installs_and_stops_gracefully` | PASS |
+| **live-broker boot smoke** — worker (3 consumers + publisher) + scheduler (4 jobs, `approval_ladder` fired) boot against real Redis/DB and shut down cleanly | manual smoke (logged `job ok: approval_ladder`) | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (98 files, pass) · scaffold import guard (worker/scheduler import clean) · `pytest -q` **511 passed, 0 skipped** (+5) · live-broker boot smoke (pass).
+
+**Security / side effects:** every wired runner is internal (Redis streams, DB) or **gated-simulated** (notifier, embedder) — the worker/scheduler perform no real external action. Jobs fan out per org through `org_scoped_session` (RLS preserved). Graceful shutdown prevents ack loss.
+
+**Deferred (disclosed):** the real **embedding provider** (BLOCKER #16 stays open — founder picks provider + approves dep/creds; the batch is wired, only the simulated→real `Embedder` swap remains); the `jobs_runs` observability table (MVP-028 already deferred — structured logs cover the acceptance); the **flags fast-path subscriber** loop (not built — the executor loads flags per-run via `load_snapshot`, so the kill switch works, just not sub-2s push); the docker-compose **env-var prefix mismatch** (BLOCKER #1) that a full app-container `make dev` boot needs.
+
+**Next recommended action:** founder review + approve commit/merge/push; then MVP-064 (model routes + failover).
