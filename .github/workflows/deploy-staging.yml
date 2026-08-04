@@ -20,7 +20,7 @@ jobs:
     # Guard: only run when the staging host secret is configured.
     if: ${{ vars.STAGING_ENABLED == 'true' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Deploy over SSH (migrations before container swap)
         uses: appleboy/ssh-action@v1

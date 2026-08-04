@@ -14,14 +14,11 @@ from core.events import outbox, types
 from core.events.topics import ALLOWED_EVENT_TYPES
 
 _TOPICS_YAML = (
-    pathlib.Path(__file__).resolve().parents[2]
-    / "docs" / "implementation" / "events" / "topics.yaml"
+    pathlib.Path(__file__).resolve().parents[2] / "spec" / "events" / "topics.yaml"
 )
 
 
 def test_types_in_sync_with_topics_yaml() -> None:
-    if not _TOPICS_YAML.exists():  # docs/ is a private-vault symlink, absent in CI
-        pytest.skip("topics.yaml unavailable (private docs/ vault not checked out)")
     data = yaml.safe_load(_TOPICS_YAML.read_text())
     specs = {t["type"]: dict(t.get("payload") or {}) for t in data["topics"]}
     checksum = hashlib.sha256(

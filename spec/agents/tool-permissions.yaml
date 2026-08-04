@@ -1,0 +1,20 @@
+# Level-1 archetype allowlists (code constants mirror) + MVP level-2 grants summary.
+archetype_allowlists:
+  concierge: [messages.send, catalog.search, pricing.compute, calendar.book, crm.read, crm.write, ledger.read]
+  nurture:   [messages.send, crm.read, segments.read]
+  campaigner: [segments.query, campaigns.execute, templates.read]
+  ops:       [ingestion.review, catalog.write, rates.read]
+  planner:   [bus.route, digest.compose]
+mvp_grants:                                        # jewelry pack level-2 (subset of bindings.yaml, enforced shape)
+  concierge:
+    - {tool: pricing.compute, constraints: {strategy: [formula_weight_rate_v1]}, rate_per_min: 20}
+    - {tool: messages.send, constraints: {conversation_scope: assigned_only}, rate_per_min: 20}
+    - {tool: catalog.search, rate_per_min: 60}
+    - {tool: calendar.book, constraints: {calendar: store_visits}, rate_per_min: 10}
+    - {tool: crm.write, constraints: {fields: [stage, occasion, budget_band, notes]}}
+untrusted_narrowing:
+  triggers: [web_fetch, file_ingest, forwarded_content, image_ocr]
+  allow_while_narrowed: [catalog.search, crm.read]
+  reset_at: [approval_resolution, new_customer_turn]
+budgets_default: {tokens_day: 400000, spend_minor_day: 50000, sends_day: 300}
+pii_egress: {customer_surface: [no_other_contact_data], owner_surface: [full], logs: [scrubbed]}

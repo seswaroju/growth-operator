@@ -1,9 +1,11 @@
 #!/usr/bin/env python
-"""Generate core/events/types.py from docs/implementation/events/topics.yaml (MVP-030).
+"""Generate core/events/types.py from spec/events/topics.yaml (MVP-030).
 
-`topics.yaml` is the single source of truth for event payload shapes. This writes a checked-in
-`types.py` (payload field specs + a checksum). A drift test recomputes the checksum from the
-YAML and fails CI if `types.py` is stale; `outbox.emit` validates payloads against the specs.
+`spec/events/topics.yaml` is the in-repo, vendored source of truth for event payload shapes (a
+snapshot of the vault's `topics.yaml`, so codegen + the drift test run in CI without the private
+vault). This writes a checked-in `types.py` (payload field specs + a checksum). A drift test
+recomputes the checksum from the YAML and fails CI if `types.py` is stale; `outbox.emit` validates
+payloads against the specs.
 
     uv run python scripts/gen_events.py          # regenerate
     uv run python scripts/gen_events.py --check   # exit 1 if regeneration would change the file
@@ -20,10 +22,10 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
-TOPICS_YAML = REPO / "docs" / "implementation" / "events" / "topics.yaml"
+TOPICS_YAML = REPO / "spec" / "events" / "topics.yaml"
 OUT = REPO / "core" / "events" / "types.py"
 
-_HEADER = '''"""AUTO-GENERATED from docs/implementation/events/topics.yaml — do not edit by hand.
+_HEADER = '''"""AUTO-GENERATED from spec/events/topics.yaml — do not edit by hand.
 
 Regenerate with `uv run python scripts/gen_events.py`. A drift test (tests/unit/
 test_event_types.py) fails if this file is out of sync with topics.yaml.

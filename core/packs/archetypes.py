@@ -1,7 +1,7 @@
 """Agent archetype level-1 capability allowlists (MVP-020).
 
-Mirrors `docs/implementation/agents/tool-permissions.yaml` — the level-1 truth for what
-tools each archetype may ever call. Migration 008 seeds `agent_archetypes.capability_allowlist`
+Mirrors `spec/agents/tool-permissions.yaml` (vendored from the vault) — the level-1 truth for
+what tools each archetype may ever call. Migration 008 seeds `agent_archetypes.capability_allowlist`
 from these values, and a drift test asserts all three (this constant, the YAML, the seeded
 rows) agree byte-for-byte, order included.
 
