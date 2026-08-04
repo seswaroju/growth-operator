@@ -42,9 +42,14 @@ class FakeRedis:
     def __init__(self) -> None:
         self.kv: dict[str, Any] = {}
         self.streams: list[tuple[str, dict[str, Any]]] = []
+        self.zsets: dict[str, dict[str, float]] = {}
 
     async def incr(self, key: str) -> int:
         self.kv[key] = int(self.kv.get(key, 0)) + 1
+        return self.kv[key]
+
+    async def incrby(self, key: str, amount: int) -> int:
+        self.kv[key] = int(self.kv.get(key, 0)) + amount
         return self.kv[key]
 
     async def expire(self, key: str, secs: int) -> bool:
@@ -57,9 +62,26 @@ class FakeRedis:
         self.kv[key] = value
         return True
 
+    async def delete(self, key: str) -> int:
+        return int(self.kv.pop(key, None) is not None)
+
     async def xadd(self, stream: str, fields: dict[str, Any]) -> str:
         self.streams.append((stream, fields))
         return "1-1"
+
+    async def zremrangebyscore(self, key: str, mn: float, mx: float) -> int:
+        z = self.zsets.get(key, {})
+        stale = [m for m, s in z.items() if mn <= s <= mx]
+        for m in stale:
+            del z[m]
+        return len(stale)
+
+    async def zcard(self, key: str) -> int:
+        return len(self.zsets.get(key, {}))
+
+    async def zadd(self, key: str, mapping: dict[str, float]) -> int:
+        self.zsets.setdefault(key, {}).update(mapping)
+        return len(mapping)
 
 
 def _manifest(tools: list[dict], *, budgets: dict | None = None) -> tuple[dict, str]:
@@ -125,6 +147,32 @@ async def test_out_of_manifest_denied_audited_alerted(org: uuid.UUID) -> None:
     assert result.error is not None and result.error.code == "permission_denied_manifest"
     assert "tool.messages.send:denied" in await _audit_actions(org)  # audited
     assert any(st == "gop:events:alert.ops.v1" for st, _ in redis.streams)  # alerted
+
+
+async def test_untrusted_content_narrows_subsequent_tools(org: uuid.UUID) -> None:
+    # web_fetch produces external content -> the run narrows to the manifest's allow-list until a
+    # human boundary. messages.send is denied; catalog.search (allow-listed) still works (MVP-062).
+    m, h = _manifest([{"name": "web_fetch", "read_only": True},
+                      {"name": "messages.send", "requires_tier_eval": True},
+                      {"name": "catalog.search", "read_only": True}])
+    ctx = _ctx(org, m, h)
+    redis = FakeRedis()
+
+    async def web(c: RunContext, p: dict, s: Any, aid: uuid.UUID) -> Any:
+        return {"body": "some fetched web page"}
+
+    async def search(c: RunContext, p: dict, s: Any, aid: uuid.UUID) -> Any:
+        return {"results": []}
+
+    reg = {"web_fetch": web, "catalog.search": search}
+    async with org_scoped_session(org) as s:
+        fetched = await proxy.call(ctx, "web_fetch", {}, session=s, redis=redis, registry=reg)
+        narrowed = await proxy.call(ctx, "messages.send", {}, session=s, redis=redis, registry=reg)
+        allowed = await proxy.call(ctx, "catalog.search", {}, session=s, redis=redis, registry=reg)
+        await s.commit()
+    assert fetched.ok  # the fetch itself is allowed and flags the run untrusted
+    assert narrowed.error is not None and narrowed.error.code == "permission_denied_manifest"
+    assert allowed.ok  # catalog.search is on the narrowing allow-list
 
 
 async def test_three_manifest_violations_abort_run(org: uuid.UUID) -> None:

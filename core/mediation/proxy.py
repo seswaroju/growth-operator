@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
+from core.mediation import limits
 from core.mediation import manifest as manifest_module
 
 MAX_MANIFEST_VIOLATIONS = 3  # AC: ≥3 manifest violations aborts the run
@@ -114,34 +115,6 @@ def _validate_params(params: dict[str, Any], constraints: dict[str, Any] | None)
         )
     except jsonschema.ValidationError as exc:
         return exc.message
-    return None
-
-
-async def _rate_ok(
-    redis: Redis, ctx: RunContext, tool: str, rate_limit: dict[str, Any] | None
-) -> bool:
-    per_min = (rate_limit or {}).get("per_min")
-    if per_min is None:
-        return True
-    bucket = datetime.now(UTC).strftime("%Y%m%d%H%M")
-    key = f"gop:rl:{ctx.instance_id}:{tool}:{bucket}"
-    count = await redis.incr(key)
-    if count == 1:
-        await redis.expire(key, 120)
-    return int(count) <= int(per_min)
-
-
-async def _budget_ok(
-    redis: Redis, ctx: RunContext, tool: str, budgets: dict[str, Any]
-) -> str | None:
-    """Per-day send budget (the one with a hard external cost). tokens/spend caps are enforced on
-    the run totals elsewhere. Returns an error message if exceeded, else None."""
-    sends_day = budgets.get("sends_day")
-    if tool == "messages.send" and sends_day is not None:
-        day = datetime.now(UTC).strftime("%Y%m%d")
-        used = int(await redis.get(f"gop:budget:{ctx.instance_id}:sends:{day}") or 0)
-        if used >= int(sends_day):
-            return f"send budget {sends_day}/day exhausted"
     return None
 
 
@@ -235,9 +208,10 @@ async def call(
     if grant is None:
         return await _manifest_denied(session, redis, ctx, tool_name, "tool not in manifest")
 
-    # 3. untrusted-content narrowing
+    # 3. untrusted-content narrowing — a run that has ingested external content (this call or an
+    #    earlier one in the run) may use only the manifest's narrowing-allow tools (MVP-062).
     allow = ctx.manifest.get("untrusted_narrowing", {}).get("allow", [])
-    if ctx.untrusted and tool_name not in allow:
+    if (ctx.untrusted or await limits.is_untrusted(redis, ctx.run_id)) and tool_name not in allow:
         return await _manifest_denied(session, redis, ctx, tool_name, "narrowed under untrusted")
 
     # 4. param constraints
@@ -245,14 +219,20 @@ async def call(
     if perr is not None:
         return ToolResult(ok=False, error=ToolError("config_schema_violation", perr))
 
-    # 5. rate limit
-    if not await _rate_ok(redis, ctx, tool_name, grant.get("rate_limit")):
+    # 5. rate limit — 60s sliding window per (instance, tool) (MVP-062).
+    per_min = (grant.get("rate_limit") or {}).get("per_min")
+    if not await limits.check_rate(redis, ctx.instance_id, tool_name, per_min):
         return ToolResult(ok=False, error=ToolError("rate_limited", f"{tool_name} rate exceeded"))
 
-    # 6. budgets
-    berr = await _budget_ok(redis, ctx, tool_name, ctx.manifest.get("budgets", {}))
-    if berr is not None:
-        return ToolResult(ok=False, error=ToolError("budget_exceeded", berr, recoverable=False))
+    # 6. budgets — the daily send cap (a hard external cost); counter recorded at the send boundary.
+    breach = limits.budget_breach(ctx.manifest.get("budgets", {}))
+    if breach is not None and tool_name == "messages.send":
+        kind, cap = breach
+        if not await limits.check_budget(redis, ctx.instance_id, kind, cap):
+            limits.log_budget_breach(ctx.instance_id, kind, cap)
+            return ToolResult(
+                ok=False, error=ToolError("budget_exceeded", f"{kind} {cap}/day exhausted",
+                                          recoverable=False))
 
     # 7. tier — the live policy engine (MVP-065) decides; an injected evaluator overrides it for
     # hermetic tests. Tier ≥ 2 checkpoints the run for approval (no side effect yet). A tool that
@@ -279,6 +259,10 @@ async def call(
             audit_id=audit_id,
         )
     output = await impl(ctx, params, session, audit_id)
+
+    # A tool that returned external content narrows the run until the next human boundary (MVP-062).
+    if limits.result_is_untrusted(tool_name, output):
+        await limits.mark_untrusted(redis, ctx.run_id)
 
     # 10. egress scrub (PII filter hook — pass-through for now)
     return ToolResult(ok=True, output=_egress_scrub(output), audit_id=audit_id)

@@ -1391,3 +1391,29 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Security:** the permission manifest is now unforgeable (ed25519, platform key from SOPS) and un-stale-able (freshness pin) — the proxy trusts it on every call; the executor pins the body hash into each run; a tamper aborts the run. Read-only tools skip the tier gate; everything else consults the engine.
 
 **Deferred (disclosed):** the **level-3 tenant-grants source** (no tenant-grants table/UI — `tenant_allow` narrowing is a no-op by default); the **automatic recompile-on-grant-change** trigger (`recompile_instance` exists; firing it on a grant change is the seam — AC "recompile on grant change is automatic" is partial); budgets sourced from `budget_caps` (may lack tokens/spend/sends-day keys); `requires_tier_eval`/`read_only` by name heuristic (no explicit grant flag in `ToolGrant`).
+
+---
+
+## 2026-08-03 — MVP-062 · Budgets, rate windows, untrusted narrowing (blast-radius controls)
+
+**Ticket:** [MVP-062](../docs/tickets/MVP-062.md) · P0 · "M". Branch `feature/mvp-062-limits` (off main). *"Cap spend/sends and shrink the tool surface after untrusted content."* Hardens the manifest-driven proxy checks that MVP-061 now feeds real signed data into. **No Postgres migration** (Redis with daily-key TTLs).
+
+**Files (new):** `core/mediation/limits.py`, `tests/unit/test_limits.py`. **(modified):** `core/mediation/proxy.py` (steps 3/5/6 + mark-after-untrusted-result; dropped the fixed-window `_rate_ok`/read-only `_budget_ok`), `core/runtime/executor.py` (`resume_after_approval` clears the untrusted flag), `tests/integration/test_mediation_proxy.py` (FakeRedis gained sorted-set ops + a narrowing test).
+
+**limits.py** — `check_rate` is a **true 60s sliding window** per (instance, tool): a Redis sorted set of timestamps, prune older than 60s, count, deny at the cap (a denied call consumes no slot — accurate, unlike the old fixed-minute bucket). `check_budget`/`record_budget` are per-(instance, kind) **daily counters** with a 2-day TTL — the proxy checks the cap, the side-effect boundary records usage. The **narrowing lifecycle**: `result_is_untrusted(tool, result)` (a tool in `{web_fetch, file_ingest, forwarded_content}` or a `content_class=external_untrusted` result), `mark_untrusted`/`is_untrusted`/`clear_untrusted` per run.
+
+**Proxy wiring:** step 3 narrowing now denies when `ctx.untrusted OR is_untrusted(run)` and the tool isn't on `untrusted_narrowing.allow`; step 5 uses the sliding window; step 6 checks the daily send cap for `messages.send` (logging a breach for telemetry); after execution, a tool that returned external content marks the run untrusted. The executor's `resume_after_approval` clears the flag (approval = human boundary; a new customer turn is a fresh run).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **sliding-window accuracy** — burst capped, allowed after it slides | `test_limits::test_sliding_window_caps_a_burst_then_allows_after_it_slides` | PASS |
+| daily budget check / record / exhaustion | `::test_budget_check_and_record_and_exhaustion` | PASS |
+| narrowing mark→is→clear lifecycle; result classification | `::test_untrusted_lifecycle_mark_is_clear`, `_result_is_untrusted_*` | PASS |
+| **AC: web_fetch (untrusted) → messages.send denied; catalog.search (allow-listed) allowed** | `test_mediation_proxy::test_untrusted_content_narrows_subsequent_tools` | PASS |
+
+**Commands:** ruff · mypy core (**97 files**) · guards (6) · `pytest -q` **500 passed, 0 skipped** (+7). MVP-060/061/069 proxy+executor tests stay green.
+
+**Security:** ib-08 structural defence — a run that ingests external content can only use the narrowing allow-list (indirect-injection containment) until a human boundary; sliding-window rate + daily send cap bound the blast radius; breaches carry no customer data (instance + kind + cap).
+
+**Deferred (disclosed):** the budget **record** at the real send boundary (in the `messages.send` tool impl once it's wired to the MVP-054 send path — same seam as MVP-069); the `telemetry_events` dashboard table (breach → structured log now); **tokens/spend** daily budgets (sends is the hard external cap wired; tokens/spend are run-level on `agent_runs`).

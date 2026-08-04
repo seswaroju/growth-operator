@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.approvals.service import create_approval
 from core.common.config import get_settings
 from core.common.errors import GrowthOperatorError
+from core.mediation import limits, proxy
 from core.mediation import manifest as manifest_module
-from core.mediation import proxy
 from core.mediation.proxy import RunAborted, RunContext
 from core.runtime import graph as g
 from core.runtime.graph import Deps, RunState, next_node
@@ -389,6 +389,7 @@ async def resume_after_approval(
     `approve` re-runs the parked tool (now permitted); `reject` closes customer-safe with no send
     of the original action."""
     redis = redis or Redis.from_url(get_settings().redis_url)
+    await limits.clear_untrusted(redis, run_id)  # approval resolution is a human boundary (MVP-062)
     raw = await redis.get(_checkpoint_key(run_id))
     async with org_scoped_session(org_id) as s:
         run = (
