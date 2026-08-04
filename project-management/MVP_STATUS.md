@@ -37,9 +37,9 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-022 | Feature flag service | ✅ | 2026-07-30 | `47846af` | Migration 009 (feature_flags, flag_rules); in-process snapshot `eval` (no-I/O, atomic swap, sticky bucket), fail-closed kill-switch, `flag_debt.py`; `/v1/flags/eval` |
 | MVP-023 | CRM migration 011 | ✅ | 2026-07-30 | `25527c0` | Migration 011 (leads/appointments/orders/attributions/segments +RLS); `last_customer_msg_at` trigger; money minor-units; **156 pytest** |
 | MVP-058 | Prompt registry | ✅ | 2026-07-30 | `25527c0` | Migration 010 (prompt_layers partial-RLS+content-immutable, prompt_bindings+RLS one-active, prompt_evals); `registry.py` pin/compat/revert; HTTP endpoints deferred |
-| MVP-026 | Consumer framework | ✅ | 2026-07-30 | `ee2ed43` | `@consumer` + XREADGROUP/XAUTOCLAIM drain, graceful shutdown; **168 pytest** |
-| MVP-027 | Consumer dedupe | ✅ | 2026-07-30 | `ee2ed43` | `dedupe_consumer` insert-first → exactly-once effect; 30d prune |
-| MVP-028 | Scheduler process | ✅ | 2026-07-30 | `ee2ed43` | cron matcher (no croniter) + tz-local firing + per-(job,minute) redis lock |
+| MVP-026 | Consumer framework | ✅ | 2026-07-30 | `ee2ed43` | `@consumer` + XREADGROUP/XAUTOCLAIM drain, graceful shutdown; **168 pytest**. **Entrypoint wired 2026-08-04 (#16)** — `core/worker.py` runs outbox publisher + all 3 consumers |
+| MVP-027 | Consumer dedupe | ✅ | 2026-07-30 | `ee2ed43` | `dedupe_consumer` insert-first → exactly-once effect; 30d prune (`dedupe_prune` now scheduled daily, #16) |
+| MVP-028 | Scheduler process | ✅ | 2026-07-30 | `ee2ed43` | cron matcher (no croniter) + tz-local firing + per-(job,minute) redis lock. **Entrypoint wired 2026-08-04 (#16)** — `core/scheduler.py` installs+fires ladder/trust/embeddings/prune (live-broker smoke) |
 | MVP-029 | Retries + DLQ | ✅ | 2026-07-30 | `ee2ed43` | bounded retries → `gop:dlq:<type>` + alert.ops; `dlq-replay.py` |
 | MVP-030 | Typed event catalog | ✅ | 2026-07-30 | `ee2ed43` | `gen_events.py` → `types.py` (specs+checksum) drift test; `emit()` validates payloads |
 | MVP-032 | Webhook ingress + sig verify | ✅ | 2026-07-30 | `33a76bc` | `/webhooks/whatsapp` constant-time HMAC verify + dedupe + quarantine, always-200; **174 pytest** |
