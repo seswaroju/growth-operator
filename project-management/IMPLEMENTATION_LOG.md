@@ -1594,7 +1594,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — Tool→action bridge (BLOCKERS #20) — the seeded pack tiers now fire
 
-**Branch:** `feature/tool-action-bridge` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+**Branch:** `feature/tool-action-bridge` (off main). **Commit:** merge `889bb7e` (pushed to `origin/main`). **No migration, no dependency.**
 
 **Objective:** make the MVP-044-seeded pack tier rules take effect. They key on abstract actions (`action.quote.send`), but the proxy asked the engine by tool name (`messages.send`) → no match → everything fail-safed to tier-2 (over-approval).
 
