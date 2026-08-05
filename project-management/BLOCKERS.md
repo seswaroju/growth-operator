@@ -128,6 +128,13 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** MVP-049 flags open quotes `stale_inputs` directly from the catalog update path (`availability.flag_quotes_if_price_inputs_changed`). The spec (`docs/21-platform/catalog-abstraction.md`) also names a typed `catalog.price_inputs_changed` event, but its payload schema must live in the vault's **read-only** `docs/implementation/events/topics.yaml` (§4), and it is not yet registered — `emit()` rejects unregistered types and the event-catalog drift test enforces this. So the event is **not** emitted yet.
 - **Next action:** Founder approves adding `catalog.price_inputs_changed` (payload: `item_id: uuid`, `changed_keys: array`) to `topics.yaml` in the vault; then regenerate `core/events/types.py` (`gen_events.py`) and emit it alongside the flag write (transactional outbox). No schema/flag change needed — the flag already works.
 
+### 19. Vault `schema.sql` stale for the approvals cluster (reconciliation)
+
+- **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.
+- **Owner:** Founder (apply the vault patch — `docs/` is read-only from this repo, §4).
+- **Description:** the authoritative vault `docs/06-database/schema.sql` predates MVP-065/067/068/070. It defines only a v1 `approvals` (with `tenant_id`, `requested_by NOT NULL REFERENCES agents(id)`, `approver`, no tier bound) and **none** of the four policy-engine tables (`approval_policies`, `trust_ledger`, `incident_tightening`, `execution_token_jti`). The shipped schema uses `org_id`, `requested_by`→`agent_instances` (nullable), `approver_user_id`, +11 feature columns. Reconciled doc→code (founder-approved 2026-08-04, DECISIONS): the DB is canonical.
+- **Next action:** Founder applies the drafted patch in [approvals-schema.md](approvals-schema.md) to the vault `schema.sql` (replace the `approvals` block + add the four tables). No code/migration change. Separately, the vault's `agents` table is unimplemented (runtime uses `agent_instances`) — a broader agent-model reconciliation, out of scope here.
+
 ### ~~18. CI red on every push — migrate-job role order + vault-dependent unit tests~~ — RESOLVED 2026-08-03
 
 - **Severity:** Medium — `main` CI (`test` + `migrate` jobs) failed on every push, emailing the founder; local runs were green, so it went unnoticed.
