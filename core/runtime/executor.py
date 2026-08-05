@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID
@@ -30,6 +31,8 @@ from core.common.errors import GrowthOperatorError
 from core.mediation import limits, proxy
 from core.mediation import manifest as manifest_module
 from core.mediation.proxy import RunAborted, RunContext
+from core.prompts.composer import render as compose_render
+from core.prompts.registry import get_active_binding
 from core.runtime import failure
 from core.runtime import graph as g
 from core.runtime.graph import Deps, RunState, next_node
@@ -37,6 +40,8 @@ from core.runtime.model import default_model
 from core.runtime.routing import RoutingModel
 from core.tenancy import flags
 from core.tenancy.middleware import org_scoped_session
+
+logger = logging.getLogger("core.runtime.executor")
 
 NODE_TIMEOUT_S = 30.0
 DEFAULT_MAX_STEPS = 40
@@ -107,12 +112,33 @@ def _make_proxy_tool(ctx: RunContext, redis: Redis) -> Any:
 
 
 def _deps(
-    persona: str, model: Any = None, execute_tool: Any = None, respond: Any = None
+    persona: str, model: Any = None, execute_tool: Any = None, respond: Any = None,
+    compose: Any = None,
 ) -> Deps:
     return Deps(
         model=model or default_model(), persona=persona,
-        execute_tool=execute_tool, respond=respond or _default_respond,
+        execute_tool=execute_tool, respond=respond or _default_respond, compose=compose,
     )
+
+
+def _make_compose(org_id: UUID, instance_id: UUID, persona: str) -> Any:
+    """A composer-backed prompt builder: render the (instance, task) grounded prompt from its pinned
+    base+vertical+tenant binding, falling back to the deterministic skeleton when there is no active
+    binding (or composition fails). Returns (text, content_hash)."""
+    async def compose(state: RunState) -> tuple[str, str]:
+        task = (state.get("input") or {}).get("task")
+        if task:
+            try:
+                async with org_scoped_session(org_id) as s:
+                    binding_id = await get_active_binding(s, org_id, instance_id, task)
+                    if binding_id is not None:
+                        composed = await compose_render(s, org_id, binding_id)
+                        return composed.text, composed.content_hash
+            except Exception:  # noqa: BLE001 - composition never blocks a run; fall back to skeleton
+                logger.warning("compose failed for task=%s; using skeleton prompt", task)
+        return g.compose_prompt(persona, state)
+
+    return compose
 
 
 def _run_context(
@@ -210,7 +236,8 @@ async def start_run(
         instance = await _load_instance(s, agent_instance_id)
         circuit_open = await failure.is_circuit_open(s, org_id, agent_instance_id)
     persona = instance["persona_name"]
-    _, composed_hash = g.compose_prompt(persona, {"input": input, "route_name": "concierge"})
+    compose = _make_compose(org_id, agent_instance_id, persona)
+    _, composed_hash = await compose({"input": input, "route_name": "concierge"})
     manifest_hash = _manifest_hash(instance["permission_manifest"])
     trace_id = hashlib.sha256(f"{org_id}:{agent_instance_id}:{trigger}".encode()).hexdigest()[:32]
 
@@ -241,7 +268,7 @@ async def start_run(
     if deps is None:
         ctx = _run_context(org_id, run_id, agent_instance_id, instance)
         deps = _deps(persona, model=model or RoutingModel(org_id, run_id, redis),
-                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
+                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond, compose=compose)
     max_steps = int((instance.get("budget_caps") or {}).get("max_steps", DEFAULT_MAX_STEPS))
     state: RunState = {"input": input, "run_id": str(run_id)}  # type: ignore[typeddict-unknown-key]
     return await _drive(
@@ -297,7 +324,8 @@ async def resume_run(
         ctx = _run_context(org_id, run_id, run["agent_instance_id"],
                            {"permission_manifest": run["permission_manifest"]})
         deps = _deps(run["persona_name"], model=RoutingModel(org_id, run_id, redis),
-                     execute_tool=_make_proxy_tool(ctx, redis))
+                     execute_tool=_make_proxy_tool(ctx, redis),
+                     compose=_make_compose(org_id, run["agent_instance_id"], run["persona_name"]))
     max_steps = int((run["budget_caps"] or {}).get("max_steps", DEFAULT_MAX_STEPS))
     return await _drive(
         run_id, org_id, cursor=ckpt["cursor"], state=ckpt["state"], seq=ckpt["seq"],
@@ -491,7 +519,8 @@ async def resume_after_approval(
             approved=frozenset({tool}) if tool else frozenset(),
         )
         deps = _deps(run["persona_name"], model=model or RoutingModel(org_id, run_id, redis),
-                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
+                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond,
+                     compose=_make_compose(org_id, instance_id, run["persona_name"]))
     else:  # reject → route straight to a customer-safe close; the original tool never executes
         state["decision"] = "respond"
         state["response"] = SAFE_CLOSE_TEXT

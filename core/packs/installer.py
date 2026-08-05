@@ -281,6 +281,55 @@ async def _create_bindings_and_instances(session: AsyncSession, ctx: _Ctx) -> No
         )
 
 
+async def _activate_prompts(session: AsyncSession, ctx: _Ctx) -> None:
+    """Pin a base+vertical+tenant prompt binding per (instance, task) so the composer can render a
+    grounded prompt (executor→composer pipeline). Seeds the platform base layer, generates the org's
+    tenant layer from settings, and pins them with the pack's vertical layer. An archetype with no
+    base layer (or a compat mismatch) is skipped — those runs fall back to the skeleton prompt."""
+    from core.prompts.base_layers import ensure_base_layer
+    from core.prompts.registry import IncompatiblePin, pin_binding
+    from core.prompts.tenant_layer import generate_tenant_layer
+
+    for b in ctx.parsed.bindings.bindings:
+        instance_id = (
+            await session.execute(
+                text(
+                    "SELECT i.id FROM agent_instances i "
+                    "JOIN agent_bindings ab ON ab.id = i.binding_id "
+                    "JOIN agent_archetypes a ON a.id = ab.archetype_id "
+                    "WHERE i.org_id = :o AND ab.pack_id = :p AND a.slug = :arch"
+                ),
+                {"o": str(ctx.org_id), "p": str(ctx.pack_id), "arch": b.archetype},
+            )
+        ).scalar_one_or_none()
+        if instance_id is None:
+            continue  # archetype not seeded (e.g. support)
+        base_id = await ensure_base_layer(session, b.archetype)
+        if base_id is None:
+            continue  # no base layer for this archetype → skeleton fallback
+        for task in b.tasks:
+            anchor = task.prompt_layer.ref.rsplit("#", 1)[-1]  # e.g. prompts/…#catalog → 'catalog'
+            vertical_id = (
+                await session.execute(
+                    text(
+                        "SELECT id FROM prompt_layers WHERE pack_id = :p "
+                        "AND layer_type = 'vertical' AND archetype = :arch AND task = :t"
+                    ),
+                    {"p": str(ctx.pack_id), "arch": b.archetype, "t": anchor},
+                )
+            ).scalar_one_or_none()
+            if vertical_id is None:
+                continue
+            tenant_id = await generate_tenant_layer(session, ctx.org_id, b.archetype, task.task)
+            try:
+                await pin_binding(
+                    session, org_id=ctx.org_id, agent_instance_id=instance_id, task=task.task,
+                    base_layer=base_id, vertical_layer=vertical_id, tenant_layer=tenant_id,
+                )
+            except IncompatiblePin:
+                logger.warning("prompt compat mismatch %s/%s; skipping pin", b.archetype, task.task)
+
+
 def _steps() -> list[tuple[str, Callable[[AsyncSession, _Ctx], Awaitable[None]]]]:
     # Rebuilt per install so monkeypatched step functions are picked up (rollback tests).
     return [
@@ -290,6 +339,7 @@ def _steps() -> list[tuple[str, Callable[[AsyncSession, _Ctx], Awaitable[None]]]
         ("policies", _seed_policies),
         ("workflows", _seed_workflows),
         ("bindings_instances", _create_bindings_and_instances),
+        ("prompts_activate", _activate_prompts),
     ]
 
 

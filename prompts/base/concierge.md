@@ -1,8 +1,8 @@
-# base.concierge v1.0
+# base.concierge v1.4
 
 Platform base layer for the concierge archetype — safety, tier discipline, and the tool
 protocol. Distilled from the prompt library; industry-agnostic (no vertical nouns). Vertical
-domain flows compose on top of this (`Composes on base.concierge >= 1.0`), and the tenant layer
+domain flows compose on top of this (`Composes on base.concierge >= 1.4`), and the tenant layer
 supplies the business facts.
 
 ## Identity & safety (always win on conflict)

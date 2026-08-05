@@ -50,6 +50,10 @@ class Deps:
     persona: str
     execute_tool: Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
     respond: Callable[[RunState], Awaitable[str]]
+    # Composes the run's prompt → (text, content_hash). None → the deterministic skeleton (MVP-055).
+    # The executor injects a composer-backed one (grounded base+vertical+tenant layers) with a
+    # skeleton fallback when the instance has no pinned prompt binding.
+    compose: Callable[[RunState], Awaitable[tuple[str, str]]] | None = None
 
 
 def compose_prompt(persona: str, state: RunState) -> tuple[str, str]:
@@ -91,7 +95,10 @@ async def route_node(state: RunState, deps: Deps) -> dict[str, Any]:
 
 
 async def compose_node(state: RunState, deps: Deps) -> dict[str, Any]:
-    prompt, digest = compose_prompt(deps.persona, state)
+    if deps.compose is not None:
+        prompt, digest = await deps.compose(state)
+    else:
+        prompt, digest = compose_prompt(deps.persona, state)
     return {"prompt": prompt, "composed_prompt_hash": digest}
 
 
