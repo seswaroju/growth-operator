@@ -1691,7 +1691,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — MVP-076 · Imports migration + batch API (the #4 imports foundation)
 
-**Branch:** `feature/mvp-076-imports-batch-api` (off main). **Commit:** *pending founder approval.* **Dependency added:** `python-multipart` (founder-approved).
+**Branch:** `feature/mvp-076-imports-batch-api` (off main). **Commit:** merge `9fcee88` (pushed to `origin/main`). **Dependency added:** `python-multipart` (founder-approved).
 
 **Objective:** onboarding uploads photos/CSVs and tracks a batch through the ingestion pipeline. This ticket lays the foundation (migration + create + state machine + SSE); extraction/review/load are 077–080.
 
