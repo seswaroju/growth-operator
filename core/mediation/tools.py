@@ -2,9 +2,9 @@
 
 Only the proxy imports this; the runtime never does (enforced by the `runtime-not-tools` guard).
 Read-shaped tools that already exist are wired (`catalog.search`, `pricing.compute`, `ledger.read`).
-`messages.send` is registered but reached only after a tier-2 approval (the proxy checkpoints it),
-so it never fires unapproved. Tools that don't exist yet (`calendar.book`, `crm.*`) are registered
-as gated stubs that fail closed with `provider_unavailable` — disclosed, wired when built.
+`messages.send` runs the gated send path (the proxy has already tier-checked / an approval has
+resolved). Tools that don't exist yet (`calendar.book`, `crm.*`) are registered as gated stubs that
+fail closed with `provider_unavailable` — disclosed, wired when built.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.errors import GrowthOperatorError
@@ -54,9 +55,49 @@ async def _ledger_read(
 async def _messages_send(
     ctx: RunContext, params: dict[str, Any], session: AsyncSession, audit_id: UUID
 ) -> Any:
-    # Reached only past a tier-2 approval (the proxy checkpoints it before here). The real send
-    # path (MVP-054 gates) is wired when approvals execute the queued action (MVP-065/066).
-    raise GrowthOperatorError("approval_required", "messages.send executes via the approval flow")
+    """Send a customer message through the gated send path (MVP-054). The proxy has already
+    tier-checked (tier-1 auto, or the run resumed past an approval), so this mints the send
+    authorization — an audit capability + a single-use execution token bound to this exact send,
+    like the normalizer — and calls `send()`. A gate refusal returns a structured `not sent` result
+    (never crashes the run / trips the breaker)."""
+    from core.approvals import tokens
+    from core.audit.writer import AuditEntry
+    from core.audit.writer import write as audit_write
+    from core.channels.whatsapp.send import SEND_ACTION, SendRefused, send
+
+    body = str(params.get("body") or "")
+    conversation_id = params.get("conversation_id") or (
+        await session.execute(
+            text("SELECT conversation_id FROM agent_runs WHERE id = :r"), {"r": str(ctx.run_id)}
+        )
+    ).scalar_one_or_none()
+    if not body or not conversation_id:
+        raise GrowthOperatorError(
+            "config_schema_violation", "messages.send needs a body and a conversation")
+    conv_id = UUID(str(conversation_id))
+
+    # Mint the send authorization + run the send in the proxy's session (one tenant transaction).
+    # A separate session would nest a second per-org advisory lock and deadlock; keeping it in the
+    # passed session also lets the send gate read the capability + token it just minted.
+    capability = await audit_write(
+        session,
+        AuditEntry(org_id=ctx.org_id, actor_type="agent", actor_id=str(ctx.instance_id),
+                   action=SEND_ACTION, resource=str(conv_id), payload={"run_id": str(ctx.run_id)}),
+    )
+    token = await tokens.mint(
+        session, org_id=ctx.org_id,
+        ctx_hash=tokens.action_hash(ctx.org_id, SEND_ACTION, str(conv_id)), tier=1)
+    try:
+        outcome = await send(
+            org_id=ctx.org_id, conversation_id=conv_id, body=body,
+            audit_id=capability.id, execution_token=token, session=session,
+            message_class=params.get("message_class", "transactional"),
+            figure_refs=list(params.get("figure_refs", [])),
+        )
+    except SendRefused as exc:
+        return {"sent": False, "refused": exc.code, "conversation_id": str(conv_id)}
+    return {"sent": outcome.sent, "conversation_id": str(conv_id),
+            "message_id": str(outcome.message_id) if outcome.message_id else None}
 
 
 def _not_wired(name: str) -> ToolImpl:
