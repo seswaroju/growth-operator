@@ -1525,7 +1525,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-04 — MVP-056 · Planner routing
 
-**Branch:** `feature/mvp-056-planner-routing` (off main). **Commit:** *pending founder approval.*
+**Branch:** `feature/mvp-056-planner-routing` (off main). **Commit:** merge `e1b274c` (pushed to `origin/main`).
 
 **Objective:** turn a real inbound customer message into a routed agent run — classify intent, resolve to archetype+task via the pack taxonomy, apply three global guards, enqueue the run; unclassifiable → concierge+clarify. **No migration, no dependency** (reads the pack + bindings). Connects the already-built inbound channel → the executor/proxy/approvals spine.
 
