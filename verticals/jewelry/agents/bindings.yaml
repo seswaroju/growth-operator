@@ -92,3 +92,23 @@ planner:
   contact_frequency_cap: {max_msgs_per_contact_per_day: 1, exempt: [active_conversation, transactional]}
   digest: {time_local: "20:00", channel: whatsapp_owner}
   intent_taxonomy_ref: agents/bindings.yaml#tasks.intents
+  # Keyword hints for the planner's classifier (MVP-056). A message is matched to the intent whose
+  # longest keyword appears in it (case-insensitive); no match -> concierge+clarify fallback. This
+  # is the gated-simulated classifier; a small classifier model can replace it at go-live.
+  intent_keywords:
+    greeting: [hello, hi, hey, namaste, namaskar, good morning, good evening]
+    browse: [show me, browse, looking for, collection, designs, catalogue, catalog, latest]
+    occasion_shopping: [wedding, engagement, bridal, anniversary, festival, diwali, karva]
+    gift: [gift, present, for my wife, for my mother, surprise]
+    price_curiosity: [budget, price range, how much roughly, affordable, cheapest]
+    item_question: [weight, how many grams, grams, purity, karat, carat, hallmark, making charges, bis mark]
+    availability: [available, in stock, do you have, is it there, ready stock]
+    design_request: [custom, customize, customise, make to order, own design, design my]
+    price_request: [price, rate, cost, kitna, how much, quote, total]
+    negotiation: [discount, best price, less karo, kam karo, any offer, final price]
+    visit_intent: [visit, come to store, store address, location, where are you, showroom]
+    appointment: [appointment, book a slot, schedule, what time, come at]
+    repair: [repair, fix, broken, polish, loose stone, resize]
+    order_status: [order status, my order, delivery, when will i get, track]
+    complaint: [complaint, problem, issue, not happy, defective, damaged, wrong item]
+    exchange_policy: [exchange, return policy, refund policy, buyback, exchange policy]
