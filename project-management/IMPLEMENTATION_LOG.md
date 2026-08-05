@@ -1659,7 +1659,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — #2 · Close the send loop (an approved/auto reply actually goes out)
 
-**Branch:** `feature/close-send-loop` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+**Branch:** `feature/close-send-loop` (off main). **Commit:** merge `91faa96` (pushed to `origin/main`). **No migration, no dependency.**
 
 **Objective:** complete the customer-inquiry chain — a grounded concierge reply is actually sent (simulated Meta) and recorded, tier-gated (objective step 8).
 
