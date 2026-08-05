@@ -1622,3 +1622,35 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** free-text-only discount detection (agent should pass structured `discount_minor`); other tools' action families as more consequential tools are wired. **This completes the tiering half of grounded drafts** — the remaining half is the executor→composer wiring (use the seeded prompt layers instead of the skeleton).
 
 **Next recommended action:** founder review + approve commit/merge/push; then the executor→composer wiring.
+
+---
+
+## 2026-08-05 — Executor→composer wiring: prompt activation pipeline (grounded drafts)
+
+**Branch:** `feature/executor-composer-wiring` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+
+**Objective:** a routed run composes a real **grounded** prompt (base+vertical+tenant layers) instead of the MVP-055 skeleton — the remaining half of grounded drafts. Discovery: the composer (MVP-059) had no `prompt_bindings` to render (0 rows), base layers were unseeded, and the executor still used the skeleton. Built the **full activation pipeline** (founder-approved).
+
+**`core/prompts/base_layers.py` (new).** `ensure_base_layer(session, archetype)` — idempotently seeds the platform base layer from `prompts/base/<archetype>.md` (global `org_id NULL`); returns None when there's no base file (→ skeleton fallback for that archetype).
+
+**`core/packs/installer.py`.** New step `_activate_prompts` (after `bindings_instances`): per concierge (instance, task) → ensure base layer → `generate_tenant_layer` (from settings) → find the pack vertical layer by the binding's `prompt_layer.ref` anchor (binding task `catalog_answer` → vertical anchor `catalog`) → `pin_binding`. Missing base/vertical or `IncompatiblePin` → skip that task (install never fails on activation).
+
+**`core/runtime/graph.py` + `core/runtime/executor.py`.** `Deps.compose` (a `(state)→(text, content_hash)` callable); `compose_node` uses it (else the skeleton). The executor injects `_make_compose(org, instance, persona)` — resolves the run's task → `get_active_binding` → `composer.render`, **skeleton fallback** when no binding or on any error (composition never blocks a run). `start_run` computes `composed_prompt_hash` via the composer; wired into `start_run`/`resume_run`/`resume_after_approval`.
+
+**`prompts/base/concierge.md`.** Version 1.0 → 1.4 (matches the vertical's `>= 1.4`).
+
+**Requirement → evidence:**
+| Behaviour | Test | Result |
+|---|---|---|
+| install pins base+vertical+tenant bindings for all 4 concierge tasks | `test_prompt_activation::test_install_pins_concierge_prompt_bindings` | PASS |
+| archetype with no base layer skipped (no binding) | `::test_archetype_without_base_layer_is_skipped` | PASS |
+| executor composes a grounded (non-skeleton) prompt, deterministic hash | `::test_executor_composes_grounded_prompt` | PASS |
+| missing binding → skeleton fallback (never blocks a run) | `::test_compose_falls_back_to_skeleton_without_binding` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (102, pass) · guards (runtime-not-tools clean — `core.prompts` is not a banned import) · `pytest -q` **553 passed, 0 skipped** (+4) · live smoke (install → 4 concierge bindings + 1 base + 4 tenant layers; a concierge run composes `# base.concierge v1.4 … Identity & safety …` — the real layered prompt).
+
+**Security:** composition is fail-open to the *skeleton* (never blocks or degrades safety — the skeleton still carries the base safety rules once activated); base layers are global platform config; tenant layers are org-scoped (generated, RLS). No external action.
+
+**Deferred (disclosed):** base layers for **nurture/campaigner/ops/support** (only `concierge` authored — others use the skeleton until written); a **re-activation** path when settings change (tenant layer is generated at install; regenerating on settings change is a follow-up — `generate_tenant_layer` is idempotent on content); the `registry._satisfies` `">= "` space-parse quirk (compat currently lenient; latent, not fixed here).
+
+**Next recommended action:** founder review + approve commit/merge/push. **This completes grounded drafts** end-to-end for the concierge: inbound message → routed run (056) → grounded composed prompt (this) → catalog-grounded reply → tiered approval (044 + #20) → audit.

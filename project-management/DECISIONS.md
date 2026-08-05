@@ -426,3 +426,17 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 **Scope / when:** this is the model for the **autonomy-settings UI** (≈ MVP-088), not built here. The trust ledger (MVP-070) becomes *advisory* (it can suggest loosening) rather than a gate. When implemented: relax the tenant-key tighten-only rule to free-dial, keep the `CORE_TIER4_ACTIONS` floor absolute, and surface the knob per capability. No code change today — recorded so the autonomy UI is built to this intent.
 
 **Decided by:** Founder (2026-08-05, "refunds, money actions the owner has to be kept in loop" + agreeing to the adjustable knob within that floor).
+
+---
+
+### 2026-08-05 — Executor→composer wiring: the prompt activation pipeline (grounded drafts)
+
+**Context (founder-approved 2026-08-05 — "do the full pipeline"):** the composer (MVP-059) existed but nothing produced the `prompt_bindings` it renders from (0 rows), base layers were never seeded, and the executor still used the MVP-055 skeleton prompt. The founder approved building the **full activation pipeline** (not a thin wiring) so a routed run composes a real grounded prompt.
+
+**Decisions / build:**
+- **Base layers are platform-seeded, idempotently, from `prompts/base/<archetype>.md`** (`core/prompts/base_layers.py::ensure_base_layer`; global `org_id NULL`, task `'*'`). An archetype with no base file returns None → activation skips it (skeleton fallback). **Only `concierge` has a base file today**, so only the concierge (the customer-facing grounded-draft agent) is activated; nurture/campaigner/ops/support fall back to the skeleton until their base layers are authored.
+- **Install-time activation** — a new installer step `_activate_prompts` (after `bindings_instances`): for each concierge (instance, task) it seeds the base layer, `generate_tenant_layer` from settings, finds the pack's vertical layer by the binding's `prompt_layer.ref` anchor, and `pin_binding`s them. The binding task (`catalog_answer`) maps to the vertical anchor (`catalog`) via the pack ref. Compat mismatch or missing vertical → skip that task (never fails the install).
+- **Executor uses the composer** — `Deps.compose` (a `(state)→(text, hash)` callable); the executor injects `_make_compose(org, instance, persona)` which resolves the active binding for the run's task and `render`s it, **falling back to the skeleton** when there's no binding or composition errors (composition never blocks a run). `agent_runs.composed_prompt_hash` now reflects the grounded prompt.
+- **Base version aligned 1.0 → 1.4** in `prompts/base/concierge.md` to match the vertical's `Composes on base.concierge >= 1.4`. *(Observed but not fixed here: `registry._satisfies` doesn't strip the space in `">= 1.4"`, so the `>=` compat check is currently lenient — a latent parse quirk; the version alignment is correct regardless.)*
+
+**Decided by:** Founder (2026-08-05, "do the full pipeline… this is one important thing to do"). Discovery flagged: the activation orchestration + base-layer seeding were entirely unbuilt (not just the executor call).
