@@ -64,7 +64,7 @@ async def org() -> AsyncIterator[uuid.UUID]:
         if pid and not await conn.fetchval(
             "SELECT EXISTS(SELECT 1 FROM pack_installations WHERE pack_id=$1)", pid
         ):
-            for t in ("prompt_layers", "agent_bindings", "catalog_schemas"):
+            for t in ("prompt_layers", "approval_policies", "agent_bindings", "catalog_schemas"):
                 await conn.execute(f"DELETE FROM {t} WHERE pack_id=$1", pid)
             await conn.execute("DELETE FROM packs WHERE id=$1", pid)
     finally:

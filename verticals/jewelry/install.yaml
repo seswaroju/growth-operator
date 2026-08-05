@@ -1,7 +1,7 @@
 # Reference install for CI (MVP-041). A fresh org installing 'jewelry' with this config must
 # produce exactly the expected_result below. The e2e test (tests/e2e/test_jewelry_install.py)
 # asserts each field. `indexes_queued` lands with MVP-042 (index generation) — not asserted
-# yet; policies/workflows seeding is deferred until migrations 014/016 (BLOCKERS #14).
+# yet; policies are seeded (MVP-044), workflows seeding stays deferred until migration 016.
 pack_ref: jewelry
 config:
   making_charge_pct: 12
@@ -16,5 +16,5 @@ expected_result:
   catalog_schema_version: 2
   prompt_layers_candidate: 9    # 4 concierge + 1 campaigner + 1 nurture + 2 ops + 1 support
   bindings: 4
-  deferred_steps: [policies, workflows]
+  deferred_steps: [workflows]
   # indexes_queued: 3           # pending MVP-042

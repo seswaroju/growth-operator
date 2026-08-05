@@ -8,11 +8,12 @@ Reinstalling the same bundle digest is a no-op fast path (digest = idempotency k
 pauses the org's instances and marks the install `uninstalled`, leaving L3 runtime data and the
 catalog schema untouched.
 
-Two of the six steps — **policies** (`approval_policies`, migration 014 / MVP-065) and
-**workflows** (`workflow_definitions`, migration 016 / MVP-072) — target tables that do not
-exist yet, so they are explicit **deferred** no-ops (founder decision 2026-07-31, BLOCKERS #14);
-MVP-044 fills them in once those migrations land. The `support` archetype is not seeded
-(MVP-020), so a binding for an unseeded archetype is skipped.
+The **policies** step (`approval_policies`, migration 014 / MVP-065) is seeded from each binding's
+`tier_defaults` (MVP-044). The **workflows** step (`workflow_definitions`, migration 016 / MVP-072)
+still targets a table that does not exist yet, so it remains an explicit **deferred** no-op
+(BLOCKERS #14) until MVP-072 lands. The `support` archetype is not seeded (MVP-020), so a binding
+for an unseeded archetype is skipped for instances — but its pack-level policy rows are still seeded
+(policies are keyed by pack + action, not by archetype).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,7 +38,7 @@ from core.tenancy.middleware import org_scoped_session
 logger = logging.getLogger("core.packs.installer")
 
 # Steps whose target tables are not built yet — recorded, not executed (BLOCKERS #14).
-DEFERRED_STEPS = ("policies", "workflows")
+DEFERRED_STEPS = ("workflows",)
 
 _VERTICALS = Path(__file__).resolve().parents[2] / "verticals"
 
@@ -191,9 +193,43 @@ async def _seed_prompt_layers(session: AsyncSession, ctx: _Ctx) -> None:
         )
 
 
+# The pack tier rules time out with a domain verb (e.g. `hold_and_remind`); the DB CHECK allows only
+# hold|safe_default|cancel (the remind is the ladder's job, MVP-068), so map to the base action.
+_ON_TIMEOUT_MAP = {"hold_and_remind": "hold", "hold": "hold",
+                   "safe_default": "safe_default", "cancel": "cancel"}
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def _parse_duration_s(value: str | None) -> int | None:
+    """`30m` -> 1800. Returns None for absent/unrecognised (no timeout)."""
+    if not value:
+        return None
+    m = re.fullmatch(r"\s*(\d+)\s*([smhd])\s*", value)
+    return int(m.group(1)) * _DURATION_UNITS[m.group(2)] if m else None
+
+
 async def _seed_policies(session: AsyncSession, ctx: _Ctx) -> None:
-    # DEFERRED: approval_policies (migration 014 / MVP-065) not built — BLOCKERS #14, MVP-044.
-    return None
+    """Seed `approval_policies` (scope='pack') from every binding's `tier_defaults` (MVP-044).
+    `action_type` is the rule's `applies_to` verbatim (faithful to the pack; the tool→action
+    bridge that makes these fire on tool calls is a follow-up). Idempotent per (pack, action)."""
+    for binding in ctx.parsed.bindings.bindings:
+        for rule in binding.tier_defaults:
+            await session.execute(
+                text(
+                    "INSERT INTO approval_policies (scope, pack_id, action_type, tier, cel_expr, "
+                    " description, approver_chain, timeout_s, on_timeout, confirm_kind) "
+                    "SELECT 'pack', :pid, :at, :tier, :cel, :desc, CAST(:chain AS jsonb), :to, "
+                    "       :ot, :ck "
+                    "WHERE NOT EXISTS (SELECT 1 FROM approval_policies WHERE pack_id = :pid "
+                    "  AND scope = 'pack' AND action_type = :at AND description = :desc)"
+                ),
+                {"pid": str(ctx.pack_id), "at": rule.applies_to, "tier": rule.tier,
+                 "cel": rule.condition, "desc": rule.description or rule.rule_key,
+                 "chain": json.dumps([rule.approver] if rule.approver else []),
+                 "to": _parse_duration_s(rule.timeout),
+                 "ot": _ON_TIMEOUT_MAP.get(rule.on_timeout or "hold", "hold"),
+                 "ck": rule.confirm},
+            )
 
 
 async def _seed_workflows(session: AsyncSession, ctx: _Ctx) -> None:
