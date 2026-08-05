@@ -378,3 +378,15 @@ reconciliation, out of scope here.
 
 **Decided by:** Founder (2026-08-04, "Doc→code + repo-side reference"). Supersedes the piecemeal
 approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
+
+---
+
+### 2026-08-04 — MVP-056 planner routing: taxonomy loaded from the pack; gated-simulated keyword classifier
+
+**Decisions (founder-approved 2026-08-04):**
+- **The intent taxonomy is loaded from the pack bundle, not `agent_bindings`.** The ticket says "taxonomy loaded from agent_bindings," but the installer never persists `tasks[].intents` to that table (it carries only tool grants / tiers / kpis). Rather than add a migration (out of ticket scope), the planner loads the taxonomy through the pack-layer interface `core/packs/taxonomy.py` — reading the pack's declarative `agents/bindings.yaml` by path and caching per pack slug. `core/` never imports `verticals/` (Rule Zero, §11.3); it reads declarative config, the sanctioned pattern.
+- **Classification is gated-simulated (Option A posture, extended).** The "classify via small route" step is a deterministic **keyword matcher** over pack-provided `intent_keywords` (longest-match-wins), added to `verticals/jewelry/agents/bindings.yaml` (pack authoring — declarative, editable, not the vault). A small classifier model can replace it at go-live behind the same seam, exactly like the LLM/embedder/providers. This keeps jewelry classification knowledge in the pack and makes the routing_golden deterministic (20/20).
+- **`tenant_paused` = `organizations.status != 'active'`.** No dedicated flag exists; the org status is the tenant-level pause signal (the planner drops a paused tenant's traffic).
+- **Guard classes:** concierge/support/ops route as `transactional` (in-conversation replies, exempt from the frequency cap); nurture/campaigner route as `marketing` (the cap applies). So an inbound reply always flows; the cap bounds planner-initiated marketing touches (AC).
+
+**Decided by:** Founder (2026-08-04 — selected MVP-056 + the "pack keyword map" classifier). Note: the `support` archetype is referenced by the pack but not seeded in `agent_archetypes` (concierge/nurture/campaigner/ops/planner are) — support routing resolves correctly but finds no instance until seeded; a pre-existing gap, out of scope here.

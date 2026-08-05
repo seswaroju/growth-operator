@@ -13,7 +13,7 @@ from typing import Any
 from core import worker
 from core.events import consumer as consumer_mod
 
-EXPECTED_CONSUMERS = {"logger", "approval-notify", "runtime-resume"}
+EXPECTED_CONSUMERS = {"logger", "approval-notify", "runtime-resume", "planner"}
 
 
 class FakeRedis:

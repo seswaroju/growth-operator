@@ -1520,3 +1520,38 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** the real vendor clients (go-live — register in `_REAL_PROVIDERS` behind `llm_provider_enabled`); real per-token **pricing** (placeholder estimate now); **dynamic routing** (out of scope per ticket — static routes only); routing on a **task-class** node_key (the graph passes the constant `priya.reason`, which resolves via `default`; wiring per-class node keys into `model_turn` is a follow-up); a costs **dashboard/rollup** (rows are written; the digest surface is later, insights).
 
 **Next recommended action:** founder review + approve commit/merge/push.
+
+---
+
+## 2026-08-04 — MVP-056 · Planner routing
+
+**Branch:** `feature/mvp-056-planner-routing` (off main). **Commit:** *pending founder approval.*
+
+**Objective:** turn a real inbound customer message into a routed agent run — classify intent, resolve to archetype+task via the pack taxonomy, apply three global guards, enqueue the run; unclassifiable → concierge+clarify. **No migration, no dependency** (reads the pack + bindings). Connects the already-built inbound channel → the executor/proxy/approvals spine.
+
+**`verticals/jewelry/agents/bindings.yaml`.** Added `planner.intent_keywords` — a declarative intent→keywords map (16 intents) for the classifier. Pack authoring (declarative, in-repo, not the vault). `contact_frequency_cap` was already present.
+
+**`core/packs/taxonomy.py` (new).** `load_taxonomy(slug)` reads the pack's `agents/bindings.yaml` (via `BindingsPack`), building `intent → Route(archetype, task)` + `intent_keywords` + `frequency_cap` + the concierge fallback. Loaded through the pack layer so `core/` never imports `verticals/` (Rule Zero).
+
+**`core/runtime/planner.py` (new).** The `@consumer` on `msg.received.v1` (`_handle` is the injectable core; the consumer is a thin wrapper). Pipeline: **classify** (`classify` — longest pack-keyword match wins, gated-simulated) → **route** (`route_message` — intent→archetype/task, else concierge+clarify) → **guards** (`is_tenant_paused` = org status ≠ active; `suppression_blocks` = mirror the send-path rule, `all` blocks everything and `marketing` blocks only marketing-class; `frequency_cap_blocks` = daily per-contact cap, transactional/active-conversation exempt) → **enqueue** (`start_run` against the org's active instance for the routed archetype, `trigger=msg.received`, `input={body,intent,task,clarify}`). Returns a short outcome (`enqueued`/`paused`/`suppressed`/`capped`/`no_pack`/`no_instance`). `record_marketing_touch` counts a marketing touch against the cap (the send path calls it; the planner reads it).
+
+**`core/worker.py`.** `_install_consumers` now imports `core.runtime.planner`, so the worker runs the planner consumer.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **routing_golden 20/20** — 20 messages route to the right archetype+task | `test_planner_routing::test_routing_golden_20` | PASS |
+| unclassifiable → concierge + clarify fallback | `::test_unclassifiable_falls_back_to_concierge_clarify` | PASS |
+| classifier longest-keyword-wins / no-match | `::test_classify_longest_keyword_wins`, `_no_keyword_returns_none` | PASS |
+| **cap blocks second marketing touch same day** | `test_planner_guards::test_cap_blocks_second_marketing_touch_same_day` | PASS |
+| guard matrix — paused / suppression (all vs marketing) / cap exemptions | `test_planner_guards::*` (7) | PASS |
+| consumer path — inbound enqueues run to active concierge instance | `test_planner_consumer::test_inbound_message_enqueues_run_to_concierge` | PASS |
+| paused tenant / fully-suppressed contact / no active instance all drop | `test_planner_consumer::test_{paused_tenant,fully_suppressed_contact,no_active_instance}_drops` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (101 files, pass) · guards (24, runtime-not-tools clean) · `pytest -q` **534 passed, 0 skipped** (+16) · live smoke (worker registers the planner consumer on `msg.received.v1`; taxonomy loads 16 routes + cap).
+
+**Security / side effects:** no external action — the planner only *routes*; the run goes through the same mediation/approval/audit spine. Guards fail safe (paused/suppressed/capped → drop, logged). Per-org via `org_scoped_session` (RLS preserved). Classification is gated-simulated (no vendor).
+
+**Deferred (disclosed):** the real small-classifier **model** (go-live, same seam); the `support` **archetype seeding** (referenced by the pack, not in `agent_archetypes` — support routes resolve but find no instance until seeded; pre-existing, out of scope); the send-path call to `record_marketing_touch` (the sender is a later ticket — the counter + guard are wired and tested); multi-pack arbitration (explicitly out of scope).
+
+**Next recommended action:** founder review + approve commit/merge/push; then continue the inquiry→draft spine (grounded draft generation) or the imports track (MVP-076).
