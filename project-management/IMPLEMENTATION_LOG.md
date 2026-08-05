@@ -1686,3 +1686,40 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** real Meta send (go-live); the passed-session path loses "queued-row-durable-before-send" (fine while simulated); model-composed **quote `figure_refs`** plumbing (a quote must pass its ledger refs to `messages.send`; auto-detected figures still fail-safe via Gate 5); deriving `message_class` from the archetype for marketing sends; the instance-manifest **signing at install** (a real installed instance's manifest isn't re-signed yet — MVP-061 `recompile_instance` seam).
 
 **Next recommended action:** founder review + approve commit/merge/push. This **completes the customer-inquiry chain** (objective steps 5–9). Then #4 (imports: API + CSV + **Excel**).
+
+---
+
+## 2026-08-05 — MVP-076 · Imports migration + batch API (the #4 imports foundation)
+
+**Branch:** `feature/mvp-076-imports-batch-api` (off main). **Commit:** *pending founder approval.* **Dependency added:** `python-multipart` (founder-approved).
+
+**Objective:** onboarding uploads photos/CSVs and tracks a batch through the ingestion pipeline. This ticket lays the foundation (migration + create + state machine + SSE); extraction/review/load are 077–080.
+
+**Migration `3c7f4aa8f204` (017 ingestion).** `import_batches` (org-scoped, +RLS: source_kind, state, filename, byte_size, image_count, row_count, storage_ref, stats, error, created_by→users) + `import_rows` (org-scoped, +RLS: batch_id→import_batches, seq, raw/normalized/confidence/flags jsonb, state, loaded_entity_id, UNIQUE(batch_id, seq)). Per the migration-order doc; not in the vault schema (flagged). Round-tripped; roles re-applied.
+
+**`core/ingestion/state.py`.** The batch state machine — `BatchState` (created→extracting→extracted→validating→review→loading→loaded, + failed/cancelled/reverted) + `advance` (legal-only), `can_transition`, `is_terminal`. `failed` is **resumable** (retries the failed stage). Pure.
+
+**`core/ingestion/storage.py`.** In-process blob store for the upload (real object storage at go-live, like media).
+
+**`core/ingestion/service.py`.** `create_batch` (enforce caps → store blob → insert `created` → emit `import.batch_state`), `transition` (load state → `advance` → persist → emit), `list_batches`/`get_batch`/`list_rows`. Caps: ≤500MB / ≤200 images / ≤5k CSV rows (line-count) → `CapExceeded` with a chunking hint (xlsx row-cap at extraction, 078).
+
+**`core/ingestion/api.py` (+ registered in `core/api/main.py`).** `POST /v1/imports` (multipart, `CATALOG_WRITE`) → 201 or 422+hint; `GET /v1/imports`, `/{id}`, `/{id}/rows` (`CATALOG_READ`); **`GET /v1/imports/{id}/stream`** — an SSE relay (`StreamingResponse`, `text/event-stream`) of the batch's `import.batch_state` events off the Redis stream (block ≤2s → delivered well under 2s).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **state machine transitions legal-only** (exhaustive property) | `test_import_state::test_advance_permits_exactly_the_legal_transitions` | PASS |
+| **batch resumable** (failed → retry) | `::test_failed_batch_is_resumable` | PASS |
+| **5k-row cap → clean problem with chunking hint** | `test_import_caps::test_csv_over_the_5k_row_cap_raises_with_chunking_hint`; `test_import_api::test_over_cap_upload_returns_422_with_chunking_hint` | PASS |
+| **SSE delivers state changes < 2s** (prompt, filtered, terminal-closing) | `test_import_sse::test_sse_streams_matching_batch_until_terminal` | PASS |
+| multipart create → batch + first state event; list; 404 | `test_import_api::*`, `test_import_service::test_create_inserts_batch_and_emits_state` | PASS |
+| legal transition emits state; illegal rejected | `test_import_service::test_transition_legal_then_rejects_illegal` | PASS |
+| `import_batches`/`import_rows` tenant isolation as `app_rw` | `test_imports_rls::test_import_tables_isolated_under_app_rw` (×2) | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (106 files, pass) · `mypy migrations` (pass) · `alembic up/down` round-trip (pass) · `pytest -q` **576 passed, 0 skipped** (+17), stable over 2 runs.
+
+**Security:** both tables org-scoped (+RLS, fail-closed), isolation tested. Uploads are gated behind `CATALOG_WRITE`; the caps are server-authoritative. No external side effect. `python-multipart` is a pure-Python parser (no runtime services).
+
+**Deferred (per ticket split):** the **extraction** workers (077 photos / 078 CSV+**xlsx via openpyxl**), the **review queue** (079), **load/revert** (080); real object storage for blobs (in-process now); multi-image blob storage/manifest (a 077 concern — 076 stores the concatenated upload for size accounting). xlsx row-cap enforced at extraction, not upload.
+
+**Next recommended action:** founder review + approve commit/merge/push; then MVP-077 (photo extraction) / MVP-078 (CSV+Excel extraction).

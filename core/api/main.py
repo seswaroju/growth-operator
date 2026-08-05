@@ -10,6 +10,7 @@ from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
+from core.ingestion.api import router as imports_router
 from core.packs.router import router as packs_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
@@ -48,3 +49,4 @@ app.include_router(pricing_router)
 app.include_router(rates_router)
 app.include_router(ops_router)
 app.include_router(approvals_router)
+app.include_router(imports_router)

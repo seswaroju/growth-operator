@@ -28,6 +28,7 @@ dependencies = [
     "clamd>=1.0",
     "boto3>=1.35",
     "langgraph>=0.2,<0.3",
+    "python-multipart>=0.0.32",
 ]
 
 [dependency-groups]
@@ -58,6 +59,8 @@ extend-immutable-calls = [
     "fastapi.Path",
     "fastapi.Body",
     "fastapi.Header",
+    "fastapi.File",
+    "fastapi.Form",
     # RBAC dependency factory — same DI idiom: `Depends(requires(PERM))` (MVP-015).
     "core.tenancy.rbac.requires",
 ]
