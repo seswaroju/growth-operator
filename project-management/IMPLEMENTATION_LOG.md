@@ -1560,7 +1560,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — MVP-044 · Pack seeding: approval policies (prompt layers already seeded)
 
-**Branch:** `feature/mvp-044-pack-seeding` (off main). **Commit:** *pending founder approval.*
+**Branch:** `feature/mvp-044-pack-seeding` (off main). **Commit:** merge `c27872c` (pushed to `origin/main`).
 
 **Objective:** land the pack's rules + prompt layers in their registries on install — the grounded-draft enabler. **Scope (founder-approved):** prompt-layers + approval-policies; `workflow_definitions` deferred to MVP-072 (016 table not built).
 
