@@ -346,3 +346,35 @@ Models are **strict** (`extra="forbid"`) where the platform owns the shape (mani
 - **Cost is a placeholder estimate.** `cost_usd` is computed from a static per-1k-token price map (anthropic/openai) until real pricing at go-live; tokens are real (from the model turn). The point is route/run **attribution**, not billing accuracy.
 
 **Decided by:** Founder (2026-08-04, "I agree lets move on with option A") + Claude (flagged the `costs_lite` early-landing, same additive pattern as prior runtime tables).
+
+---
+
+### 2026-08-04 — Approvals-cluster schema reconciliation (doc → code; canonical schema recorded)
+
+**Context:** the approvals cluster shipped across MVP-065/067/068/070 with several **flagged,
+additive** deviations from the authoritative vault `docs/06-database/schema.sql` (068 notify columns,
+070 `trust_settled`, plus the `org_id` naming). This entry **consolidates** those into one canonical
+record and resolves the standing "approvals-schema reconciliation" thread. Full audit + canonical
+DDL + the drafted vault patch: [approvals-schema.md](approvals-schema.md).
+
+**Findings:** the database is correct and tested (518 pytest; `test_approval_*`, `test_batch_rls`).
+The vault `schema.sql` is **stale** — it defines only a v1 `approvals` (with `tenant_id`,
+`requested_by NOT NULL REFERENCES agents(id)`, `approver`) and **none** of the four policy-engine
+tables (`approval_policies`, `trust_ledger`, `incident_tightening`, `execution_token_jti`). The
+shipped `approvals` uses `org_id` (repo-wide convention, `apply_rls` keys on `app.org_id`),
+`requested_by` nullable → `agent_instances` (no `agents` table exists), `approver_user_id`, and 11
+feature columns absent from the vault (run_id, edited_payload, matched_rules, reason_code, audit_id,
+notified_at, reminded_at, escalated_at, notify_ref, notify_channel, trust_settled).
+
+**Decision (founder-approved, 2026-08-04 — "Doc→code + repo-side reference"):** align the *record*
+to the *code*, not the reverse. The tested DB is canonical. The code-→-doc alternative was rejected
+as destructive (renaming `org_id`→`tenant_id` breaks `apply_rls` + all 22 migrations; dropping the
+11 columns breaks shipped 067/068/069/070 features; the `agents` FK targets a nonexistent table).
+**Actions:** (1) `project-management/approvals-schema.md` is the interim authoritative reference;
+(2) the founder applies the drafted patch to the read-only vault `schema.sql` (replace the
+`approvals` block + add the four tables); (3) **no code or migration change** — nothing is broken.
+The `agents` vs `agent_instances` divergence in the vault is noted as a broader agent-model
+reconciliation, out of scope here.
+
+**Decided by:** Founder (2026-08-04, "Doc→code + repo-side reference"). Supersedes the piecemeal
+approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
