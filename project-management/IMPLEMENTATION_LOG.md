@@ -1589,3 +1589,36 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** the **tool→action bridge** (BLOCKERS #20) — the pack rules key on abstract actions (`action.quote.send`) but the proxy queries by tool name (`messages.send`), so the seeded policies don't fire on tool calls yet; drafts stay safe (fail-safe tier-2). `workflow_definitions` seeding (MVP-072). Wiring the real **composer (MVP-059) into the executor** so runs use the seeded layers instead of the skeleton prompt (a follow-up; MVP-044 lands the layers, the executor→composer wiring is separate).
 
 **Next recommended action:** founder review + approve commit/merge/push; then the tool→action bridge (make the seeded tiers fire) or the executor→composer wiring (use the seeded layers) to complete grounded drafts.
+
+---
+
+## 2026-08-05 — Tool→action bridge (BLOCKERS #20) — the seeded pack tiers now fire
+
+**Branch:** `feature/tool-action-bridge` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+
+**Objective:** make the MVP-044-seeded pack tier rules take effect. They key on abstract actions (`action.quote.send`), but the proxy asked the engine by tool name (`messages.send`) → no match → everything fail-safed to tier-2 (over-approval).
+
+**`core/approvals/engine.py`.** Added `TOOL_ACTIONS` + `resolve_actions(tool, params)` (a tool → abstract-action family; `messages.send` adds `action.quote.send` when it carries a price — structured `amount_minor` or the largest figure parsed from the body via `core.pricing.extract.extract_amounts`) + `evaluate_tool(...)`. Refactored the rule-matching core into `_contributors(...)` so `evaluate` (single action) and `evaluate_tool` (family) share it; `evaluate_tool` **pools contributors across the family** and applies the empty-set fallback **once** (so a small no-discount quote falls back to the message tier, not "unknown → 2").
+
+**`core/mediation/proxy.py`.** `_engine_tier` now calls `evaluate_tool` (resolving the tool to its action family) instead of querying a single `action_type = tool`.
+
+**`verticals/jewelry/agents/bindings.yaml`.** `has()`-guarded the optional-attribute conditions — `discount_any` (`has(attributes.discount_minor) && …`) and `escalation_triggers` (`has(attributes.sentiment) && …` / `has(attributes.topic) && …`) — so an absent field means "not met" rather than the engine's fail-safe-match.
+
+**Requirement → evidence:**
+| Behaviour | Test | Result |
+|---|---|---|
+| tool→action mapping incl. quote detection | `test_tool_action_bridge::*` (6, unit) | PASS |
+| plain reply → tier 1 (auto) | `test_tool_action_bridge_tiers::test_plain_reply_auto_sends_tier1` | PASS |
+| ₹1,50,000 quote → tier 2 (approval) | `::test_high_value_quote_needs_approval_tier2` | PASS |
+| small no-discount quote → tier 1 | `::test_small_quote_without_discount_auto_sends_tier1` | PASS |
+| discounted quote → tier 2 | `::test_discounted_quote_needs_approval_tier2` | PASS |
+| broadcast → tier 3 (confirm) | `::test_broadcast_always_confirms_tier3` | PASS |
+| **end-to-end through the real proxy** — plain reply sends, ₹1.5L quote parks (ApprovalPending tier 2) | live smoke | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (101, pass) · `pytest -q` **549 passed, 0 skipped** (+11) · full proxy smoke. MVP-060/065 proxy+engine + MVP-044 diff test (with the `has()`-guarded conditions) stay green.
+
+**Security:** the engine's fail-safe semantics are unchanged (a genuinely broken CEL still tightens); the `has()` guards only make absent *optional* fields resolve to "not met". Platform tier-4 (`payment.*`, `ads.publish`, …) still always → tier 4. No external action; per-org via `set_org_context`.
+
+**Deferred (disclosed):** free-text-only discount detection (agent should pass structured `discount_minor`); other tools' action families as more consequential tools are wired. **This completes the tiering half of grounded drafts** — the remaining half is the executor→composer wiring (use the seeded prompt layers instead of the skeleton).
+
+**Next recommended action:** founder review + approve commit/merge/push; then the executor→composer wiring.

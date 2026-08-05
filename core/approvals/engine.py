@@ -96,16 +96,16 @@ def _matches(cel_expr: str | None, activation: dict[str, Any]) -> bool:
         return True
 
 
-async def evaluate(session: AsyncSession, ctx: ActionContext) -> Decision:
-    """Deterministic tier for `ctx`. Max tier wins; matched rule ids recorded; order-independent."""
-    await repository.set_org_context(session, ctx.org_id)
-    activation = _activation(ctx)
-
-    # (tier, sort_key, rule_id, chain, timeout, on_timeout, confirm) for every matching contributor.
-    contributors: list[tuple[int, str, list[Any], int | None, str, str | None]] = []
+async def _contributors(
+    session: AsyncSession, org_id: UUID, action_type: str, activation: dict[str, Any]
+) -> tuple[list[Contributor], list[str]]:
+    """The matching contributors for one `action_type` (core tier-4 + pack/tenant rules + incident
+    tightening) — *without* the empty-set fallback, so a caller can pool several actions and apply
+    that fallback once (BLOCKERS #20)."""
+    contributors: list[Contributor] = []
     matched: list[str] = []
 
-    if ctx.action_type in CORE_TIER4_ACTIONS:
+    if action_type in CORE_TIER4_ACTIONS:
         contributors.append((NEVER_AUTONOMOUS_TIER, "core:tier4", [], None, "cancel", None))
         matched.append("core:tier4")
 
@@ -115,7 +115,7 @@ async def evaluate(session: AsyncSession, ctx: ActionContext) -> Decision:
                 "SELECT id, tier, cel_expr, approver_chain, timeout_s, on_timeout, confirm_kind "
                 "FROM approval_policies WHERE action_type = :at"
             ),
-            {"at": ctx.action_type},
+            {"at": action_type},
         )
     ).mappings().all()
     for r in rows:
@@ -134,13 +134,85 @@ async def evaluate(session: AsyncSession, ctx: ActionContext) -> Decision:
                 "WHERE org_id = :o AND action_type = :at AND expires_at > now() "
                 "ORDER BY tightened_to_tier DESC LIMIT 1"
             ),
-            {"o": str(ctx.org_id), "at": ctx.action_type},
+            {"o": str(org_id), "at": action_type},
         )
     ).scalar_one_or_none()
     if inc is not None:
         contributors.append((int(inc), "incident", [], None, "hold", None))
         matched.append("incident")
 
+    return contributors, matched
+
+
+async def evaluate(session: AsyncSession, ctx: ActionContext) -> Decision:
+    """Deterministic tier for `ctx`. Max tier wins; matched rule ids recorded; order-independent."""
+    await repository.set_org_context(session, ctx.org_id)
+    contributors, matched = await _contributors(
+        session, ctx.org_id, ctx.action_type, _activation(ctx))
+    return select_decision(contributors, matched)
+
+
+# ---- tool → abstract-action bridge (BLOCKERS #20) ------------------------------------------------
+# The mediation proxy calls tools by name (`messages.send`), but pack tier rules are keyed by the
+# **abstract action** they govern (`action.message.send`). A tool call is evaluated against every
+# abstract action it maps to; max tier wins. `messages.send` is *also* a quote-send when the message
+# carries a price (structured `amount_minor`, or a money figure in the body — "a message with a
+# price is a quote"), so the quote tiers (high-value / discount) then apply.
+TOOL_ACTIONS: dict[str, list[str]] = {
+    "messages.send": ["action.message.send"],
+    "campaigns.execute": ["action.campaign.execute"],
+    "catalog.write": ["action.catalog.write"],
+}
+
+
+def _message_amount_minor(params: dict[str, Any]) -> int | None:
+    """The price a `messages.send` carries: the structured `amount_minor` if given, else the largest
+    money figure parsed from the body. None → the message carries no price (a plain reply)."""
+    amount = params.get("amount_minor")
+    if amount:
+        return int(amount)
+    from core.pricing.extract import extract_amounts
+
+    body = str(params.get("body") or params.get("text") or "")
+    return max((f.minor for f in extract_amounts(body)), default=None)
+
+
+def resolve_actions(tool: str, params: dict[str, Any]) -> list[str]:
+    """The abstract action(s) a tool call governs. `messages.send` adds `action.quote.send` when the
+    message carries a price. Falls back to the tool name when the tool has no mapping."""
+    actions = list(TOOL_ACTIONS.get(tool, []))
+    if tool == "messages.send" and _message_amount_minor(params) is not None:
+        actions.append("action.quote.send")
+    return actions or [tool]
+
+
+async def evaluate_tool(
+    session: AsyncSession, *, org_id: UUID, actor_instance_id: UUID | None, untrusted: bool,
+    tool: str, params: dict[str, Any],
+) -> Decision:
+    """Evaluate a *tool* call against its abstract-action family and return the max-tier decision
+    (BLOCKERS #20). `amount_minor` is populated from the message price so the quote-tier CEL
+    (`amount_minor >= …`) evaluates; optional attributes (discount, sentiment) are passed through
+    as-is and the pack rules `has()`-guard them, so an absent field means the condition is not met
+    (rather than fail-safe-matching)."""
+    await repository.set_org_context(session, org_id)
+    amount = (
+        _message_amount_minor(params) if tool == "messages.send" else params.get("amount_minor")
+    )
+    activation = _activation(ActionContext(
+        org_id=org_id, action_type=tool, actor_instance_id=actor_instance_id,
+        amount_minor=int(amount) if amount is not None else None,
+        currency=params.get("currency"), recipients=list(params.get("recipients", [])),
+        attributes=dict(params), untrusted_content=untrusted,
+    ))
+    # Pool contributors across the whole action family, then apply the empty-set fallback ONCE —
+    # so a quote with no matching quote-rule falls back to the message tier, not to "unknown → 2".
+    contributors: list[Contributor] = []
+    matched: list[str] = []
+    for action in resolve_actions(tool, params):
+        c, m = await _contributors(session, org_id, action, activation)
+        contributors.extend(c)
+        matched.extend(m)
     return select_decision(contributors, matched)
 
 
