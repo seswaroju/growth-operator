@@ -390,3 +390,15 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 - **Guard classes:** concierge/support/ops route as `transactional` (in-conversation replies, exempt from the frequency cap); nurture/campaigner route as `marketing` (the cap applies). So an inbound reply always flows; the cap bounds planner-initiated marketing touches (AC).
 
 **Decided by:** Founder (2026-08-04 — selected MVP-056 + the "pack keyword map" classifier). Note: the `support` archetype is referenced by the pack but not seeded in `agent_archetypes` (concierge/nurture/campaigner/ops/planner are) — support routing resolves correctly but finds no instance until seeded; a pre-existing gap, out of scope here.
+
+---
+
+### 2026-08-05 — MVP-044 pack seeding: policies seeded; prompt-layers already worked; tool→action bridge deferred
+
+**Decisions (founder-approved 2026-08-04 — "MVP-044 scoped to prompt-layers + approval-policies seeding; workflow_definitions later"):**
+- **Correction: prompt-layer seeding was already implemented** (`_seed_prompt_layers`, MVP-040) and the jewelry prompt files parse into layers (4 concierge + 1 nurture + 1 campaigner + 2 ops + 1 support = 9, status `candidate`). The "0 rows" was simply that no jewelry pack was installed in the inspection DB. So the real MVP-044 work was **`_seed_policies`** (a deferred stub) — now implemented.
+- **`_seed_policies` seeds `approval_policies` (scope='pack') from each binding's `tier_defaults`**, `action_type = applies_to` **verbatim** (the AC is fidelity to the pack — seed matches the pack rules, diff = ∅). Domain fields map: `30m`→`timeout_s=1800`; `on_timeout: hold_and_remind`→`hold` (the DB CHECK allows hold/safe_default/cancel; the remind is the ladder's job, MVP-068); `approver: role:owner`→`approver_chain=['role:owner']`; `condition`→`cel_expr`. Idempotent per (pack, action, description). `workflow_definitions` seeding stays deferred (016/MVP-072 table not built) — founder-approved.
+- **New RLS migration `b6456b200baa` (`p_pack_ins`).** `approval_policies` (014) forced RLS with a tenant-only write path, so the installer (app_rw, in the tenant transaction) couldn't insert a global `scope='pack'` row. Added an INSERT policy permitting **only** `org_id IS NULL AND scope='pack'` — mirrors `prompt_layers`' `p_layers_ins` but **tighter**: `scope='core'` (platform tier-4 minimums) stays migration/owner-only, so no tenant path can forge a core rule (tested). Tenant-row isolation unchanged.
+- **Flagged follow-up — the tool→action bridge.** The pack tier rules key on abstract actions (`action.message.send`, `action.quote.send`), but the mediation proxy queries the policy engine by **tool name** (`messages.send`). So the seeded pack policies are faithful data-of-record but **do not yet fire** on tool calls; a tool→action mapping (proxy/engine) is a follow-up (BLOCKERS #20). Until then drafts stay safe — an un-matched tier-eval action fails safe to tier-2 (approval).
+
+**Decided by:** Founder (2026-08-04 scope approval) + Claude (flagged: prompt-layers-already-worked correction, the RLS migration, and the tool→action bridge gap).

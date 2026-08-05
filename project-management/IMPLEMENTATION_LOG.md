@@ -1555,3 +1555,37 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** the real small-classifier **model** (go-live, same seam); the `support` **archetype seeding** (referenced by the pack, not in `agent_archetypes` — support routes resolve but find no instance until seeded; pre-existing, out of scope); the send-path call to `record_marketing_touch` (the sender is a later ticket — the counter + guard are wired and tested); multi-pack arbitration (explicitly out of scope).
 
 **Next recommended action:** founder review + approve commit/merge/push; then continue the inquiry→draft spine (grounded draft generation) or the imports track (MVP-076).
+
+---
+
+## 2026-08-05 — MVP-044 · Pack seeding: approval policies (prompt layers already seeded)
+
+**Branch:** `feature/mvp-044-pack-seeding` (off main). **Commit:** *pending founder approval.*
+
+**Objective:** land the pack's rules + prompt layers in their registries on install — the grounded-draft enabler. **Scope (founder-approved):** prompt-layers + approval-policies; `workflow_definitions` deferred to MVP-072 (016 table not built).
+
+**Finding/correction:** `_seed_prompt_layers` was **already implemented** and the jewelry prompts parse into 9 candidate layers — prompt-layer seeding already worked on install. The real remaining work was `_seed_policies` (a deferred stub).
+
+**`core/packs/installer.py`.** Implemented `_seed_policies`: for every binding's `tier_defaults`, insert an `approval_policies` row (scope='pack', pack_id, `action_type = applies_to` verbatim, tier, `cel_expr = condition`, description, `approver_chain`, `timeout_s`, `on_timeout`, `confirm_kind`), idempotent on (pack, action, description). Helpers `_parse_duration_s` (`30m`→1800) + `_ON_TIMEOUT_MAP` (`hold_and_remind`→`hold`). Removed `policies` from `DEFERRED_STEPS` (now `("workflows",)`); updated the module docstring.
+
+**Migration `b6456b200baa` (approval_policies pack-insert RLS).** Added `CREATE POLICY p_pack_ins FOR INSERT WITH CHECK (org_id IS NULL AND scope='pack')` so the installer (app_rw, in the tenant transaction) can seed **global pack** rows — mirrors `prompt_layers`' `p_layers_ins`, tighter (core rows stay migration-only). Round-tripped; roles re-applied.
+
+**`verticals/jewelry/install.yaml`, `verticals/kirana/install.yaml`.** Updated `expected_result.deferred_steps` → `[workflows]` (policies now seeded). Existing installer/e2e/index/settings fixtures updated to delete `approval_policies` on teardown (new FK `pack_id → packs`).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **seed matches the pack rules exactly (diff = ∅)** | `test_pack_policy_seed::test_seeded_policies_match_pack_tier_defaults_exactly` | PASS |
+| **re-seed idempotent** (no duplicates) | `::test_reseed_is_idempotent` | PASS |
+| domain field mapping (30m→1800s, hold_and_remind→hold, approver→chain, condition→cel) | `::test_domain_field_mapping` | PASS |
+| **RLS tight** — app_rw seeds `scope='pack'` but NOT `scope='core'` | `::test_app_rw_can_seed_pack_but_not_core_scope` | PASS |
+| install seeds 8 pack policies + 9 candidate prompt layers | `test_pack_installer::test_install_seeds_paused_instances_and_candidate_layers` | PASS |
+| reference jewelry/kirana install deferred_steps = [workflows] | `test_jewelry_install`, `test_kirana_dryrun` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (101) + `mypy migrations` (pass) · `alembic up/down` round-trip (pass) · `pytest -q` **538 passed, 0 skipped** (+4 net) · live smoke (install jewelry → 4 concierge layers w/ real content + 8 tier policies incl. tier-2 quote/tier-3 broadcast).
+
+**Security:** the new RLS policy is **additive + tight** — app_rw may seed only global `scope='pack'` rows; `scope='core'` (platform tier-4 minimums) stays owner/migration-only (tested). Tenant-row isolation unchanged. No secret/PII.
+
+**Deferred (disclosed):** the **tool→action bridge** (BLOCKERS #20) — the pack rules key on abstract actions (`action.quote.send`) but the proxy queries by tool name (`messages.send`), so the seeded policies don't fire on tool calls yet; drafts stay safe (fail-safe tier-2). `workflow_definitions` seeding (MVP-072). Wiring the real **composer (MVP-059) into the executor** so runs use the seeded layers instead of the skeleton prompt (a follow-up; MVP-044 lands the layers, the executor→composer wiring is separate).
+
+**Next recommended action:** founder review + approve commit/merge/push; then the tool→action bridge (make the seeded tiers fire) or the executor→composer wiring (use the seeded layers) to complete grounded drafts.

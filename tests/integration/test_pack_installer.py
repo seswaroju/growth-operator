@@ -77,7 +77,7 @@ async def scene(tmp_path: Path) -> AsyncIterator[dict]:
         await conn.execute("DELETE FROM organizations WHERE id=$1", org)  # cascades L3 + instances
         pid = await conn.fetchval("SELECT id FROM packs WHERE slug=$1", slug)
         if pid:
-            for t in ("prompt_layers", "agent_bindings", "catalog_schemas"):
+            for t in ("prompt_layers", "approval_policies", "agent_bindings", "catalog_schemas"):
                 await conn.execute(f"DELETE FROM {t} WHERE pack_id=$1", pid)
             await conn.execute("DELETE FROM packs WHERE id=$1", pid)
     finally:
@@ -113,11 +113,18 @@ async def test_install_seeds_paused_instances_and_candidate_layers(scene: dict) 
     org, slug, pack_dir = scene["org"], scene["slug"], scene["pack_dir"]
     result = await install(org, pack_dir)
     assert result.status == "active" and result.idempotent is False
-    assert result.deferred_steps == ("policies", "workflows")
+    assert result.deferred_steps == ("workflows",)  # policies now seeded (MVP-044)
 
     c = await _counts(org, slug)
     assert c["instances"] == 4 and c["bindings"] == 4  # support archetype not seeded → skipped
     assert c["schemas"] == 1 and c["layers"] == 9
+    conn = await asyncpg.connect(_dsn())
+    try:  # pack tier rules seeded into approval_policies (all archetypes' tier_defaults)
+        assert await conn.fetchval(
+            "SELECT count(*) FROM approval_policies WHERE scope='pack' "
+            "AND pack_id=(SELECT id FROM packs WHERE slug=$1)", slug) == 8
+    finally:
+        await conn.close()
 
     conn = await asyncpg.connect(_dsn())
     try:

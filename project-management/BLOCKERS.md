@@ -105,7 +105,15 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Severity:** Medium — the installer is complete for existing tables; two pipeline steps + part of uninstall await later migrations.
 - **Owner:** Engineering (unblocks when the migrations land).
 - **Description:** MVP-040's 6-step install pipeline runs 4 steps against existing tables (catalog schema → `catalog_schemas`, prompt layers → `prompt_layers` candidate, bindings → `agent_bindings`, paused instances → `agent_instances`). Steps 4 (**policies** → `approval_policies`, migration 014 / MVP-065) and 5 (**workflows** → `workflow_definitions`, migration 016 / MVP-072) are explicit **deferred no-ops** — those tables don't exist yet (founder decision 2026-07-31). Likewise uninstall's **attribute freeze** (`catalog_items`, migration 012 / MVP-045) and **credential revocation** are deferred. Uninstall currently pauses instances + marks the install `uninstalled` + retains the catalog schema + leaves L3 untouched.
-- **Next action:** MVP-044 implements the policies/workflows seeding step functions once 014/016 land; the installer already calls the (currently no-op) `_seed_policies`/`_seed_workflows` hooks. Attribute freeze wires in with MVP-045 (catalog_items).
+- **Partially resolved (2026-08-05, MVP-044):** the **policies** step is now implemented — `_seed_policies` seeds `approval_policies` (scope='pack') from the bindings `tier_defaults` (+ migration `b6456b200baa` gave app_rw a tight pack-only INSERT RLS). Prompt-layer seeding was already implemented. **Still deferred:** the **workflows** step (`workflow_definitions`, 016/MVP-072 table not built) and uninstall's **attribute freeze** / **credential revocation**.
+- **Next action:** MVP-072 builds the 016 workflows table; then implement `_seed_workflows`. Attribute freeze wires in with a later uninstall pass.
+
+### 20. Seeded pack policies don't fire — tool→action bridge missing (MVP-044)
+
+- **Severity:** Medium — drafts stay **safe** (an un-matched tier-eval action fails safe to tier-2 → approval); the gap is that the pack's *specific* tiers (e.g. reply=tier1 auto-send, high-value-quote=tier2) don't apply, so everything over-approves.
+- **Owner:** Engineering (proxy/engine) + Founder (confirm the action taxonomy).
+- **Description:** MVP-044 seeds `approval_policies` keyed on the pack's **abstract** actions (`action.message.send`, `action.quote.send`, `action.campaign.execute`, `action.catalog.write`). But the mediation proxy queries the policy engine by **tool name** (`messages.send`, `campaigns.execute`, …) — see `proxy._engine_tier`. So the seeded pack rules are faithful data-of-record but never match a tool call. `action.quote.send` has no 1:1 tool (a quote is a `messages.send` whose content is a price), so it's a taxonomy question, not a rename.
+- **Next action:** decide the mapping — either the proxy maps tool→abstract-action(s) before `evaluate` (and the engine evaluates all rules in the action family, CEL selecting), or the pack `applies_to` values are normalised to tool names. Then the seeded tiers (reply auto-send, high-value-quote approval, discount approval, broadcast confirm) take effect end-to-end.
 
 ### ~~15. docs/ symlink replaced by a stray directory~~ — RESOLVED 2026-07-31
 

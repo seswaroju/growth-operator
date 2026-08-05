@@ -106,7 +106,7 @@ async def installed(tmp_path: Path) -> AsyncIterator[dict]:
         await conn.execute("DELETE FROM organizations WHERE id=$1", org)
         pid = await conn.fetchval("SELECT id FROM packs WHERE slug=$1", slug)
         if pid:
-            for t in ("prompt_layers", "agent_bindings", "catalog_schemas"):
+            for t in ("prompt_layers", "approval_policies", "agent_bindings", "catalog_schemas"):
                 await conn.execute(f"DELETE FROM {t} WHERE pack_id=$1", pid)
             await conn.execute("DELETE FROM packs WHERE id=$1", pid)
     finally:
