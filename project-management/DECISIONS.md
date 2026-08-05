@@ -454,3 +454,14 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 **Also recorded for #4 (imports, next):** the catalog import must accept **API + CSV + Excel** uploads. The ticket track already covers API (MVP-076) + CSV (MVP-078); **Excel (.xlsx)** is an added scope requirement (founder, 2026-08-05) to fold into MVP-078's extraction.
 
 **Decided by:** Founder (2026-08-05, "total approval to commit" + "support for both API, CSV or excel").
+
+---
+
+### 2026-08-05 — MVP-076 imports: `python-multipart` dependency; import tables land at 017
+
+**Decisions (founder-approved 2026-08-05):**
+- **Added `python-multipart` (>=0.0.32, Apache-2.0).** FastAPI's file-upload handling (`UploadFile`/`Form`/`File`) requires it — without it the app can't import. It is the de-facto FastAPI companion for `multipart/form-data`; the only alternative (hand-parsing multipart) isn't worth it. Needed for `POST /v1/imports` (the core of the imports track). Pure-Python, no runtime services.
+- **`import_batches` + `import_rows` land at migration 017** (per the migration-order doc) — org-scoped, +RLS. Not in the vault `schema.sql` (like `incidents`/`costs_lite`) — flagged; the vault should add them when the founder next reconciles.
+- **MVP-076 scope = the foundation:** migration + `POST /v1/imports` (caps enforced: ≤500MB / ≤200 images / ≤5k CSV rows → RFC-7807 problem + chunking hint) + the resumable **state machine** (`state.py`, legal-only transitions) + the **SSE relay** of `import.batch_state`. Extraction (077/078, incl. **Excel** via openpyxl), review (079), and load/revert (080) are deferred per the ticket split. Blob storage is an in-process seam (real object storage at go-live, like media). xlsx row-cap is enforced at extraction (078), not upload.
+
+**Decided by:** Founder (2026-08-05, "I approve installing python-multipart").
