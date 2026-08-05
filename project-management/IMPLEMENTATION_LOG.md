@@ -1654,3 +1654,35 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** base layers for **nurture/campaigner/ops/support** (only `concierge` authored — others use the skeleton until written); a **re-activation** path when settings change (tenant layer is generated at install; regenerating on settings change is a follow-up — `generate_tenant_layer` is idempotent on content); the `registry._satisfies` `">= "` space-parse quirk (compat currently lenient; latent, not fixed here).
 
 **Next recommended action:** founder review + approve commit/merge/push. **This completes grounded drafts** end-to-end for the concierge: inbound message → routed run (056) → grounded composed prompt (this) → catalog-grounded reply → tiered approval (044 + #20) → audit.
+
+---
+
+## 2026-08-05 — #2 · Close the send loop (an approved/auto reply actually goes out)
+
+**Branch:** `feature/close-send-loop` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+
+**Objective:** complete the customer-inquiry chain — a grounded concierge reply is actually sent (simulated Meta) and recorded, tier-gated (objective step 8).
+
+**`core/mediation/tools.py`.** `_messages_send` (was a stub raising `approval_required`) now runs the gated send path: it resolves the conversation (from params or the run), mints the send authorization (audit capability + single-use execution token) **in the proxy's session**, calls `send()`, and returns a structured result. A `SendRefused` (e.g. an unledgered figure) → `{"sent": False, "refused": <code>}` (never raises / trips the breaker).
+
+**`core/channels/whatsapp/send.py`.** `send()` gained an optional `session` param (+ a `_send_session` helper): with a caller session it runs the gates + queued row + outcome in that one transaction (so it can be called from inside the mediation proxy, which already holds the per-org advisory lock — a second `org_scoped_session` would deadlock); standalone callers keep the two-phase self-committing behaviour. Backward-compatible (the normalizer + existing send tests unchanged).
+
+**`core/runtime/executor.py` + `graph.py`.** `Deps.compose` was added earlier; now the executor routes the reply through `messages.send`: at `RESPOND` (for a conversation-bound run) it calls `deps.execute_tool("messages.send", {body, conversation_id, message_class:"transactional"})`. A **pending** result (tier ≥ 2) parks via `_park_send` (checkpoint before respond → resume re-sends, now approved); tier 1 auto-sends. `_drive`/`start_run`/`resume_run`/`resume_after_approval` thread `conversation_id`; the reject branch sends only the customer-safe close.
+
+**Requirement → evidence:**
+| Behaviour | Test | Result |
+|---|---|---|
+| `messages.send` delivers + records the outbound message | `test_send_loop::test_messages_send_delivers_and_records` | PASS |
+| an unledgered figure → structured refusal (nothing sent) | `::test_messages_send_refuses_unledgered_figure` | PASS |
+| executor routes the reply through `messages.send` (transactional) | `::test_executor_reply_routes_through_messages_send` | PASS |
+| a priced reply parks for approval | `::test_executor_priced_reply_parks_for_approval` | PASS |
+| **end-to-end through the real proxy** — plain reply auto-sends (tier 1) | `::test_full_run_auto_sends_through_real_proxy` | PASS |
+| **priced reply parks, then sends on approve** | `::test_priced_reply_parks_then_sends_on_approve` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (102, pass) · guards (24, runtime-not-tools clean — `core.channels` is imported only by the tool layer, not the runtime) · `pytest -q` **559 passed, 0 skipped** (+6). Existing whatsapp send/stop/normalizer + MVP-069 approval suites stay green.
+
+**Security / side effects:** no real external send — `MetaClient` is simulated until `whatsapp_live_enabled`. Every send still passes the five gates (audit capability, execution token, suppression, consent, figure-ledger). Per-org via the proxy's tenant session (RLS). The send authorization is single-use + ctx-bound.
+
+**Deferred (disclosed):** real Meta send (go-live); the passed-session path loses "queued-row-durable-before-send" (fine while simulated); model-composed **quote `figure_refs`** plumbing (a quote must pass its ledger refs to `messages.send`; auto-detected figures still fail-safe via Gate 5); deriving `message_class` from the archetype for marketing sends; the instance-manifest **signing at install** (a real installed instance's manifest isn't re-signed yet — MVP-061 `recompile_instance` seam).
+
+**Next recommended action:** founder review + approve commit/merge/push. This **completes the customer-inquiry chain** (objective steps 5–9). Then #4 (imports: API + CSV + **Excel**).

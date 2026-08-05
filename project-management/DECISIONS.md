@@ -440,3 +440,17 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 - **Base version aligned 1.0 → 1.4** in `prompts/base/concierge.md` to match the vertical's `Composes on base.concierge >= 1.4`. *(Observed but not fixed here: `registry._satisfies` doesn't strip the space in `">= 1.4"`, so the `>=` compat check is currently lenient — a latent parse quirk; the version alignment is correct regardless.)*
 
 **Decided by:** Founder (2026-08-05, "do the full pipeline… this is one important thing to do"). Discovery flagged: the activation orchestration + base-layer seeding were entirely unbuilt (not just the executor call).
+
+---
+
+### 2026-08-05 — #2 close the send loop: the reply is a gated `messages.send`; `send()` reuses the caller's session
+
+**Decisions (founder-approved 2026-08-05 — "total approval"):**
+- **A concierge reply is sent through the proxy's `messages.send`, not a separate respond effect.** The executor, at the `respond` node, routes the reply text through `deps.execute_tool("messages.send", …)` — so a **plain reply auto-sends (tier 1)** and a **reply carrying a price parks for approval (tier 2)** and sends on approve (`_park_send` + `resume_after_approval`). This keeps every customer-facing send on the one tier-gated, audited, figure-checked path (MVP-054). `message_class="transactional"` for a concierge reply.
+- **`_messages_send` runs the real send inside the proxy's transaction.** It mints the send authorization (audit capability + single-use execution token) and calls `send()` — all using the **passed proxy session**. A gate refusal returns a structured `{"sent": False, "refused": …}` (never crashes the run / trips the breaker).
+- **`send()` gained an optional `session` param (MVP-054 refactor).** `org_scoped_session` takes a **per-org advisory xact lock**, so a tool impl inside the proxy (which already holds that lock) cannot open a second `org_scoped_session` for the same org — it deadlocks (statement timeout). With a passed session, `send()` runs its gates + queued row + outcome in the **caller's single transaction** instead of its two-phase commit; standalone callers (the normalizer) still get the self-committing two-phase behaviour. Trade-off: the passed-session path loses "queued row durable before the external call" — acceptable while Meta is simulated (no real external effect to lose); revisit at go-live.
+- **On reject**, only the customer-safe close (`SAFE_CLOSE_TEXT`) is sent (tier 1); the original priced reply never goes out.
+
+**Also recorded for #4 (imports, next):** the catalog import must accept **API + CSV + Excel** uploads. The ticket track already covers API (MVP-076) + CSV (MVP-078); **Excel (.xlsx)** is an added scope requirement (founder, 2026-08-05) to fold into MVP-078's extraction.
+
+**Decided by:** Founder (2026-08-05, "total approval to commit" + "support for both API, CSV or excel").

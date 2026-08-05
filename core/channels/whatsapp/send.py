@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
@@ -169,6 +170,21 @@ async def _send_with_retries(
         attempt += 1
 
 
+@asynccontextmanager
+async def _send_session(
+    passed: AsyncSession | None, org_id: UUID
+) -> AsyncIterator[AsyncSession]:
+    """Yield the caller's session (a single caller-owned transaction — used when `send` runs inside
+    the mediation proxy, so we don't nest a second per-org advisory lock and deadlock), or a fresh
+    self-committing one for standalone callers (the normalizer). With a passed session the queued
+    row + outcome land in one transaction the caller commits, instead of the two-phase commit."""
+    if passed is not None:
+        yield passed
+    else:
+        async with org_scoped_session(org_id) as s:
+            yield s
+
+
 async def send(
     *,
     org_id: UUID,
@@ -183,6 +199,7 @@ async def send(
     template: tuple[str, str] | None = None,
     meta_client: MetaClient | None = None,
     sleeper: Sleeper = asyncio.sleep,
+    session: AsyncSession | None = None,
 ) -> SendOutcome:
     """Send on ``conversation_id`` after the gates. Raises ``SendRefused`` (or
     ``TemplateNotSendable``) if a gate blocks it; otherwise attempts the send and returns the
@@ -197,7 +214,7 @@ async def send(
     client = meta_client or MetaClient()
 
     # --- Gates + durable queued row, in one tenant-scoped transaction ---
-    async with org_scoped_session(org_id) as s:
+    async with _send_session(session, org_id) as s:
         conv = (
             await s.execute(
                 text(
@@ -272,8 +289,8 @@ async def send(
 
     result = await _send_with_retries(_do, sleeper)
 
-    # --- Record the outcome in a second transaction ---
-    async with org_scoped_session(org_id) as s:
+    # --- Record the outcome (a second transaction when standalone; the same one when passed) ---
+    async with _send_session(session, org_id) as s:
         if result.ok:
             await s.execute(
                 text("UPDATE messages SET status='sent', provider_message_id=:pmid WHERE id=:id"),

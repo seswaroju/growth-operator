@@ -274,7 +274,7 @@ async def start_run(
     return await _drive(
         run_id, org_id, cursor=None, state=state, seq=0, steps_taken=0,
         deps=deps, redis=redis, max_steps=max_steps, kill_switch=kill_switch,
-        instance_id=agent_instance_id,
+        instance_id=agent_instance_id, conversation_id=conversation_id,
     )
 
 
@@ -289,8 +289,8 @@ async def resume_run(
         run = (
             await s.execute(
                 text(
-                    "SELECT ar.status, ar.agent_instance_id, ai.persona_name, ai.budget_caps, "
-                    "  ai.permission_manifest "
+                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ai.persona_name, "
+                    "  ai.budget_caps, ai.permission_manifest "
                     "FROM agent_runs ar JOIN agent_instances ai ON ai.id = ar.agent_instance_id "
                     "WHERE ar.id = :r"
                 ),
@@ -331,13 +331,14 @@ async def resume_run(
         run_id, org_id, cursor=ckpt["cursor"], state=ckpt["state"], seq=ckpt["seq"],
         steps_taken=ckpt["steps_taken"], deps=deps, redis=redis, max_steps=max_steps,
         kill_switch=kill_switch, instance_id=run["agent_instance_id"],
+        conversation_id=run["conversation_id"],
     )
 
 
 async def _drive(
     run_id: UUID, org_id: UUID, *, cursor: str | None, state: RunState, seq: int,
     steps_taken: int, deps: Deps, redis: Redis, max_steps: int, kill_switch: Any,
-    instance_id: UUID | None = None,
+    instance_id: UUID | None = None, conversation_id: UUID | None = None,
 ) -> RunOutcome:
     """The step loop: kill/budget/timeout guards, run the node, durably checkpoint, advance. A
     tool that returns `pending` (tier ≥ 2) parks the run for approval (MVP-069); a tool that fails
@@ -438,6 +439,24 @@ async def _drive(
                 await failure.note_success(redis, instance_id)  # a clean step resets the counter
                 tool_retries = 0
 
+        # The reply reaches the customer through the same gated messages.send path (MVP-054): a
+        # plain reply auto-sends (tier 1); a reply carrying a price parks for approval (tier 2) and
+        # sends on approve. Only fires for a run bound to a conversation.
+        if (
+            node == g.RESPOND and conversation_id is not None
+            and deps.execute_tool is not None and state.get("response")
+        ):
+            send_out = await deps.execute_tool(
+                "messages.send",
+                {"body": str(state.get("response")), "conversation_id": str(conversation_id),
+                 "message_class": "transactional"},
+            )
+            if isinstance(send_out, dict) and send_out.get("status") == "pending":
+                return await _park_send(
+                    run_id, org_id, redis, state=state, seq=seq, steps_taken=steps_taken,
+                    tool_out=send_out, instance_id=instance_id,
+                )
+
         seq += 1
         steps_taken += 1
         async with org_scoped_session(org_id) as s:
@@ -478,6 +497,31 @@ async def _park(
     return RunOutcome(run_id, "interrupted", None, steps_taken)
 
 
+async def _park_send(
+    run_id: UUID, org_id: UUID, redis: Redis, *, state: RunState, seq: int, steps_taken: int,
+    tool_out: dict[str, Any], instance_id: UUID | None,
+) -> RunOutcome:
+    """Park a priced reply for approval before it goes out (the send tier-evaluated to ≥ 2). The
+    checkpoint is left before `respond` so a resume re-runs it and re-sends the reply — now approved
+    (via `RunContext.approved`). On reject the run sends the customer-safe close instead."""
+    tool, args = tool_out["tool"], tool_out.get("args", {})
+    async with org_scoped_session(org_id) as s:
+        approval_id = await create_approval(
+            s, org_id, action_type=tool, tier=int(tool_out["tier"]), payload=args,
+            run_id=run_id, requested_by=instance_id,
+        )
+        await _finish(s, run_id, "interrupted", output={"awaiting_approval": str(approval_id)})
+        await s.commit()
+    parked: dict[str, Any] = dict(state)
+    parked["awaiting_approval"] = {"approval_id": str(approval_id), "tool": tool}
+    parked["decision"] = "respond"  # resume: model_turn(cursor) → respond → re-send (approved)
+    await _write_checkpoint(
+        redis, run_id, cursor=g.MODEL_TURN, state=cast(RunState, parked), seq=seq,
+        steps_taken=steps_taken,
+    )
+    return RunOutcome(run_id, "interrupted", None, steps_taken)
+
+
 async def resume_after_approval(
     run_id: UUID, org_id: UUID, *, decision: str, redis: Redis | None = None,
     kill_switch: Any = None, model: Any = None, respond: Any = None,
@@ -493,8 +537,8 @@ async def resume_after_approval(
         run = (
             await s.execute(
                 text(
-                    "SELECT ar.status, ar.agent_instance_id, ai.persona_name, ai.budget_caps, "
-                    "  ai.permission_manifest "
+                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ai.persona_name, "
+                    "  ai.budget_caps, ai.permission_manifest "
                     "FROM agent_runs ar JOIN agent_instances ai ON ai.id = ar.agent_instance_id "
                     "WHERE ar.id = :r"
                 ),
@@ -521,14 +565,18 @@ async def resume_after_approval(
         deps = _deps(run["persona_name"], model=model or RoutingModel(org_id, run_id, redis),
                      execute_tool=_make_proxy_tool(ctx, redis), respond=respond,
                      compose=_make_compose(org_id, instance_id, run["persona_name"]))
-    else:  # reject → route straight to a customer-safe close; the original tool never executes
+    else:  # reject → send only the customer-safe close; the original (priced) reply never goes out
         state["decision"] = "respond"
         state["response"] = SAFE_CLOSE_TEXT
         state["pending_tool"] = None
-        deps = _deps(run["persona_name"], model=model, respond=respond)
+        ctx = _run_context(
+            org_id, run_id, instance_id, {"permission_manifest": run["permission_manifest"]})
+        deps = _deps(run["persona_name"], model=model,
+                     execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
 
     return await _drive(
         run_id, org_id, cursor=ckpt["cursor"], state=cast(RunState, state), seq=ckpt["seq"],
         steps_taken=ckpt["steps_taken"], deps=deps, redis=redis, max_steps=max_steps,
         kill_switch=kill_switch, instance_id=instance_id,
+        conversation_id=run["conversation_id"],
     )
