@@ -1627,7 +1627,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — Executor→composer wiring: prompt activation pipeline (grounded drafts)
 
-**Branch:** `feature/executor-composer-wiring` (off main). **Commit:** *pending founder approval.* **No migration, no dependency.**
+**Branch:** `feature/executor-composer-wiring` (off main). **Commit:** merge `af93f06` (pushed to `origin/main`). **No migration, no dependency.**
 
 **Objective:** a routed run composes a real **grounded** prompt (base+vertical+tenant layers) instead of the MVP-055 skeleton — the remaining half of grounded drafts. Discovery: the composer (MVP-059) had no `prompt_bindings` to render (0 rows), base layers were unseeded, and the executor still used the skeleton. Built the **full activation pipeline** (founder-approved).
 
