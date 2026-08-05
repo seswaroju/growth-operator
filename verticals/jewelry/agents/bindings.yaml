@@ -26,7 +26,7 @@ bindings:
       - {rule_key: high_value_quote, applies_to: action.quote.send, condition: "amount_minor >= 10000000", tier: 2,
          approver: role:owner, timeout: 30m, on_timeout: hold_and_remind,
          description: "Sending quotes of ₹1,00,000 or more"}
-      - {rule_key: discount_any, applies_to: action.quote.send, condition: "attributes.discount_minor > 0", tier: 2,
+      - {rule_key: discount_any, applies_to: action.quote.send, condition: "has(attributes.discount_minor) && attributes.discount_minor > 0", tier: 2,
          description: "Any quote that includes a discount"}
     kpis: [handled_end_to_end_pct, first_response_s, quote_provenance_pct, override_rate, visits_booked]
     budgets: {tokens_day: 400000, sends_day: 300}
@@ -84,7 +84,7 @@ bindings:
       - {rule_key: support_reply, applies_to: action.message.send, condition: "true", tier: 1,
          description: "Support replies"}
       - {rule_key: escalation_triggers, applies_to: action.message.send,
-         condition: "attributes.sentiment == 'angry' || attributes.topic in ['legal','refund']",
+         condition: "(has(attributes.sentiment) && attributes.sentiment == 'angry') || (has(attributes.topic) && attributes.topic in ['legal','refund'])",
          tier: 2, description: "Angry customers, legal or refund topics go to you first"}
     kpis: [tickets_resolved_pct, escalation_correct_pct, csat]
 

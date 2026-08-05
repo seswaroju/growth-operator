@@ -121,16 +121,15 @@ def _validate_params(params: dict[str, Any], constraints: dict[str, Any] | None)
 async def _engine_tier(
     session: AsyncSession, ctx: RunContext, tool: str, params: dict[str, Any]
 ) -> int:
-    """Live tier from the policy engine (MVP-065): the tool call becomes an ActionContext."""
-    from core.approvals.engine import ActionContext, evaluate
+    """Live tier from the policy engine (MVP-065). The tool is resolved to its abstract-action
+    family so the pack's tier rules (keyed by `action.*`) fire — max tier wins (BLOCKERS #20)."""
+    from core.approvals.engine import evaluate_tool
 
-    action_ctx = ActionContext(
-        org_id=ctx.org_id, action_type=tool, actor_instance_id=ctx.instance_id,
-        amount_minor=params.get("amount_minor"), currency=params.get("currency"),
-        recipients=list(params.get("recipients", [])), attributes=params,
-        untrusted_content=ctx.untrusted,
+    decision = await evaluate_tool(
+        session, org_id=ctx.org_id, actor_instance_id=ctx.instance_id,
+        untrusted=ctx.untrusted, tool=tool, params=params,
     )
-    return (await evaluate(session, action_ctx)).tier
+    return decision.tier
 
 
 async def _publish_alert(redis: Redis, kind: str, detail: dict[str, Any]) -> None:

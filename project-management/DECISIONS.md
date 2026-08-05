@@ -402,3 +402,27 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 - **Flagged follow-up — the tool→action bridge.** The pack tier rules key on abstract actions (`action.message.send`, `action.quote.send`), but the mediation proxy queries the policy engine by **tool name** (`messages.send`). So the seeded pack policies are faithful data-of-record but **do not yet fire** on tool calls; a tool→action mapping (proxy/engine) is a follow-up (BLOCKERS #20). Until then drafts stay safe — an un-matched tier-eval action fails safe to tier-2 (approval).
 
 **Decided by:** Founder (2026-08-04 scope approval) + Claude (flagged: prompt-layers-already-worked correction, the RLS migration, and the tool→action bridge gap).
+
+---
+
+### 2026-08-05 — Tool→action bridge (BLOCKERS #20): tool calls resolve to an abstract-action family
+
+**Decisions (founder-approved 2026-08-05 — "proceed with #20", taxonomy confirmed):**
+- **A tool call is evaluated against the abstract action(s) it governs, max tier wins.** `engine.resolve_actions(tool, params)` maps `messages.send`→`action.message.send`, `campaigns.execute`→`action.campaign.execute`, `catalog.write`→`action.catalog.write` (else the tool name). `engine.evaluate_tool(...)` pools the matching contributors across the whole family and applies the "no rule → tier-2" fallback **once**; the proxy's tier check calls it. This is what makes the seeded MVP-044 pack tiers actually fire.
+- **"A message with a price is a quote."** `messages.send` also counts as `action.quote.send` when it carries a price — a structured `amount_minor`, or (fallback) the largest money figure parsed from the body with MVP-054's `extract_amounts`. `amount_minor` is populated from that price so the `amount_minor >= 10000000` (₹1,00,000) CEL evaluates; below-threshold no-discount quotes fall back to the plain-reply tier (1).
+- **Optional-attribute conditions are `has()`-guarded in the pack.** `discount_any` and `escalation_triggers` referenced `attributes.discount_minor`/`sentiment`/`topic`, which are absent on a normal reply — the engine's fail-safe (`_matches` → True on a CEL error) then made them always-match. Guarding with `has(attributes.x) && …` (a jewelry-pack edit) makes an absent field mean "condition not met", while the engine's fail-safe semantics for genuinely broken rules are unchanged. Pack authors must `has()`-guard optional fields (footgun noted).
+- **Known limitation:** a discount expressed only in free text (no structured `discount_minor`) isn't caught (a small discounted quote could slip to tier-1). The agent should pass structured `amount_minor`/`discount_minor` on a quote; body-figure parsing covers the amount but not the discount. Acceptable for the MVP.
+
+**Decided by:** Founder (2026-08-05, "proceed with #20" + confirmed "a message with a ledgered price = a quote").
+
+---
+
+### 2026-08-05 — Autonomy model: owner-adjustable "volume knob" within a fixed platform floor
+
+**Decision (founder-approved 2026-08-05):** the store owner controls a free **autonomy "volume knob"** — they may tighten *or* loosen how much the agent handles autonomously for **customer-facing / operational** actions (replies, quotes, campaigns), dialing it up or down at will based on their comfort. This **supersedes** the current *tighten-only + trust-gated loosening* model for the tenant autonomy keys (`core/tenancy/settings.py` `_is_looser` / `SettingLoosenError`): the owner will be able to loosen freely, not only after earning trust.
+
+**Non-negotiable floor (kept fixed at any knob position):** money-moving / irreversible / public actions **always keep the owner in the loop** — `payment.charge`, `payment.refund`, `payout.create`, `supplier.order_commit`, `ads.publish`, `gbp.update` (the engine's `CORE_TIER4_ACTIONS`, tier 4). No knob setting can lower these. The founder explicitly confirmed refunds/money actions must always require the owner.
+
+**Scope / when:** this is the model for the **autonomy-settings UI** (≈ MVP-088), not built here. The trust ledger (MVP-070) becomes *advisory* (it can suggest loosening) rather than a gate. When implemented: relax the tenant-key tighten-only rule to free-dial, keep the `CORE_TIER4_ACTIONS` floor absolute, and surface the knob per capability. No code change today — recorded so the autonomy UI is built to this intent.
+
+**Decided by:** Founder (2026-08-05, "refunds, money actions the owner has to be kept in loop" + agreeing to the adjustable knob within that floor).
