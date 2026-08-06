@@ -15,6 +15,8 @@ from core.packs.router import router as packs_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
 from core.runtime.ops_router import router as ops_router
+from core.support.api import admin_router as support_admin_router
+from core.support.api import owner_router as support_owner_router
 from core.tenancy.api_keys import router as api_keys_router
 from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
@@ -50,3 +52,5 @@ app.include_router(rates_router)
 app.include_router(ops_router)
 app.include_router(approvals_router)
 app.include_router(imports_router)
+app.include_router(support_owner_router)
+app.include_router(support_admin_router)

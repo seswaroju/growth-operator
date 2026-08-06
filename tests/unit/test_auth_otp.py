@@ -166,6 +166,38 @@ def test_generated_code_is_six_digits() -> None:
         assert code.isdigit()
 
 
+def _settings_for(**over: object):  # type: ignore[no-untyped-def]
+    from core.common.config import Settings
+
+    base: dict[str, object] = {"env": "dev", "otp_dev_fixed_code": None}
+    base.update(over)
+    return Settings(**base)  # type: ignore[arg-type]
+
+
+def test_generate_uses_fixed_code_only_in_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth, "get_settings", lambda: _settings_for(env="dev", otp_dev_fixed_code="424242"))
+    assert all(auth.generate_otp_code() == "424242" for _ in range(20))  # deterministic in dev
+
+
+def test_generate_ignores_fixed_code_outside_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Defence in depth: even if the fixed code somehow reached a non-dev env (startup would have
+    # refused to boot), code generation stays cryptographically random and never emits the constant.
+    monkeypatch.setattr(
+        auth, "get_settings", lambda: _settings_for(env="prod", otp_dev_fixed_code="424242"))
+    codes = [auth.generate_otp_code() for _ in range(20)]
+    assert all(len(c) == 6 and c.isdigit() for c in codes)
+    assert any(c != "424242" for c in codes)
+
+
+def test_generate_random_when_no_fixed_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        auth, "get_settings", lambda: _settings_for(env="dev", otp_dev_fixed_code=None))
+    codes = [auth.generate_otp_code() for _ in range(20)]
+    assert all(len(c) == 6 and c.isdigit() for c in codes)
+    assert len(set(codes)) > 1  # random, not a constant
+
+
 def test_hash_roundtrip_and_no_plaintext() -> None:
     h = auth.hash_secret(CODE)
     assert h != CODE  # never stored in the clear

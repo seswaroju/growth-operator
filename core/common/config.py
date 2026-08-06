@@ -95,10 +95,23 @@ class Settings(BaseSettings):
     # never returned from an API, never written to normal application logs.
     otp_dev_echo: bool = Field(default=False)
 
+    # Dev-only convenience (CLAUDE.md §10.3): make the generated OTP a FIXED code (e.g. "000000")
+    # so local sign-in is deterministic without any delivery adapter. Same guardrails as the echo:
+    # MUST stay None by default, only honoured when env == "dev", and startup fails outside dev (or
+    # if the value isn't exactly 6 numeric digits) — see assert_otp_config_safe. The code is chosen
+    # by the operator; it is never persisted, returned from an API, or written to normal logs.
+    otp_dev_fixed_code: str | None = Field(default=None)
+
     # Staff invites (MVP-017) are gated OFF until Week 5. Interim kill-switch via config;
     # the real per-tenant `invites.enabled` flag arrives with the feature-flag service
     # (MVP-022). When false, the invite endpoints return 404 (feature not enabled).
     invites_enabled: bool = Field(default=False)
+
+    # The Growth Operator cross-tenant operator plane (support console, etc.). OFF by default — a
+    # powerful surface (see core/tenancy/platform_admin.py) that must be explicitly enabled, and is
+    # meant to run as its own deployment. When false, every /v1/admin/* endpoint returns 404 (the
+    # admin API is hidden entirely, not merely 403'd). Prod stays off unless deliberately turned on.
+    admin_plane_enabled: bool = Field(default=False)
 
     # Real email OTP delivery (interim channel). OFF by default — turning it on is the
     # act of authorising a real external side effect (§10.4), so it is the founder's

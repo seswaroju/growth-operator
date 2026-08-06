@@ -465,3 +465,73 @@ approvals-migration flags (2026-08-03 × 2) for the schema-of-record question.
 - **MVP-076 scope = the foundation:** migration + `POST /v1/imports` (caps enforced: ≤500MB / ≤200 images / ≤5k CSV rows → RFC-7807 problem + chunking hint) + the resumable **state machine** (`state.py`, legal-only transitions) + the **SSE relay** of `import.batch_state`. Extraction (077/078, incl. **Excel** via openpyxl), review (079), and load/revert (080) are deferred per the ticket split. Blob storage is an in-process seam (real object storage at go-live, like media). xlsx row-cap is enforced at extraction (078), not upload.
 
 **Decided by:** Founder (2026-08-05, "I approve installing python-multipart").
+
+---
+
+### 2026-08-05 — Growth Operator control plane: the cross-tenant platform-admin path
+
+**Context:** the founder wants a **Growth Operator dashboard** — a real, local-first (cloud later) operator console to track store owners and handle support tickets — **distinct** from the store-owner console. The first slice (support tickets: owner-raises → operator queue → resolve, with priority/severity) forces the platform's first **cross-tenant** read/write, which cuts against the strict per-org RLS everything else fails-closed on. Founder approved the approach and scope "exactly as mentioned."
+
+**Decisions (founder-approved 2026-08-05):**
+- **`platform_admins` allowlist is the SOLE authority for cross-tenant (operator) access** — a table of user ids, granted via `scripts/grant_platform_admin.py` / `make grant-admin`. It is **deliberately NOT** the org-scoped `founder` role (which grants ALL_PERMISSIONS including `platform:admin`): letting a per-store role confer cross-tenant reach would be a tenant-isolation escalation. `get_admin_db` verifies the allowlist, then sets the **transaction-local** `app.platform_admin='on'` GUC (== `SET LOCAL`, like `app.org_id`; never session-level). No flag → strictly org-scoped, so absence fails closed.
+- **RLS is split by command, not `FOR ALL`.** `support_tickets` has `p_read`/`p_update` carrying the admin exception (`org_id = app.org_id OR app.platform_admin='on'`) but `p_insert` is **org-only**. Rationale: a single permissive `FOR ALL` policy's USING becomes INSERT's implicit `WITH CHECK`, so the admin flag would let an operator **file into another tenant** — an isolation test caught exactly this. The operator can read + resolve across tenants, but never insert into one. This split is the pattern for future cross-tenant admin tables.
+- **New module + tables land outside the vault** — `core/support/` (a new L0 platform module, no industry nouns), `core/tenancy/platform_admin.py`, and migration **018** (`support_tickets`, `platform_admins`) are not in the vault `schema.sql`, migration-order doc, or core module map (same posture as `incidents`/`import_batches`) — flagged for the next vault reconciliation.
+- **The `support.ticket.raised.v1` outbox event is deferred**, not dropped: adding it to `core/events/topics.py` would break the topics-drift test against the read-only vault `topics.yaml`, which must add it first. The operator queue reads by poll, so the loop doesn't need it; it lands when the vault registers the type (for operator notifications).
+- **Explicitly out of scope for now** (founder): billing/MRR and SSO (billing is deferred platform-wide per CLAUDE.md §11.2); the tenant roster/health views and the rest of the control plane are later slices; wiring the owner console's message-understanding to a **real Anthropic model** ("understand any message") is a separate approved track — the model stays **simulated** for now (founder chose "later").
+
+**Also recorded (roadmap):** two product surfaces are planned and are to be **ported to a real domain with auth** later — the **store-owner console** (owner logs in → their dashboard) and the **Growth Operator console** (founder logs in → cross-tenant operator dashboard). Implementation deferred; noted so it isn't lost.
+
+**Decided by:** Founder (2026-08-05: "I want one for Growth-operator's dashboard … keep track of them, jira tickets kind of thing"; "both built-in + owner-raised … priority and severity"; "works perfectly even if its local … used later when we deploy on cloud"; "I want exactly as you mentioned so you can get started").
+
+---
+
+### 2026-08-06 — Enterprise hardening of the cross-tenant operator plane
+
+**Context:** the founder asked for "industry/enterprise (Google/Apple-level)" security on the
+cross-tenant admin capability — "a major issue if every store owner sees every other customer" —
+and to knock the items out one at a time with rigorous corner-case tests.
+
+**Guarantee (unchanged, now locked):** store owners remain **strictly org-isolated** (RLS,
+fail-closed, tested). The `app.platform_admin` flag is the *only* cross-tenant read path and it
+opens **exactly one table — `support_tickets` — and nothing else** (not conversations, contacts,
+catalog, revenue). Owners can never reach the admin plane (403/404) and can never self-grant.
+
+**Built now (this branch):**
+1. **Least-privilege lock (security #1).** An exhaustive structural test asserts the
+   `app.platform_admin` exception appears in exactly one table's RLS policies and never in any
+   INSERT `WITH CHECK`; a runtime test proves the flag is inert on other tenant tables. Adding the
+   exception anywhere else fails CI (teeth-verified against an injected regression).
+2. **Immutable admin-plane audit (security #2).** A dedicated append-only `platform_access_log`
+   (migration 019, immutability trigger like `audit_log`) records **every** cross-tenant action —
+   reads (queue views: who/when/count/filters) as well as writes — separate from the per-tenant
+   audit chains. Tamper-evident (UPDATE/DELETE blocked for all roles).
+3. **Allowlist governance (security #3).** `platform_admins.expires_at` (migration 020) →
+   `is_platform_admin` treats an expired admin as not-an-admin (fail closed); `grant`/`revoke`
+   scripts (`make grant-admin … [--days N]` / `make revoke-admin`) set expiry and write the
+   grant/revoke to the access log.
+4. **Admin plane off by default (security #4).** `admin_plane_enabled` (default **false**) — every
+   `/v1/admin/*` endpoint returns **404** (existence hidden, before auth) unless explicitly enabled.
+   Prod stays off unless deliberately turned on; readies a separate deployment.
+
+**Required before the operator plane is exposed on cloud (deploy-time, NOT yet built):**
+- **MFA / step-up auth** for operators (WebAuthn/TOTP), beyond the OTP primary — a compromised
+  operator credential must not be enough for cross-tenant reach.
+- **Separate deployment + network isolation** — run the admin plane as its own service behind a
+  VPN / IP-allowlist, not reachable from the tenant app; `admin_plane_enabled` stays false on the
+  tenant deployment.
+- **Dual-control (four-eyes) for allowlist grants** — a grant requires a second operator's approval
+  (today grants are a local bootstrap script).
+- **Anomaly + rate alerting** on `platform_access_log` (bulk/after-hours cross-tenant reads →
+  alert) and **logging of denied** admin attempts (403/404) for probing detection.
+- **PII minimization** in the operator view — ticket bodies are owner-written and may contain PII;
+  scope/redact what the operator sees.
+
+**Also (dev convenience, gated):** `otp_dev_fixed_code` — a fixed local-dev OTP (e.g. `000000`) so
+the founder can sign in locally without a delivery adapter. Same guardrails as the dev echo: None by
+default, honoured only when `env == 'dev'`, startup **fails closed** outside dev or on a malformed
+code, and the code is never persisted / returned / logged. Set `GROWTH_OPERATOR_OTP_DEV_FIXED_CODE`
+in the local env only.
+
+**Decided by:** Founder (2026-08-06: "suggest industry/enterprise level security … has to be top
+notch (google/apple level)"; "make the OTP as fixed … 000000"; "make this as TODO list and lets
+knock out one at a time").

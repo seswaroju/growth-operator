@@ -136,6 +136,13 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** MVP-049 flags open quotes `stale_inputs` directly from the catalog update path (`availability.flag_quotes_if_price_inputs_changed`). The spec (`docs/21-platform/catalog-abstraction.md`) also names a typed `catalog.price_inputs_changed` event, but its payload schema must live in the vault's **read-only** `docs/implementation/events/topics.yaml` (§4), and it is not yet registered — `emit()` rejects unregistered types and the event-catalog drift test enforces this. So the event is **not** emitted yet.
 - **Next action:** Founder approves adding `catalog.price_inputs_changed` (payload: `item_id: uuid`, `changed_keys: array`) to `topics.yaml` in the vault; then regenerate `core/events/types.py` (`gen_events.py`) and emit it alongside the flag write (transactional outbox). No schema/flag change needed — the flag already works.
 
+### 21. Support-tickets track lands outside the vault (schema, migration order, module map, topics.yaml)
+
+- **Severity:** Low — documentation/reconciliation only; the DB is correct, migrated, RLS-enforced, isolation-tested (599 pytest). No runtime impact.
+- **Owner:** Founder (vault reconciliation) → Engineering (register the event once the vault adds it).
+- **Description:** the Growth Operator support-tickets slice (Support-01) + its security hardening add `support_tickets` + `platform_admins` (migration **018**), `platform_access_log` (migration **019**), `platform_admins.expires_at` (migration **020**), a new `core/support/` module, and `core/tenancy/platform_admin.py` — none of which are in the vault `docs/06-database/schema.sql`, the migration-order doc, or the core module map (same posture as `incidents`/`import_batches`). Separately, the `support.ticket.raised.v1` outbox event is **not** emitted: like #17, its payload schema must first be registered in the vault's read-only `topics.yaml` (§4, enforced by the drift test). The operator queue reads by poll, so the loop does not need it.
+- **Next action:** on the next vault pass, add the three tables to `schema.sql`, note migrations 018–020 in the order doc, add `core/support` (+ the `platform_admin` cross-tenant path) to the module map, and (for operator notifications) register `support.ticket.raised.v1` (payload e.g. `ticket_id: uuid`, `priority`, `severity`) in `topics.yaml` → regenerate `types.py` → emit on raise.
+
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
 - **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.

@@ -135,3 +135,23 @@ async def test_lockout_after_five_attempts(
     # 6th attempt with the CORRECT code must still be locked out.
     r = await api.post("/v1/auth/otp/verify", json={"identifier": email, "code": "222222"})
     assert r.status_code == 429
+
+
+async def test_fixed_dev_otp_signs_in_without_leaking_the_code(
+    api: httpx.AsyncClient, email: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real `generate_otp_code` path (not patched) must honour the dev fixed code, and the code
+    # must never appear in the request response (§10.3 — never returned from an API).
+    from core.common.config import Settings
+
+    monkeypatch.setattr(
+        auth, "get_settings",
+        lambda: Settings(env="dev", otp_dev_fixed_code="000000"),  # type: ignore[call-arg]
+    )
+    r1 = await api.post("/v1/auth/otp", json={"identifier": email})
+    assert r1.status_code == 202
+    assert "000000" not in r1.text  # code is never returned by the API
+
+    r2 = await api.post("/v1/auth/otp/verify", json={"identifier": email, "code": "000000"})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["access_token"] and r2.json()["refresh_token"]

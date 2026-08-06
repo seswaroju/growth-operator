@@ -86,3 +86,28 @@ def test_guard_passes_for_valid_email_config() -> None:
         smtp_from="no-reply@example.com",
     )
     assert_otp_config_safe(s)  # must not raise
+
+
+# ---- Fixed dev OTP guard (security #2 / dev convenience) --------------------
+
+
+def test_guard_rejects_fixed_code_outside_dev() -> None:
+    for env in ("staging", "prod"):
+        s = _settings(env=env, otp_dev_fixed_code="000000")
+        with pytest.raises(RuntimeError, match="fixed dev OTP is permitted only when env"):
+            assert_otp_config_safe(s)
+
+
+@pytest.mark.parametrize("bad", ["0000", "00000000", "12ab56", "abcdef", ""])
+def test_guard_rejects_malformed_fixed_code(bad: str) -> None:
+    s = _settings(env="dev", otp_dev_fixed_code=bad)
+    with pytest.raises(RuntimeError, match="exactly 6 numeric digits"):
+        assert_otp_config_safe(s)
+
+
+def test_guard_passes_for_valid_fixed_code_in_dev() -> None:
+    assert_otp_config_safe(_settings(env="dev", otp_dev_fixed_code="000000"))  # must not raise
+
+
+def test_guard_none_fixed_code_is_fine() -> None:
+    assert_otp_config_safe(_settings(env="prod"))  # otp_dev_fixed_code defaults to None

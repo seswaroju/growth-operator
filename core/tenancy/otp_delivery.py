@@ -22,7 +22,7 @@ from email.message import EmailMessage
 from typing import Protocol
 
 from core.common.config import Settings
-from core.tenancy.auth import OtpChannel
+from core.tenancy.auth import OTP_CODE_DIGITS, OtpChannel
 
 
 class OtpDelivery(Protocol):
@@ -125,6 +125,19 @@ def assert_otp_config_safe(settings: Settings) -> None:
             f"{settings.env!r}; the plaintext-OTP dev echo is permitted only when "
             "env == 'dev'. Refusing to start."
         )
+    if settings.otp_dev_fixed_code is not None:
+        if settings.env != "dev":
+            raise RuntimeError(
+                "GROWTH_OPERATOR_OTP_DEV_FIXED_CODE is set but env is "
+                f"{settings.env!r}; a fixed dev OTP is permitted only when env == 'dev'. "
+                "Refusing to start."
+            )
+        code = settings.otp_dev_fixed_code
+        if len(code) != OTP_CODE_DIGITS or not code.isdigit():
+            raise RuntimeError(
+                "GROWTH_OPERATOR_OTP_DEV_FIXED_CODE must be exactly "
+                f"{OTP_CODE_DIGITS} numeric digits; got {code!r}. Refusing to start."
+            )
     if settings.otp_email_enabled:
         missing = [f for f in _REQUIRED_SMTP_FIELDS if not getattr(settings, f)]
         if missing:
