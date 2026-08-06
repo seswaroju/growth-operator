@@ -1726,7 +1726,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-05 — Support-01 · Support tickets (Growth Operator control plane, slice 1)
 
-**Branch:** `feature/support-tickets` (off main). **Commit:** _uncommitted — awaiting founder review._ **No dependency added.**
+**Branch:** `feature/support-tickets` (off main). **Commit:** merge `4140917` (pushed to `origin/main`). **No dependency added.**
 
 **Objective:** the founder-directed **Growth Operator dashboard** — a cross-tenant operator app distinct from the store-owner console. Slice 1: a store owner reports an issue from their console; it lands in the founder's operator queue with **priority + severity**; the operator triages/resolves; the owner sees the resolution. Local-first (runs on `localhost`; lifts to cloud later). The model stays **simulated** (real-AI wiring is a separate approved track).
 
@@ -1763,7 +1763,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-06 — Support tickets: enterprise (Google/Apple-level) security hardening of the operator plane
 
-**Branch:** `feature/support-tickets` (continues). **Commit:** _uncommitted — awaiting founder review._ **No dependency added.** Founder: "top notch (google/apple level)" + "test rigorously every corner case"; knocked out as a TODO list, one at a time.
+**Branch:** `feature/support-tickets` (continues). **Commit:** merge `4140917` (pushed to `origin/main`). **No dependency added.** Founder: "top notch (google/apple level)" + "test rigorously every corner case"; knocked out as a TODO list, one at a time.
 
 **Guarantee (locked):** store owners stay strictly org-isolated; the `app.platform_admin` flag opens **exactly one table (`support_tickets`) and nothing else**; owners can't reach or self-grant the admin plane.
 
