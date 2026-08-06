@@ -535,3 +535,19 @@ in the local env only.
 **Decided by:** Founder (2026-08-06: "suggest industry/enterprise level security … has to be top
 notch (google/apple level)"; "make the OTP as fixed … 000000"; "make this as TODO list and lets
 knock out one at a time").
+
+---
+
+### 2026-08-06 — Two-plane RBAC (Phase 1): tenant `owner/manager/staff/viewer` + platform `dev/admin/staff/analyst`; retire `founder`
+
+**Context:** Phase 1 of the multi-plane program. Founder chose (2026-08-06): separate apps, **full role matrix now**, ROI-now (marketing/competitive as vision), and asked the design to follow "bigger enterprise" practice.
+
+**Decisions (founder-approved 2026-08-06):**
+- **Two separate authorization planes** — the AWS/GCP/Stripe control-plane vs data-plane split. Tenant RBAC (`core/tenancy/permissions.py`) and a SEPARATE platform RBAC (`core/tenancy/platform_permissions.py`). The permission namespaces are disjoint (`resource:action` vs `platform.resource:action`) and a **plane-separation test** enforces it — no tenant role can ever confer a platform permission or vice-versa.
+- **Retire the tenant `founder` role + `platform:admin` permission.** A tenant role granting a platform permission blurred the plane boundary and was a latent cross-tenant escalation: anyone who set a membership to `founder` held `platform:admin`, which any `@requires(PLATFORM_ADMIN)` endpoint would honor. No flow creates `founder`, so retiring it is free and closes the footgun. Cross-tenant power now lives ONLY in the `platform_admins` allowlist + platform roles.
+- **Tenant roles `owner/manager/staff/viewer`**, ranked; **invites carry a role** and you can't grant above your own rank. New permissions (conversations/customers/campaigns:read/insights/members:manage/billing) are defined now but deny-by-default until their feature ships (Phase 3+).
+- **Platform roles `dev/admin/staff/analyst`** on `platform_admins.role` (migration 022; existing operators default `admin`), enforced by `require_platform(perm)` — the platform analogue of tenant `requires(perm)`.
+- **Two mislabeled endpoints re-homed:** `api_keys` (issue key for own org) + `ops` (own-org run viewer) were gated on the tenant `platform:admin`; both act on the caller's own org → re-gated to `org:manage` (tenant).
+- **Constant-based enforcement stays** (correct for our stage). Growth path recorded but NOT built: custom roles, then a policy engine (**Cedar / OpenFGA / OPA**) once sharing/hierarchy complexity demands it.
+
+**Decided by:** Founder (2026-08-06: "full matrix now"; "how would bigger enterprises design it … I would lean towards that [retire]"; "extend invites to carry a role, I don't want to defer"; "start doing in that order").

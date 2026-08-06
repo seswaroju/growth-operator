@@ -37,8 +37,8 @@ async def _db_ready() -> bool:
 
 
 @pytest.fixture()
-async def founder() -> AsyncIterator[dict[str, str]]:
-    """A founder user + org (role=founder → holds platform:admin), with a JWT. Cleaned up."""
+async def owner() -> AsyncIterator[dict[str, str]]:
+    """An owner user + org (role=owner → holds org:manage), with a JWT. Cleaned up."""
     if not await _db_ready():
         pytest.skip("Postgres/migration 004 not ready")
     uid, oid = uuid.uuid4(), uuid.uuid4()
@@ -49,12 +49,12 @@ async def founder() -> AsyncIterator[dict[str, str]]:
             "INSERT INTO users (id, email) VALUES ($1, $2)", uid, f"f+{uid.hex[:8]}@t.test"
         )
         await conn.execute(
-            "INSERT INTO user_orgs (user_id, org_id, role) VALUES ($1, $2, 'founder')", uid, oid
+            "INSERT INTO user_orgs (user_id, org_id, role) VALUES ($1, $2, 'owner')", uid, oid
         )
     finally:
         await conn.close()
     token = auth.issue_access_token(
-        sub=str(uid), secret=get_settings().jwt_secret, org_id=str(oid), roles=["founder"]
+        sub=str(uid), secret=get_settings().jwt_secret, org_id=str(oid), roles=["owner"]
     )
     yield {"user_id": str(uid), "org_id": str(oid), "token": token}
     conn = await asyncpg.connect(_migrator_dsn())
@@ -108,33 +108,33 @@ async def _key_last_used(key_id: str) -> object:
         await conn.close()
 
 
-async def test_founder_issues_key_and_it_authenticates_with_org_context(
-    founder: dict[str, str]
+async def test_owner_issues_key_and_it_authenticates_with_org_context(
+    owner: dict[str, str]
 ) -> None:
-    issued = await _issue_key(founder["token"], "synthetic-job", ["approvals:read"])
+    issued = await _issue_key(owner["token"], "synthetic-job", ["approvals:read"])
     assert issued["status"] == 200, issued
     raw = issued["body"]["api_key"]
     assert raw.startswith("gopk_")
 
-    # The key authenticates a service request and its org context is the founder's org.
+    # The key authenticates a service request and its org context is the owner's org.
     r = await _call_svc(raw)
     assert r.status_code == 200, r.text
-    assert r.json()["org_id"] == founder["org_id"]
+    assert r.json()["org_id"] == owner["org_id"]
 
     # last_used_at is recorded.
     assert await _key_last_used(issued["body"]["id"]) is not None
 
 
-async def test_key_without_scope_is_forbidden(founder: dict[str, str]) -> None:
-    issued = await _issue_key(founder["token"], "reader", ["catalog:read"])  # no approvals:read
+async def test_key_without_scope_is_forbidden(owner: dict[str, str]) -> None:
+    issued = await _issue_key(owner["token"], "reader", ["catalog:read"])  # no approvals:read
     raw = issued["body"]["api_key"]
     r = await _call_svc(raw)
     assert r.status_code == 403
     assert "approvals:read" in r.json()["detail"]
 
 
-async def test_revoked_key_is_rejected(founder: dict[str, str]) -> None:
-    issued = await _issue_key(founder["token"], "to-revoke", ["approvals:read"])
+async def test_revoked_key_is_rejected(owner: dict[str, str]) -> None:
+    issued = await _issue_key(owner["token"], "to-revoke", ["approvals:read"])
     raw, key_id = issued["body"]["api_key"], issued["body"]["id"]
     assert (await _call_svc(raw)).status_code == 200  # works first
 
@@ -147,11 +147,11 @@ async def test_revoked_key_is_rejected(founder: dict[str, str]) -> None:
     assert (await _call_svc(raw)).status_code == 401  # rejected after revoke
 
 
-async def test_non_founder_cannot_issue_key(founder: dict[str, str]) -> None:
+async def test_non_owner_cannot_issue_key(owner: dict[str, str]) -> None:
     # A staff token (no platform:admin) is refused issuance.
     staff = auth.issue_access_token(
-        sub=founder["user_id"], secret=get_settings().jwt_secret,
-        org_id=founder["org_id"], roles=["staff"],
+        sub=owner["user_id"], secret=get_settings().jwt_secret,
+        org_id=owner["org_id"], roles=["staff"],
     )
     issued = await _issue_key(staff, "nope", ["approvals:read"])
     assert issued["status"] == 403

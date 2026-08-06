@@ -1,9 +1,10 @@
-"""Staff invites (MVP-017).
+"""Member invites (MVP-017; roles added in Phase 1.1).
 
-An owner invites one staff member; the invitee accepts by token during/after OTP login and
-joins the org with the **staff** role and nothing more. Tokens are high-entropy, stored as
-a SHA-256 hash, and expire after 7 days. The whole feature is gated behind
-`Settings.invites_enabled` (default false until Week 5) — when off, the endpoints 404.
+A member with `members:invite` invites another member and chooses their **role** — but only a role
+**at or below their own rank** (`can_grant_role`), so no one can invite a role more powerful than
+themselves. The invitee accepts by token during/after OTP login and joins the org with exactly that
+role. Tokens are high-entropy, stored as a SHA-256 hash, and expire after 7 days. The whole feature
+is gated behind `Settings.invites_enabled` (default false until Week 5) — when off, the routes 404.
 
 Auth failures use plain `HTTPException` (§13). Accept requires the invitee to be
 authenticated (an OTP-login access token); the membership row is written under the invited
@@ -27,7 +28,7 @@ from core.common.config import Settings, get_settings
 from core.common.db import get_session
 from core.tenancy import repository
 from core.tenancy.deps import CurrentAuth, get_current_auth
-from core.tenancy.permissions import MEMBERS_INVITE
+from core.tenancy.permissions import MEMBERS_INVITE, ROLE_STAFF, can_grant_role
 from core.tenancy.rbac import requires
 
 INVITE_PREFIX = "goinv_"
@@ -58,15 +59,17 @@ async def insert_invite(
     identifier: str | None,
     token_hash: str,
     expires_at: datetime,
+    role: str,
 ) -> UUID:
     result = await session.execute(
         text(
             "INSERT INTO invites (org_id, identifier, role, token_hash, expires_at) "
-            "VALUES (:org_id, :identifier, 'staff', :token_hash, :expires_at) RETURNING id"
+            "VALUES (:org_id, :identifier, :role, :token_hash, :expires_at) RETURNING id"
         ),
         {
             "org_id": org_id,
             "identifier": identifier,
+            "role": role,
             "token_hash": token_hash,
             "expires_at": expires_at,
         },
@@ -116,6 +119,10 @@ def _require_enabled(settings: Settings) -> None:
 
 class InviteCreateRequest(BaseModel):
     identifier: str | None = Field(default=None, description="Intended invitee email/phone")
+    role: str = Field(
+        default=ROLE_STAFF,
+        description="Role to grant: owner|manager|staff|viewer — must be at or below your own rank",
+    )
 
 
 class InviteCreateResponse(BaseModel):
@@ -142,6 +149,12 @@ async def create_invite(
     _require_enabled(settings)
     if current.org_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if not can_grant_role(current.roles, body.role):
+        # You can only grant a role at or below your own rank.
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"cannot grant role {body.role!r} — it is not a role at or below your own",
+        )
     raw = generate_invite_token()
     expires_at = datetime.now(UTC) + INVITE_TTL
     invite_id = await insert_invite(
@@ -150,6 +163,7 @@ async def create_invite(
         identifier=body.identifier,
         token_hash=hash_invite_token(raw),
         expires_at=expires_at,
+        role=body.role,
     )
     return InviteCreateResponse(
         id=str(invite_id), expires_at=expires_at.isoformat(), invite_token=raw
@@ -177,14 +191,14 @@ async def accept_invite(
     if invite.expires_at <= now:
         raise HTTPException(status.HTTP_410_GONE, "invite expired")
 
-    # Join the invited org with the staff role, under that org's tenant context (RLS).
+    # Join the invited org with exactly the invited role, under that org's tenant context (RLS).
     await repository.set_org_context(session, invite.org_id)
     await session.execute(
         text(
-            "INSERT INTO user_orgs (user_id, org_id, role) VALUES (:u, :o, 'staff') "
+            "INSERT INTO user_orgs (user_id, org_id, role) VALUES (:u, :o, :role) "
             "ON CONFLICT (user_id, org_id) DO NOTHING"
         ),
-        {"u": current.user_id, "o": invite.org_id},
+        {"u": current.user_id, "o": invite.org_id, "role": invite.role},
     )
     await mark_accepted(session, invite.id, current.user_id, now)
-    return InviteAcceptResponse(org_id=str(invite.org_id), role="staff")
+    return InviteAcceptResponse(org_id=str(invite.org_id), role=invite.role)

@@ -58,6 +58,17 @@ async def _grant(user_id: uuid.UUID, expires_at: datetime | None) -> None:
         await conn.close()
 
 
+async def _grant_role(user_id: uuid.UUID, role: str) -> None:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute(
+            "INSERT INTO platform_admins (user_id, role) VALUES ($1,$2) "
+            "ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role",
+            user_id, role)
+    finally:
+        await conn.close()
+
+
 @pytest.fixture()
 async def admin_user(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tuple[uuid.UUID, str]]:
     if not await _db_ready():
@@ -130,6 +141,22 @@ async def test_valid_admin_allowed_then_revoke_denies(
         await revoke(email)  # governance: revoke removes access immediately
         assert (await client.get("/v1/admin/support/tickets",
                                  headers=_bearer(user_id))).status_code == 403
+
+
+@pytest.mark.parametrize(("role", "expected"), [
+    ("dev", 200), ("admin", 200), ("staff", 200), ("analyst", 403),
+])
+async def test_operator_queue_gated_by_platform_role(
+    admin_user: tuple[uuid.UUID, str], role: str, expected: int
+) -> None:
+    # tickets:read is granted to dev/admin/staff but NOT analyst → analyst gets 403 on the queue.
+    user_id, _ = admin_user
+    await _grant_role(user_id, role)
+    from core.api.main import app
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                 base_url="http://test") as client:
+        r = await client.get("/v1/admin/support/tickets", headers=_bearer(user_id))
+    assert r.status_code == expected, f"role={role}: {r.status_code} (expected {expected})"
 
 
 async def test_grant_and_revoke_scripts_set_expiry_and_log(

@@ -1,8 +1,9 @@
-"""Staff invites against a real Postgres under app_rw (MVP-017).
+"""Member invites against a real Postgres under app_rw (MVP-017; roles in Phase 1.1).
 
-Owner invites a staff member; a separate (invited) user accepts by token and joins the org
-with the staff role and nothing more. Also covers 7-day expiry and the invites.enabled
-gate. Skips cleanly when the DB is unreachable.
+Owner invites a member and picks their role; a separate (invited) user accepts by token and joins
+with exactly that role. Covers the grant-hierarchy (can't invite above your own rank), the
+`user_orgs` CHECK (no retired `founder`), 7-day expiry, and the invites.enabled gate. Skips cleanly
+when the DB is unreachable.
 """
 
 from __future__ import annotations
@@ -164,3 +165,67 @@ async def test_staff_cannot_invite(
             "/v1/orgs/invites", json={}, headers={"Authorization": f"Bearer {staff_token}"}
         )
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize("role", ["manager", "viewer"])
+async def test_owner_invites_with_role_and_member_joins_as_that_role(
+    scene: dict[str, str], monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    monkeypatch.setenv("GROWTH_OPERATOR_INVITES_ENABLED", "true")
+    hdr = {"Authorization": f"Bearer {scene['owner_token']}"}
+    async with _client() as c:
+        r = await c.post("/v1/orgs/invites", json={"role": role}, headers=hdr)
+        assert r.status_code == 200, r.text
+        acc = await c.post(
+            f"/v1/orgs/invites/{r.json()['invite_token']}/accept",
+            headers={"Authorization": f"Bearer {scene['invited_token']}"},
+        )
+        assert acc.status_code == 200 and acc.json()["role"] == role
+    assert await _membership_role(scene["invited_id"], scene["org"]) == role
+
+
+async def test_cannot_invite_a_role_above_your_own(
+    scene: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GROWTH_OPERATOR_INVITES_ENABLED", "true")
+    # A manager (has members:invite) may not grant 'owner' — a role above their rank.
+    manager_token = auth.issue_access_token(
+        sub=str(uuid.uuid4()), secret=get_settings().jwt_secret,
+        org_id=scene["org"], roles=["manager"],
+    )
+    async with _client() as c:
+        r = await c.post(
+            "/v1/orgs/invites", json={"role": "owner"},
+            headers={"Authorization": f"Bearer {manager_token}"},
+        )
+    assert r.status_code == 403
+
+
+async def test_invalid_role_is_rejected(
+    scene: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GROWTH_OPERATOR_INVITES_ENABLED", "true")
+    async with _client() as c:
+        r = await c.post(
+            "/v1/orgs/invites", json={"role": "wizard"},
+            headers={"Authorization": f"Bearer {scene['owner_token']}"},
+        )
+    assert r.status_code == 403  # unknown role → not grantable
+
+
+async def test_user_orgs_check_rejects_founder_accepts_new_roles(scene: dict[str, str]) -> None:
+    # The retired role is barred by the CHECK constraint; the new roles are accepted.
+    conn = await asyncpg.connect(_dsn())
+    try:
+        with pytest.raises(asyncpg.exceptions.CheckViolationError):
+            await conn.execute(
+                "INSERT INTO user_orgs (user_id, org_id, role) VALUES ($1, $2, 'founder')",
+                uuid.UUID(scene["invited_id"]), uuid.UUID(scene["org"]),
+            )
+        await conn.execute(
+            "INSERT INTO user_orgs (user_id, org_id, role) VALUES ($1, $2, 'viewer')",
+            uuid.UUID(scene["invited_id"]), uuid.UUID(scene["org"]),
+        )
+        assert await _membership_role(scene["invited_id"], scene["org"]) == "viewer"
+    finally:
+        await conn.close()
