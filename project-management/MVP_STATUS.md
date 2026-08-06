@@ -7,7 +7,7 @@ index; the sources of truth stay:
 - **[CURRENT_TASK.md](CURRENT_TASK.md)** — the one active ticket.
 - **[IMPLEMENTATION_AUDIT.md](IMPLEMENTATION_AUDIT.md)** — a one-time **2026-07-10 snapshot** (module-based, not ticket-based; do not treat as current).
 
-_Last updated: 2026-08-02._
+_Last updated: 2026-08-05._
 
 Legend: ✅ done · 🟡 partial · ⬜ not started
 
@@ -87,6 +87,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | MVP-036 | Suppression + consent | ✅ | 2026-07-30 | `9e3a11d` | Enforcement gate in MVP-034 + `keywords.py` STOP/UNSUB net (en/hi/te) → normalizer auto-suppress (marketing, idempotent) + founder-approved transactional confirm (DECISIONS 2026-07-30); **206 pytest** (merge `301edf3`). Suppressed badge deferred to chats page (MVP-087) |
 | MVP-024 | Audit chain writer | ✅ | 2026-07-30 | `dbab65a` | Migration 006 (audit_log append-only +RLS +trigger, dedupe_consumer); per-org hash chain writer + 10m capability + `audit-verify.py`; p95 **1.12ms**; **131 pytest** |
 | MVP-025 | Outbox emit + publisher | ✅ | 2026-07-30 | `dbab65a` | Migration 007 (event_outbox global); `emit` same-txn + `publish_batch` at-least-once → Redis streams (CloudEvents); crash-window + idempotency; **137 pytest** |
+| Support-01 | Support tickets (GO control-plane #1) | ✅ | 2026-08-05 | _uncommitted_ | Migration 018 (`support_tickets` +split-by-command RLS with fail-closed **platform-admin** exception; `platform_admins` allowlist); `core/support` owner raise/list + operator cross-tenant queue/resolve (audited); `core/tenancy/platform_admin.py` (`get_admin_db`); `web/` owner "Report an issue" + operator board; **599 pytest** (+23) |
+| Support-01-sec | Operator-plane enterprise hardening | ✅ | 2026-08-06 | _uncommitted_ | Least-privilege lock (guard test: `app.platform_admin` in exactly 1 table); migration 019 append-only **`platform_access_log`** (cross-tenant reads+writes, immutable); migration 020 `platform_admins.expires_at` (expired=fail-closed) + `revoke` script; `admin_plane_enabled` default-off (404s `/v1/admin/*`); gated fixed dev OTP; deploy-time controls in DECISIONS; **623 pytest** (+24) |
 
 > **Gap note (resolved 2026-07-22):** MVP-006–010 were leapfrogged after the scaffold; the
 > founder directed implementing them before continuing. Now done/scaffolded on branch

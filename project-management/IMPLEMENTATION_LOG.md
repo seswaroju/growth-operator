@@ -1723,3 +1723,62 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (per ticket split):** the **extraction** workers (077 photos / 078 CSV+**xlsx via openpyxl**), the **review queue** (079), **load/revert** (080); real object storage for blobs (in-process now); multi-image blob storage/manifest (a 077 concern — 076 stores the concatenated upload for size accounting). xlsx row-cap enforced at extraction, not upload.
 
 **Next recommended action:** founder review + approve commit/merge/push; then MVP-077 (photo extraction) / MVP-078 (CSV+Excel extraction).
+
+## 2026-08-05 — Support-01 · Support tickets (Growth Operator control plane, slice 1)
+
+**Branch:** `feature/support-tickets` (off main). **Commit:** _uncommitted — awaiting founder review._ **No dependency added.**
+
+**Objective:** the founder-directed **Growth Operator dashboard** — a cross-tenant operator app distinct from the store-owner console. Slice 1: a store owner reports an issue from their console; it lands in the founder's operator queue with **priority + severity**; the operator triages/resolves; the owner sees the resolution. Local-first (runs on `localhost`; lifts to cloud later). The model stays **simulated** (real-AI wiring is a separate approved track).
+
+**Migration `ae1b311f9373` (018 support tickets).** `support_tickets` (org-scoped: raised_by→users, subject, description, category, priority `low|normal|high|urgent`, severity `minor|major|critical`, status `open|in_progress|resolved|closed`, resolution_note, resolved_by/at, CHECK constraints) + `platform_admins` (user_id allowlist). **RLS is split by command:** `p_read`/`p_update` carry the fail-closed platform-admin exception (`org_id = app.org_id OR app.platform_admin='on'`); **`p_insert` is org-only** so the operator can read/resolve across tenants but never file into one. Not in the vault schema/order (flagged, DECISIONS). Round-tripped; roles re-applied.
+
+**`core/tenancy/platform_admin.py` (new).** The single cross-tenant path. `is_platform_admin` checks the `platform_admins` allowlist — the **sole authority** for operator access (deliberately not the org-scoped `founder` role). `get_admin_db` verifies the allowlist then sets the transaction-local `app.platform_admin='on'` GUC (401 no token / 403 non-admin); `admin_scoped_session` is the worker/test equivalent.
+
+**`core/support/`.** `service.py` — owner `raise_ticket`/`list_own`/`get_own` (org-scoped session) + operator `list_all`/`get_admin`/`update_ticket` (cross-tenant session; stamps `resolved_at`/`by` on close; writes each operator change to the affected **tenant's audit chain** via `audit.write`). `schemas.py` — Literal-validated Pydantic models; owner `TicketOut` **hides** cross-tenant fields, operator `AdminTicketOut` adds `org_id`/`org_name`/`raised_by`. `api.py` (registered in main.py) — owner `POST/GET /v1/support/tickets` (+`/{id}`); operator `GET /v1/admin/support/tickets` + `PATCH …/{id}` behind `get_admin_db`.
+
+**Dev tooling.** `scripts/grant_platform_admin.py` + `make grant-admin EMAIL=…` (the only way to become an operator).
+
+**Frontend (`web/`).** Real Vite/React on the existing OTP auth: after a non-simulated sign-in, `SupportConsole` renders the owner **"Report an issue"** form + "My tickets", and an **operator queue** (all stores, inline resolve) that self-reveals only when `GET /v1/admin/support/tickets` returns 200. `api.ts` typed client (`raiseTicket`/`listMyTickets`/`adminListTickets`/`adminUpdateTicket`) + react-query.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Owner raises a ticket → 201, operator-triaged defaults (open/normal), no cross-tenant leak | `test_support_api::test_owner_raises_ticket_with_defaults` | PASS |
+| Owner isolation — B cannot see A's ticket | `test_support_api::test_owner_isolation`; `test_support_rls::test_owner_scoped_and_fail_closed` | PASS |
+| Non-allowlisted caller denied the operator queue (**403**) | `test_support_api::test_operator_queue_forbidden_for_non_admin` | PASS |
+| Operator sees **all tenants**, resolves → owner sees resolved → **audit** row | `test_support_api::test_operator_sees_all_tenants_and_resolves`; `test_support_rls::test_platform_admin_flag_reads_across_tenants` | PASS |
+| **Admin flag cannot INSERT into a tenant** (split-RLS guard) | `test_support_rls::test_admin_flag_cannot_insert_into_a_tenant` | PASS |
+| Owner cannot file into another org (WITH CHECK) | `test_support_rls::test_owner_cannot_insert_into_another_org` | PASS |
+| priority/severity/status validated (422 at boundary + pre-DB in service) | `test_support_validation::*`; `test_support_api::test_invalid_severity_is_rejected`, `::test_empty_patch_is_rejected` | PASS |
+| Contract — owner view hides tenant fields; routes registered | `test_support_contract::*` | PASS |
+| Frontend type-checks/lints/builds | `tsc -b --noEmit` · `oxlint` · `vite build` | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (112 files, pass) · `mypy migrations` (pass) · `alembic up/down` round-trip (pass) · `pytest -q` **599 passed** (+23) · web `tsc`/`lint`/`build` (pass). Also a live end-to-end smoke (raise → isolation → 403 → cross-tenant queue → resolve → owner-sees-resolved → audit).
+
+**Security:** the cross-tenant operator path is the platform's first RLS escape hatch — gated by the `platform_admins` allowlist, transaction-local flag only (fail-closed by default), read/resolve only (INSERT stays org-only, isolation-proven), and every operator action audited in the tenant's chain. No external side effect. Billing/SSO deliberately excluded.
+
+**Deferred (disclosed):** `support.ticket.raised.v1` outbox event (would break the vault `topics.yaml` drift test — needs a vault addition; queue reads by poll, so not required); operator notifications; the tenant roster/health views + rest of the control plane (next slices); porting both consoles to a real domain with login; wiring the owner console to a real model for arbitrary-message understanding (separate track).
+
+**Next recommended action:** founder review + approve commit/merge/push; run it locally (`uvicorn` + `cd web && npm run dev`, `make grant-admin EMAIL=you@…`); then choose the next control-plane slice (tenant roster/health) or resume #4 imports (MVP-077/078).
+
+## 2026-08-06 — Support tickets: enterprise (Google/Apple-level) security hardening of the operator plane
+
+**Branch:** `feature/support-tickets` (continues). **Commit:** _uncommitted — awaiting founder review._ **No dependency added.** Founder: "top notch (google/apple level)" + "test rigorously every corner case"; knocked out as a TODO list, one at a time.
+
+**Guarantee (locked):** store owners stay strictly org-isolated; the `app.platform_admin` flag opens **exactly one table (`support_tickets`) and nothing else**; owners can't reach or self-grant the admin plane.
+
+**1 · Least-privilege lock (security #1)** — `tests/isolation/test_platform_admin_scope.py`: an exhaustive structural test asserts the `app.platform_admin` exception is referenced by exactly one table's RLS and never in any INSERT `WITH CHECK`; a runtime test proves the flag is inert on another tenant table (`contacts`). Teeth-verified out of band (injecting the exception on `contacts` flips detection → the guard fails; rolled back).
+
+**2 · Immutable admin-plane audit (security #2)** — **migration 019** `platform_access_log` (append-only via REVOKE + a `BEFORE UPDATE OR DELETE` trigger, like `audit_log`/006; no FKs so records survive entity deletion). `platform_admin.log_platform_access` records **every** cross-tenant action; `service.list_all` logs each queue view (`support.queue.viewed`, count+filters) and `service.update_ticket` logs each resolve (`support.ticket.updated`, target org) — **reads audited, not just writes** — separate from the per-tenant audit chains. Append-only is teeth-tested (INSERT ok; UPDATE/DELETE raise).
+
+**3 · Allowlist governance (security #3)** — **migration 020** `platform_admins.expires_at`; `is_platform_admin` now requires `expires_at IS NULL OR > now()` (an expired admin fails closed). `scripts/grant_platform_admin.py --days N` (auto-expiry) + new `scripts/revoke_platform_admin.py` (+ `make revoke-admin`); both write the grant/revoke to `platform_access_log`. `tests/integration/test_platform_admin_governance.py`: expiry semantics (null/future→valid, past→denied), expired admin → **403**, revoke → **403**, scripts set expiry + log.
+
+**4 · Admin plane off by default (security #4)** — `admin_plane_enabled` (default **false**); `require_admin_plane_enabled` is a router-level dependency on `/v1/admin/*` → **404 before auth** when off (existence hidden, even from a valid admin). Tests opt in via `GROWTH_OPERATOR_ADMIN_PLANE_ENABLED=true`; a dedicated test proves a valid admin AND an anonymous caller both get 404 when off.
+
+**Dev convenience** — `otp_dev_fixed_code` (config) makes the OTP a fixed local-dev code (e.g. `000000`): honoured only when `env=='dev'`, `assert_otp_config_safe` refuses to boot outside dev or on a malformed code, never persisted/returned/logged. `tests/unit/test_auth_otp.py` + `test_otp_delivery.py` + a `test_auth_flow.py` end-to-end (signs in with `000000`, code not in the response).
+
+**Deploy-time controls (recorded in DECISIONS, NOT built):** MFA/step-up for operators; separate deployment + network isolation; dual-control for grants; anomaly/rate alerting + denied-attempt logging; PII minimization in the operator view.
+
+**Commands:** `ruff check .` (pass) · `mypy core` (111) + `mypy migrations` (pass) · `alembic up/down` round-trip 018→020 (pass) · `pytest -q` **623 passed** (+24 over the pre-hardening 599). Migrations 019/020 not in the vault schema/order — flagged (BLOCKERS #21).
+
+**Next recommended action:** founder review + approve commit/merge/push for the whole `feature/support-tickets` branch (support tickets + hardening); then next control-plane slice (tenant roster/health) or #4 imports (MVP-077/078).

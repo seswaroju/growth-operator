@@ -6,6 +6,7 @@ import {
   simulateVerifyOtp,
   verifyOtp,
 } from "./api";
+import SupportConsole from "./SupportConsole";
 
 type Step = "email" | "code" | "done";
 
@@ -56,6 +57,11 @@ function App() {
     setError(null);
     setSimCode(null);
     setTokens(null);
+  }
+
+  // A real (non-simulated) sign-in opens the support console — the first real product screen.
+  if (step === "done" && tokens && !simulate) {
+    return <SupportConsole token={tokens.access} email={email} onSignOut={reset} />;
   }
 
   return (

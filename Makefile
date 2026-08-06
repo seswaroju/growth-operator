@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin
 
 dev:
 	$(COMPOSE) up --build
@@ -21,6 +21,16 @@ test:
 
 seed:
 	uv run python scripts/dev_seed.py
+
+# Grant a user the Growth Operator operator role (cross-tenant support console).
+# The user must have logged in once (OTP) first. Usage: make grant-admin EMAIL=you@example.com
+# Optional auto-expiry: uv run python scripts/grant_platform_admin.py you@example.com --days 30
+grant-admin:
+	uv run python scripts/grant_platform_admin.py $(EMAIL)
+
+# Revoke a user's operator role immediately. Usage: make revoke-admin EMAIL=you@example.com
+revoke-admin:
+	uv run python scripts/revoke_platform_admin.py $(EMAIL)
 
 down:
 	$(COMPOSE) down -v

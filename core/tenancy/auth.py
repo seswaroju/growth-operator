@@ -29,6 +29,8 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from jose import jwt
 
+from core.common.config import get_settings
+
 # ---- Policy constants (from the auth spec) ---------------------------------
 
 OTP_TTL = timedelta(minutes=5)
@@ -78,7 +80,18 @@ def validate_identifier(channel: OtpChannel, identifier: str) -> bool:
 
 
 def generate_otp_code() -> str:
-    """A cryptographically-random, zero-padded numeric OTP code."""
+    """A cryptographically-random, zero-padded numeric OTP code.
+
+    Local-dev convenience (CLAUDE.md §10.3): when `otp_dev_fixed_code` is set AND env == 'dev',
+    return that fixed code instead, so local sign-in is deterministic without a delivery adapter.
+    Guarded at startup by `assert_otp_config_safe` (refuses to boot outside dev, or on a malformed
+    code); the env re-check here is defence in depth. The code is never persisted, returned, or
+    logged. Everywhere that isn't local dev, this stays cryptographically random.
+    """
+    settings = get_settings()
+    fixed = settings.otp_dev_fixed_code
+    if fixed and settings.env == "dev":
+        return fixed
     return f"{secrets.randbelow(10 ** OTP_CODE_DIGITS):0{OTP_CODE_DIGITS}d}"
 
 
