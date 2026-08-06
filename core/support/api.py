@@ -26,7 +26,8 @@ from core.support.schemas import (
 )
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
-from core.tenancy.platform_admin import get_admin_db
+from core.tenancy.platform_admin import require_platform
+from core.tenancy.platform_permissions import PLATFORM_TICKETS_READ, PLATFORM_TICKETS_RESOLVE
 
 
 def require_admin_plane_enabled(settings: Settings = Depends(get_settings)) -> None:
@@ -96,7 +97,7 @@ async def admin_list_tickets(
     status_filter: Status | None = None,
     priority: Priority | None = None,
     current: CurrentAuth = Depends(get_current_auth),
-    session: AsyncSession = Depends(get_admin_db),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TICKETS_READ)),
 ) -> list[dict[str, Any]]:
     return await service.list_all(
         session, actor_user_id=current.user_id, status=status_filter, priority=priority)
@@ -108,7 +109,7 @@ async def admin_update_ticket(
     ticket_id: UUID,
     body: TicketUpdate,
     current: CurrentAuth = Depends(get_current_auth),
-    session: AsyncSession = Depends(get_admin_db),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TICKETS_RESOLVE)),
 ) -> dict[str, Any]:
     if body.priority is None and body.status is None and body.resolution_note is None:
         raise HTTPException(

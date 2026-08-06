@@ -23,7 +23,7 @@ import asyncpg
 from core.common.config import get_settings
 
 
-async def grant(email: str, days: int | None) -> int:
+async def grant(email: str, days: int | None, role: str = "admin") -> int:
     dsn = get_settings().database_migrator_url.replace("+asyncpg", "")
     conn = await asyncpg.connect(dsn)
     try:
@@ -33,20 +33,20 @@ async def grant(email: str, days: int | None) -> int:
             return 1
         expires_at = datetime.now(UTC) + timedelta(days=days) if days else None
         await conn.execute(
-            "INSERT INTO platform_admins (user_id, note, expires_at) VALUES ($1, $2, $3) "
+            "INSERT INTO platform_admins (user_id, note, expires_at, role) VALUES ($1,$2,$3,$4) "
             "ON CONFLICT (user_id) DO UPDATE SET note = EXCLUDED.note, "
-            "  expires_at = EXCLUDED.expires_at",
-            user_id, f"granted via scripts/grant_platform_admin.py for {email}", expires_at,
+            "  expires_at = EXCLUDED.expires_at, role = EXCLUDED.role",
+            user_id, f"granted via scripts/grant_platform_admin.py for {email}", expires_at, role,
         )
         await conn.execute(
             "INSERT INTO platform_access_log (actor_user_id, action, detail) "
             "VALUES ($1, 'platform.admin.granted', $2::jsonb)",
             user_id,
-            json.dumps({"email": email, "via": "script",
+            json.dumps({"email": email, "via": "script", "role": role,
                         "expires_at": expires_at.isoformat() if expires_at else None}),
         )
         window = f"expires {expires_at.date().isoformat()}" if expires_at else "no expiry"
-        print(f"OK — {email} ({user_id}) is now a platform admin ({window}).")
+        print(f"OK — {email} ({user_id}) is now a platform admin: role={role}, {window}.")
         return 0
     finally:
         await conn.close()
@@ -57,5 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("email")
     parser.add_argument("--days", type=int, default=None,
                         help="auto-expire access after N days (default: never)")
+    parser.add_argument("--role", choices=["dev", "admin", "staff", "analyst"], default="admin",
+                        help="operator role (default: admin)")
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(grant(args.email, args.days)))
+    raise SystemExit(asyncio.run(grant(args.email, args.days, args.role)))

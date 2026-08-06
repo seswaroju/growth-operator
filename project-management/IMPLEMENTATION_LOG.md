@@ -1782,3 +1782,32 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** `ruff check .` (pass) · `mypy core` (111) + `mypy migrations` (pass) · `alembic up/down` round-trip 018→020 (pass) · `pytest -q` **623 passed** (+24 over the pre-hardening 599). Migrations 019/020 not in the vault schema/order — flagged (BLOCKERS #21).
 
 **Next recommended action:** founder review + approve commit/merge/push for the whole `feature/support-tickets` branch (support tickets + hardening); then next control-plane slice (tenant roster/health) or #4 imports (MVP-077/078).
+
+## 2026-08-06 — Phase 1 · Two-plane RBAC foundation (tenant owner/manager/staff/viewer + platform dev/admin/staff/analyst)
+
+**Branch:** `feature/phase1-rbac`. **Commit:** _uncommitted — awaiting founder review._ **No dependency added.** First slice of the multi-plane program (separate apps + full role matrix + ROI-now — founder-approved 2026-08-06); the identity foundation every dashboard downstream gates on. The design mirrors how AWS/GCP/Stripe separate the control plane from the data plane (DECISIONS 2026-08-06). Built as two tested tickets.
+
+**Ticket 1.1 — Tenant RBAC.** Retired the tenant **`founder` role + `platform:admin` permission** (a tenant role granting a platform permission was a latent cross-tenant escalation — verified zero `founder` memberships first). `core/tenancy/permissions.py`: roles `owner/manager/staff/viewer` + the full permission grid (added `conversations:*`, `customers:*`, `campaigns:read`, `insights:read`, `members:manage`, `billing:manage` — defined ahead of their features, deny-by-default) + `ROLE_RANK`/`can_grant_role`/`assignable_roles`. **Migration 021**: widened the `user_orgs` + `invites` role CHECK (drops `founder`), reseeded the drift-tested RBAC catalog to mirror the code; guards fail closed if a `founder` membership exists. **Invites carry a role**, rank-gated (`can't grant above your own level`). Cleaned up the retire-`platform:admin` fallout: `api_keys` (issue key) + `ops` (run viewer) were gated on `requires(PLATFORM_ADMIN)` but both act on the caller's OWN org → re-gated to tenant `org:manage`.
+
+**Ticket 1.2 — Platform RBAC.** `core/tenancy/platform_permissions.py`: a **separate** namespace (`platform.*`) with roles `dev/admin/staff/analyst` + `PLATFORM_ROLE_PERMISSIONS` (dev=all incl. impersonate/debug; admin=tenants/operators/tickets/insights; staff=tickets+read; analyst=read-only). **Migration 022**: `platform_admins.role` (default `admin`, CHECK). `platform_admin.resolve_platform_role` + **`require_platform(perm)`** (verify allowlist → resolve role honoring expiry → check permission → set the audited cross-tenant flag); the support endpoints gate on `platform.tickets:read`/`:resolve`. `grant-admin --role`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Tenant matrix per role (owner/manager/staff/viewer) | `test_rbac::test_permission_matrix` | PASS |
+| Grant hierarchy — can't grant above your own rank | `test_rbac::test_can_grant_role_respects_rank`; `test_invites_flow::test_cannot_invite_a_role_above_your_own` | PASS |
+| Invite-with-role end-to-end (member joins as that role) | `test_invites_flow::test_owner_invites_with_role_and_member_joins_as_that_role` | PASS |
+| `founder` retired — CHECK rejects it, grants nothing | `test_invites_flow::test_user_orgs_check_rejects_founder_accepts_new_roles`; `test_rbac::test_no_role_denies_everything` | PASS |
+| RBAC catalog == code (drift) | `test_rbac_seed::test_seed_matches_constants` | PASS |
+| Platform matrix per role (dev/admin/staff/analyst) | `test_platform_rbac::test_platform_permission_matrix` | PASS |
+| **Plane separation** — tenant⊥platform permission namespaces | `test_platform_rbac::test_permission_namespaces_are_disjoint` (+ leak tests both directions) | PASS |
+| Per-role operator-endpoint gating (analyst 403, others 200) | `test_platform_admin_governance::test_operator_queue_gated_by_platform_role` | PASS |
+| Migrations 021/022 up/down | `alembic` round-trip | PASS |
+
+**Commands:** `ruff check .` (pass) · `mypy core` (112) + `mypy migrations` (pass) · `alembic up/down` round-trip 018→022 (pass) · `pytest -q` **673 passed** (+50 over Phase-0's 623) + a live per-role smoke (dev/admin/staff see cross-tenant tickets; analyst 403; tenant-owner token 403).
+
+**Security:** the two planes' permission namespaces are **provably disjoint** (test); cross-tenant power lives only in the platform plane; the retired-`founder` footgun is closed AND the mislabeled endpoints re-homed. Tenant isolation + the platform-admin hardening (least-privilege lock, immutable access log, expiry/revoke, off-by-default) all unchanged and green.
+
+**Deferred (disclosed):** a **member role-change** endpoint (invite-with-role covers new members; changing an existing member's role is the Phase-3 members-management UI); migrations 021/022 not in the vault schema/order (BLOCKERS #21); the new tenant permissions (conversations/customers/campaigns:read/insights/billing) are unused until their features ship (Phase 3+).
+
+**Next recommended action:** founder review + commit/merge/push `feature/phase1-rbac`; then Phase 2 (two apps + logins).

@@ -1,8 +1,9 @@
 """Ops run viewer (MVP-055) — `GET /v1/ops/runs/{id}`.
 
-Founder/platform-admin visibility into an agent run: its status, the two audit hashes, and its
-ordered steps (the reasoning drawer reads this). RLS scopes it to the caller's org, so a run from
-another tenant is a 404, not a leak.
+Owner-level visibility into an agent run: its status, the two audit hashes, and its ordered steps
+(the reasoning drawer reads this). Tenant-scoped — RLS confines it to the caller's own org, so a run
+from another tenant is a 404, not a leak. (Cross-tenant run inspection for operators is a separate
+platform-plane concern; this endpoint is a store owner viewing their own agent — Phase 1.1.)
 """
 
 from __future__ import annotations
@@ -16,16 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import PLATFORM_ADMIN
+from core.tenancy.permissions import ORG_MANAGE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/ops", tags=["ops"])
 
 
-@router.get("/runs/{run_id}", summary="Agent run + steps (founder)")
+@router.get("/runs/{run_id}", summary="Agent run + steps (owner)")
 async def get_run(
     run_id: UUID,
-    current: CurrentAuth = Depends(requires(PLATFORM_ADMIN)),
+    current: CurrentAuth = Depends(requires(ORG_MANAGE)),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     run = (

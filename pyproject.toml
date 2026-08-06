@@ -63,6 +63,8 @@ extend-immutable-calls = [
     "fastapi.Form",
     # RBAC dependency factory — same DI idiom: `Depends(requires(PERM))` (MVP-015).
     "core.tenancy.rbac.requires",
+    # Platform-plane RBAC dependency factory — `Depends(require_platform(PERM))` (Phase 1.2).
+    "core.tenancy.platform_admin.require_platform",
 ]
 
 [tool.mypy]

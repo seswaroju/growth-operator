@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.common.db import get_session
 from core.tenancy import repository
 from core.tenancy.deps import CurrentAuth
-from core.tenancy.permissions import PLATFORM_ADMIN
+from core.tenancy.permissions import ORG_MANAGE
 from core.tenancy.rbac import requires
 
 KEY_PREFIX = "gopk_"
@@ -163,11 +163,11 @@ class ApiKeyCreateResponse(BaseModel):
 @router.post(
     "/api-keys",
     response_model=ApiKeyCreateResponse,
-    summary="Issue a scoped API key for the caller's org (founder only)",
+    summary="Issue a scoped API key for the caller's org (owner)",
 )
 async def create_api_key(
     body: ApiKeyCreateRequest,
-    current: CurrentAuth = Depends(requires(PLATFORM_ADMIN)),
+    current: CurrentAuth = Depends(requires(ORG_MANAGE)),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyCreateResponse:
     if current.org_id is None:

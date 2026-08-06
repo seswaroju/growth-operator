@@ -19,7 +19,7 @@ See project-management/DECISIONS.md 2026-08-05.
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.common.config import Settings, get_settings
 from core.common.db import get_sessionmaker
 from core.tenancy.deps import get_current_auth
+from core.tenancy.platform_permissions import platform_has_permission
 
 
 async def log_platform_access(
@@ -55,18 +56,22 @@ async def log_platform_access(
     )
 
 
-async def is_platform_admin(session: AsyncSession, user_id: str | UUID) -> bool:
-    """True iff `user_id` is a *currently-valid* platform admin: on the allowlist and not expired.
-    An `expires_at` in the past means NOT an admin (fail closed). `platform_admins` is not
+async def resolve_platform_role(session: AsyncSession, user_id: str | UUID) -> str | None:
+    """The platform role of a *currently-valid* operator (`dev|admin|staff|analyst`), or None if the
+    user is not on the allowlist or their grant has expired (fail closed). `platform_admins` is not
     org-scoped (no RLS), so this resolves regardless of the session's tenant context."""
-    row = await session.execute(
+    return await session.scalar(
         text(
-            "SELECT 1 FROM platform_admins "
+            "SELECT role FROM platform_admins "
             "WHERE user_id = :u AND (expires_at IS NULL OR expires_at > now())"
         ),
         {"u": str(user_id)},
     )
-    return row.first() is not None
+
+
+async def is_platform_admin(session: AsyncSession, user_id: str | UUID) -> bool:
+    """True iff `user_id` is a currently-valid platform admin (any role)."""
+    return await resolve_platform_role(session, user_id) is not None
 
 
 @asynccontextmanager
@@ -116,3 +121,44 @@ async def get_admin_db(
         except Exception:
             await session.rollback()
             raise
+
+
+def require_platform(
+    permission: str | None = None,
+) -> Callable[..., AsyncIterator[AsyncSession]]:
+    """Operator-route dependency FACTORY: yield a cross-tenant session only for a valid platform
+    admin whose **role grants `permission`** (or any valid admin when `permission` is None).
+
+    401 for a missing/invalid token; 403 for a non-operator OR an operator whose role lacks the
+    permission. The `app.platform_admin='on'` flag is set only on the authorised path, so a denied
+    caller's session never carries it. This is the platform-plane analogue of tenant `requires()`.
+    """
+
+    async def _dep(
+        request: Request, settings: Settings = Depends(get_settings)
+    ) -> AsyncIterator[AsyncSession]:
+        current = get_current_auth(request, settings)  # 401 on missing/invalid token
+        user_id = str(current.user_id)
+        factory = get_sessionmaker()
+        async with factory() as session:
+            try:
+                await session.execute(
+                    text("SELECT set_config('app.user_id', :v, true)"), {"v": user_id}
+                )
+                role = await resolve_platform_role(session, user_id)
+                if role is None:
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "platform admin required")
+                if permission is not None and not platform_has_permission(role, permission):
+                    raise HTTPException(
+                        status.HTTP_403_FORBIDDEN, f"requires platform permission: {permission}"
+                    )
+                await session.execute(
+                    text("SELECT set_config('app.platform_admin', 'on', true)")
+                )
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    return _dep
