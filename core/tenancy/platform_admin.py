@@ -162,3 +162,11 @@ def require_platform(
                 raise
 
     return _dep
+
+
+def require_admin_plane_enabled(settings: Settings = Depends(get_settings)) -> None:
+    """Gate the whole operator plane behind `admin_plane_enabled` (default off). When disabled we
+    404 — before auth, for everyone — so the admin API's existence isn't even revealed. Used as a
+    router-level dependency on every `/v1/admin/*` router."""
+    if not settings.admin_plane_enabled:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")

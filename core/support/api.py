@@ -14,7 +14,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.common.config import Settings, get_settings
 from core.support import service
 from core.support.schemas import (
     AdminTicketOut,
@@ -26,16 +25,8 @@ from core.support.schemas import (
 )
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
-from core.tenancy.platform_admin import require_platform
+from core.tenancy.platform_admin import require_admin_plane_enabled, require_platform
 from core.tenancy.platform_permissions import PLATFORM_TICKETS_READ, PLATFORM_TICKETS_RESOLVE
-
-
-def require_admin_plane_enabled(settings: Settings = Depends(get_settings)) -> None:
-    """Gate the whole operator plane behind `admin_plane_enabled` (default off). When disabled we
-    404 — before auth, for everyone — so the admin API's existence isn't even revealed."""
-    if not settings.admin_plane_enabled:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
-
 
 owner_router = APIRouter(prefix="/v1/support/tickets", tags=["support"])
 # The router-level dependency runs before the route's own (auth) dependencies, so a disabled plane
