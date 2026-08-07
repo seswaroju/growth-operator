@@ -1,7 +1,7 @@
 import { Link, Outlet } from "@tanstack/react-router";
 
 import { useAuth } from "../auth";
-import { ROLE_LABEL, canInvite, type Role } from "../lib/roles";
+import { ROLE_LABEL, canInvite, hasPermission, type Role } from "../lib/roles";
 
 const navLink =
   "rounded-md px-3 py-1.5 text-neutral-600 hover:bg-neutral-100";
@@ -22,13 +22,43 @@ export default function Shell() {
               <div className="text-sm font-semibold tracking-tight">Growth Operator</div>
               <div className="text-[11px] text-neutral-500">{org ? org.name : "No store"}</div>
             </div>
+            {/* Literal typed <Link>s gated per-permission — the same set (and order) as
+                lib/roles NAV, whose gating logic is unit-tested via visibleNav. */}
             <nav className="flex items-center gap-1 text-sm">
               <Link to="/" className={navLink} activeProps={navActive} activeOptions={{ exact: true }}>
+                Home
+              </Link>
+              {hasPermission(roles, "approvals:read") && (
+                <Link to="/approvals" className={navLink} activeProps={navActive}>
+                  Approvals
+                </Link>
+              )}
+              {hasPermission(roles, "conversations:read") && (
+                <Link to="/conversations" className={navLink} activeProps={navActive}>
+                  Conversations
+                </Link>
+              )}
+              {hasPermission(roles, "catalog:read") && (
+                <Link to="/catalog" className={navLink} activeProps={navActive}>
+                  Catalog
+                </Link>
+              )}
+              {hasPermission(roles, "customers:read") && (
+                <Link to="/customers" className={navLink} activeProps={navActive}>
+                  Customers
+                </Link>
+              )}
+              <Link to="/support" className={navLink} activeProps={navActive}>
                 Support
               </Link>
               {canInvite(roles) && (
                 <Link to="/team" className={navLink} activeProps={navActive}>
                   Team
+                </Link>
+              )}
+              {hasPermission(roles, "org:manage") && (
+                <Link to="/settings" className={navLink} activeProps={navActive}>
+                  Settings
                 </Link>
               )}
             </nav>

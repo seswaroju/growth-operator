@@ -1,22 +1,47 @@
 import { describe, expect, it } from "vitest";
 
-import { assignableRoles, canInvite, visibleNav } from "./roles";
+import { assignableRoles, canInvite, hasPermission, visibleNav } from "./roles";
 
-describe("visibleNav — role-aware nav", () => {
-  it("owner sees Support + Team", () => {
-    expect(visibleNav(["owner"]).map((n) => n.path)).toEqual(["/", "/team"]);
+const ALL = ["/", "/approvals", "/conversations", "/catalog", "/customers", "/support"];
+
+describe("visibleNav — permission-gated nav", () => {
+  it("owner sees every section (incl. Team + Settings)", () => {
+    expect(visibleNav(["owner"]).map((n) => n.path)).toEqual([...ALL, "/team", "/settings"]);
   });
-  it("manager sees Support + Team", () => {
-    expect(visibleNav(["manager"]).map((n) => n.path)).toEqual(["/", "/team"]);
+  it("manager sees Team but NOT Settings (no org:manage)", () => {
+    expect(visibleNav(["manager"]).map((n) => n.path)).toEqual([...ALL, "/team"]);
   });
-  it("staff sees only Support (no Team)", () => {
-    expect(visibleNav(["staff"]).map((n) => n.path)).toEqual(["/"]);
+  it("staff sees the read sections, no Team/Settings", () => {
+    expect(visibleNav(["staff"]).map((n) => n.path)).toEqual(ALL);
   });
-  it("viewer sees only Support", () => {
-    expect(visibleNav(["viewer"]).map((n) => n.path)).toEqual(["/"]);
+  it("viewer sees the same read sections as staff", () => {
+    expect(visibleNav(["viewer"]).map((n) => n.path)).toEqual(ALL);
   });
-  it("no roles → nothing", () => {
-    expect(visibleNav([])).toEqual([]);
+  it("no roles → only the base member sections (Home + Support)", () => {
+    expect(visibleNav([]).map((n) => n.path)).toEqual(["/", "/support"]);
+  });
+});
+
+describe("hasPermission — mirrors the backend role→perm map", () => {
+  it("owner holds org:manage; nobody else does", () => {
+    expect(hasPermission(["owner"], "org:manage")).toBe(true);
+    expect(hasPermission(["manager"], "org:manage")).toBe(false);
+    expect(hasPermission(["staff"], "org:manage")).toBe(false);
+  });
+  it("owner + manager hold catalog:write; staff + viewer do not", () => {
+    expect(hasPermission(["owner"], "catalog:write")).toBe(true);
+    expect(hasPermission(["manager"], "catalog:write")).toBe(true);
+    expect(hasPermission(["staff"], "catalog:write")).toBe(false);
+    expect(hasPermission(["viewer"], "catalog:write")).toBe(false);
+  });
+  it("every real role can read approvals + conversations", () => {
+    for (const r of ["owner", "manager", "staff", "viewer"]) {
+      expect(hasPermission([r], "approvals:read")).toBe(true);
+      expect(hasPermission([r], "conversations:read")).toBe(true);
+    }
+  });
+  it("unknown role grants nothing", () => {
+    expect(hasPermission(["nonsense"], "insights:read")).toBe(false);
   });
 });
 

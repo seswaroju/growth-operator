@@ -95,7 +95,8 @@ async def list_approvals(
     rows = (
         await session.execute(
             text(
-                "SELECT id, run_id, action_type, tier, payload, status, expires_at, created_at "
+                "SELECT id, run_id, action_type, tier, payload, matched_rules, status, "
+                "       expires_at, created_at "
                 "FROM approvals WHERE org_id = :o "
                 "AND (CAST(:st AS text) IS NULL OR status = CAST(:st AS text)) "
                 "ORDER BY created_at DESC"

@@ -7,6 +7,7 @@ expired approval. Notification delivery (WhatsApp interactive) is MVP-068.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -22,6 +23,18 @@ from core.tenancy.permissions import APPROVALS_READ, APPROVALS_RESOLVE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/approvals", tags=["approvals"])
+
+
+class ApprovalSummary(BaseModel):
+    id: UUID
+    run_id: UUID | None
+    action_type: str
+    tier: int
+    payload: dict[str, Any]
+    matched_rules: list[str]
+    status: str
+    expires_at: datetime
+    created_at: datetime
 
 
 class ResolveRequest(BaseModel):
@@ -40,7 +53,7 @@ class ResolveResponse(BaseModel):
     note: str | None = None
 
 
-@router.get("", summary="Pending approvals queue")
+@router.get("", response_model=list[ApprovalSummary], summary="Pending approvals queue")
 async def list_pending(
     status_filter: str | None = "pending",
     current: CurrentAuth = Depends(requires(APPROVALS_READ)),
