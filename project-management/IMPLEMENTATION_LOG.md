@@ -1811,3 +1811,31 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** a **member role-change** endpoint (invite-with-role covers new members; changing an existing member's role is the Phase-3 members-management UI); migrations 021/022 not in the vault schema/order (BLOCKERS #21); the new tenant permissions (conversations/customers/campaigns:read/insights/billing) are unused until their features ship (Phase 3+).
 
 **Next recommended action:** founder review + commit/merge/push `feature/phase1-rbac`; then Phase 2 (two apps + logins).
+
+## 2026-08-06 — Phase 2 · Two apps + logins (separate customer + operator front-ends)
+
+**Branch:** `feature/phase2-apps`. **Commit:** _uncommitted — awaiting founder review._ **Dependency added:** `vitest` (dev-only, both web apps; founder-approved). The single `web/` app is split into two independently-deployable apps that share the FastAPI backend but **no front-end code** — the operator app never ships to a store (the Phase-1 "separate deployment" decision, realised). Built as three tested tickets.
+
+**Ticket 2.1 — `GET /v1/admin/me`.** `core/tenancy/platform_router.py` (new): the operator app's identity check — returns `{user_id, role, permissions}` for a valid operator. Behind the admin-plane gate (404 when off) + `require_platform()` (403 non-operator, 401 no token). Moved `require_admin_plane_enabled` from `core/support/api.py` to `core/tenancy/platform_admin.py` (shared by both `/v1/admin/*` routers). Backend at **680 pytest** (+7: per-role identity + permission sets, 403/401/404 gates).
+
+**Ticket 2.2 — Customer app (`web/`).** react-router + a **role-aware shell** (nav gated by tenant role from `/v1/me` — Team appears only for owner/manager); a real auth context (token in `localStorage`, `/v1/me` hydration, sign-out, stale-token self-clear); the owner **support** screens (report + my tickets) moved in; the operator queue **removed**; a **Team** section using the Phase-1 **invite-with-role** (the role picker only offers roles at/below your own). Dropped the demo `simulate` code. Added `scripts/dev_make_owner.py` + `make make-owner` so a local email becomes a store owner (to demo the shell).
+
+**Ticket 2.3 — Operator app (`web-ops/`).** A brand-new Vite/React/Tailwind app (own package/build, port 5174, dark "internal console" theme). Separate login + token key → gated on `/v1/admin/me`, cleanly distinguishing operator / not-an-operator (403) / plane-off (404) / backend-down. **Role-aware operator nav** gated by the *permissions* `/v1/admin/me` returns (dev→queue+stores+debug; admin/staff→queue+stores; analyst→stores only). The cross-tenant **support queue** (list + inline resolve, resolve gated on `platform.tickets:resolve`) moved here; Stores/Debug are Phase-4/dev placeholders.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Operator identity endpoint (role+perms; 403/401/404 gates) | `test_platform_me` (7) | PASS |
+| Customer role-aware nav (owner/manager see Team; staff/viewer don't) | `web` vitest `roles.test` | PASS |
+| Customer invite rank-gating (can't grant above own) | `web` vitest `assignableRoles` | PASS |
+| Operator role-aware nav (analyst no queue; dev sees debug) | `web-ops` vitest `roles.test` | PASS |
+| Customer login → `/v1/me` → owner shell → report ticket | live smoke (make-owner → OTP 000000 → org+owner → 201) | PASS |
+| Operator per-role queue access | 2.1 live smoke (dev/admin/staff 200, analyst 403) | PASS |
+
+**Commands:** backend `pytest -q` **680 passed** · `ruff` + `mypy core` (113) clean. `web`: `tsc` clean · `vitest` **10/10** · `oxlint` exit 0 (2 cosmetic HMR warnings) · `vite build` ok. `web-ops`: `tsc` clean · `vitest` **6/6** · `oxlint` exit 0 (2 HMR warnings) · `vite build` ok; both dev servers boot + serve 200 (5173 / 5174).
+
+**Security:** two separate bundles → **no operator code in the customer app**. Operator app gated end-to-end (allowlist + admin-plane flag + `/v1/admin/me`), off-by-default. Tokens in `localStorage` (separate keys per app). Front-end gating is UX only; the backend enforces every call. No new backend surface beyond the read-only `/v1/admin/me`.
+
+**Deferred (disclosed):** store onboarding (create-your-store) flow — the customer app shows a "no store" state; `make make-owner` is the local stand-in. The two front-ends are **not in CI** yet (add a `web`/`web-ops` build job — ops follow-up). The 4 HMR lint warnings (hook+component in one file) are cosmetic. Operator Stores/Debug are placeholders (Phase 4).
+
+**Next recommended action:** founder review + commit/merge/push `feature/phase2-apps`; then Phase 3 (customer dashboards).

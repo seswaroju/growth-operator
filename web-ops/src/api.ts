@@ -1,6 +1,5 @@
-// API client for the CUSTOMER app (store owner / manager / staff / viewer).
-// Talks to the local dev backend by default. The Growth Operator (operator) API lives in the
-// SEPARATE web-ops app — none of it ships here.
+// API client for the OPERATOR app (Growth Operator staff: dev / admin / staff / analyst).
+// Cross-tenant operator endpoints (/v1/admin/*). Separate from the customer app.
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8000";
 
@@ -82,28 +81,31 @@ async function authed<T>(path: string, token: string, init?: RequestInit): Promi
   return body as T;
 }
 
-// ---- Identity (/v1/me) -----------------------------------------------------
+// ---- Operator identity (/v1/admin/me) --------------------------------------
 
-export interface Me {
-  user: { id: string; email: string | null; phone: string | null; full_name: string | null };
-  org: { id: string; name: string } | null;
-  roles: string[];
+export interface AdminMe {
+  user_id: string;
+  role: string;
+  permissions: string[];
 }
 
-export function getMe(token: string): Promise<Me> {
-  return authed<Me>("/v1/me", token);
+// Throws ApiError with status 404 (plane disabled) or 403 (not an operator) — the auth layer
+// distinguishes them.
+export function getAdminMe(token: string): Promise<AdminMe> {
+  return authed<AdminMe>("/v1/admin/me", token);
 }
 
-// ---- Support tickets (owner / manager / staff) -----------------------------
+// ---- Support queue (cross-tenant) ------------------------------------------
 
 export type TicketSeverity = "minor" | "major" | "critical";
 export type TicketPriority = "low" | "normal" | "high" | "urgent";
 export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
-export type TicketCategory =
-  | "whatsapp" | "catalog" | "pricing" | "billing" | "account" | "other";
 
-export interface Ticket {
+export interface AdminTicket {
   id: string;
+  org_id: string;
+  org_name: string;
+  raised_by: string | null;
   subject: string;
   description: string;
   category: string;
@@ -116,40 +118,23 @@ export interface Ticket {
   resolved_at: string | null;
 }
 
-export interface RaiseTicketInput {
-  subject: string;
-  description: string;
-  category: TicketCategory;
-  severity: TicketSeverity;
+export function adminListTickets(token: string): Promise<AdminTicket[]> {
+  return authed<AdminTicket[]>("/v1/admin/support/tickets", token);
 }
 
-export function raiseTicket(token: string, input: RaiseTicketInput): Promise<Ticket> {
-  return authed<Ticket>("/v1/support/tickets", token, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+export interface UpdateTicketInput {
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  resolution_note?: string;
 }
 
-export function listMyTickets(token: string): Promise<Ticket[]> {
-  return authed<Ticket[]>("/v1/support/tickets", token);
-}
-
-// ---- Team / invites (members:invite) ---------------------------------------
-
-export interface CreateInviteInput {
-  role: string;
-  identifier?: string | null;
-}
-
-export interface Invite {
-  id: string;
-  expires_at: string;
-  invite_token: string;
-}
-
-export function createInvite(token: string, input: CreateInviteInput): Promise<Invite> {
-  return authed<Invite>("/v1/orgs/invites", token, {
-    method: "POST",
-    body: JSON.stringify(input),
+export function adminUpdateTicket(
+  token: string,
+  id: string,
+  patch: UpdateTicketInput,
+): Promise<AdminTicket> {
+  return authed<AdminTicket>(`/v1/admin/support/tickets/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }

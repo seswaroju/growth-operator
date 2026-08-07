@@ -551,3 +551,18 @@ knock out one at a time").
 - **Constant-based enforcement stays** (correct for our stage). Growth path recorded but NOT built: custom roles, then a policy engine (**Cedar / OpenFGA / OPA**) once sharing/hierarchy complexity demands it.
 
 **Decided by:** Founder (2026-08-06: "full matrix now"; "how would bigger enterprises design it … I would lean towards that [retire]"; "extend invites to carry a role, I don't want to defer"; "start doing in that order").
+
+---
+
+### 2026-08-06 — Phase 2: two separate front-end apps (customer + operator), vitest, `/v1/admin/me`
+
+**Context:** Phase 2 splits the single `web/` app so store owners and Growth Operator staff have separate logins + dashboards (founder: "I want 2 apps. Separate login information, separate dashboard etc for customer and for people in growth operator").
+
+**Decisions (founder-approved 2026-08-06):**
+- **Two separate Vite apps**, not one multi-build: `web/` (customer, port 5173) and `web-ops/` (operator, port 5174). They share the FastAPI backend but **no front-end code** — the operator bundle (cross-tenant reads) never ships to a store's browser. This realises the Phase-1 "separate deployment + network isolation" decision at the app layer. A little api-client duplication is the accepted cost.
+- **`vitest` added** (dev-only dependency, both apps) so the front-end role-gating/auth logic is unit-tested, not just type-checked — the "test rigorously" bar applies to the UI too.
+- **New `GET /v1/admin/me`** — the operator app's front-door "who am I + what can I do" (role + platform permissions), mirroring the tenant `GET /v1/me`. Nav/visibility is driven by the permissions the endpoint returns (backend is the source of truth → no drift).
+- **`admin_plane_enabled` gate moved** to `core/tenancy/platform_admin.py` (shared by both `/v1/admin/*` routers). The operator app is off-by-default: when the plane is disabled the app shows a clear "operator console is turned off" state.
+- **Front-end gating is UX only** — every action is still enforced server-side (RBAC + platform allowlist). `make make-owner` is a local dev stand-in for the not-yet-built store-onboarding flow.
+
+**Decided by:** Founder (2026-08-06: "I want 2 apps. Separate login information, separate dashboard"; "Got it on vitest, agreed and we need that"; "[/v1/admin/me] Also agreed"; "proceed to ticket 2.2/2.3").
