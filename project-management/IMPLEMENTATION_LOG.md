@@ -1814,7 +1814,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-06 — Phase 2 · Two apps + logins (separate customer + operator front-ends)
 
-**Branch:** `feature/phase2-apps`. **Commit:** _uncommitted — awaiting founder review._ **Dependency added:** `vitest` (dev-only, both web apps; founder-approved). The single `web/` app is split into two independently-deployable apps that share the FastAPI backend but **no front-end code** — the operator app never ships to a store (the Phase-1 "separate deployment" decision, realised). Built as three tested tickets.
+**Branch:** `feature/phase2-apps`. **Commit:** merge `804e889` (pushed to `origin/main`). **Dependency added:** `vitest` (dev-only, both web apps; founder-approved). The single `web/` app is split into two independently-deployable apps that share the FastAPI backend but **no front-end code** — the operator app never ships to a store (the Phase-1 "separate deployment" decision, realised). Built as three tested tickets.
 
 **Ticket 2.1 — `GET /v1/admin/me`.** `core/tenancy/platform_router.py` (new): the operator app's identity check — returns `{user_id, role, permissions}` for a valid operator. Behind the admin-plane gate (404 when off) + `require_platform()` (403 non-operator, 401 no token). Moved `require_admin_plane_enabled` from `core/support/api.py` to `core/tenancy/platform_admin.py` (shared by both `/v1/admin/*` routers). Backend at **680 pytest** (+7: per-role identity + permission sets, 403/401/404 gates).
 
