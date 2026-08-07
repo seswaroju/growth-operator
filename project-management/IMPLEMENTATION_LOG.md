@@ -1902,7 +1902,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-07 — Phase 3 Ticket 3.6: Settings & the autonomy volume-knob (Option A — wired live)
 
-**Branch:** `feature/phase3-6-settings` (off main). **Merge:** `pending`. **No migration, no dependency.** **Completes Phase 3 (customer dashboard, 3.1–3.6).**
+**Branch:** `feature/phase3-6-settings` (off main). **Commit:** `d60cc8f`; **merged to main** `48f4117`. **No migration, no dependency.** **Completes Phase 3 (customer dashboard, 3.1–3.6).**
 
 **Approved plan (Option A, founder 2026-08-07):** the knob must genuinely change behaviour, not write an inert setting. Discovery: `autonomy.*` settings existed but nothing read them; the real gate is the approval-engine tiers. So the knob is wired into the live decision, floored by the immovable tier-4 money set. Full design + safety proof recorded in DECISIONS 2026-08-07.
 
