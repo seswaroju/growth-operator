@@ -186,6 +186,38 @@ def resolve_actions(tool: str, params: dict[str, Any]) -> list[str]:
     return actions or [tool]
 
 
+# ---- autonomy "volume knob" overlay (Ticket 3.6) ------------------------------------------------
+# The owner's per-capability autonomy setting overlays the tier: `auto` respects the pack/tier
+# rules; anything else — or the global pause — forces approval. It is added as a **max-tier
+# contributor**, so it can only RAISE a tier, never lower one — the tier-4 floor stays absolute.
+AUTONOMY_REVIEW_TIER = 2  # "needs approval" — nothing auto-sends
+_CAPABILITY_BY_ACTION: dict[str, str] = {
+    "action.message.send": "messaging",
+    "action.quote.send": "pricing",
+    "action.campaign.execute": "campaigns",
+}
+
+
+async def _autonomy_floor(
+    session: AsyncSession, org_id: UUID, tool: str, params: dict[str, Any]
+) -> int:
+    """The tier the owner's autonomy knob forces for `tool` — `AUTONOMY_REVIEW_TIER` when the global
+    pause is on or any relevant capability is set below `auto`, else 0 (no effect / full auto)."""
+    from core.tenancy import settings as tenant_settings  # lazy: avoids an import cycle
+
+    if bool((await tenant_settings.resolve(session, org_id, "autonomy.paused")).value):
+        return AUTONOMY_REVIEW_TIER
+    capabilities = {
+        _CAPABILITY_BY_ACTION[a]
+        for a in resolve_actions(tool, params)
+        if a in _CAPABILITY_BY_ACTION
+    }
+    for cap in capabilities:
+        if (await tenant_settings.resolve(session, org_id, f"autonomy.{cap}")).value != "auto":
+            return AUTONOMY_REVIEW_TIER
+    return 0
+
+
 async def evaluate_tool(
     session: AsyncSession, *, org_id: UUID, actor_instance_id: UUID | None, untrusted: bool,
     tool: str, params: dict[str, Any],
@@ -213,6 +245,12 @@ async def evaluate_tool(
         c, m = await _contributors(session, org_id, action, activation)
         contributors.extend(c)
         matched.extend(m)
+    # The owner's autonomy knob (Ticket 3.6): a max-tier contributor that forces approval when the
+    # capability is not on `auto` (or the plane is paused). Only ever raises the tier.
+    floor = await _autonomy_floor(session, org_id, tool, params)
+    if floor > 0:
+        contributors.append((floor, "autonomy", [], None, "hold", None))
+        matched.append("autonomy")
     return select_decision(contributors, matched)
 
 

@@ -16,7 +16,7 @@ import pytest
 from core.common import db as dbmod
 from core.common.config import get_settings
 from core.tenancy import settings as svc
-from core.tenancy.settings import SettingSource, TightenOnlyViolation
+from core.tenancy.settings import SettingSource
 
 
 def _dsn() -> str:
@@ -114,20 +114,20 @@ async def test_precedence_flag_over_tenant_over_pack_over_platform(org: uuid.UUI
         await conn.close()
 
 
-async def test_tighten_only_rejects_loosening(org: uuid.UUID) -> None:
+async def test_autonomy_is_free_dial(org: uuid.UUID) -> None:
+    # DECISIONS 2026-08-06: the owner free-dials autonomy — loosening no longer needs an earned
+    # trust threshold (the tier-4 floor is enforced in the engine, not here). Both directions work.
     factory = dbmod.get_sessionmaker()
-    async with factory() as s:
-        # draft_only -> auto is looser → rejected.
-        with pytest.raises(TightenOnlyViolation):
-            await svc.write_setting(s, org_id=org, key="autonomy.messaging", value="auto")
-    # draft_only -> off is tighter → allowed.
-    async with factory() as s:
-        v = await svc.write_setting(s, org_id=org, key="autonomy.messaging", value="off")
+    async with factory() as s:  # default "auto" → tighten to draft_only
+        v1 = await svc.write_setting(s, org_id=org, key="autonomy.messaging", value="draft_only")
         await s.commit()
-    assert v == 1
+    async with factory() as s:  # loosen back to auto — previously a TightenOnlyViolation, now OK
+        v2 = await svc.write_setting(s, org_id=org, key="autonomy.messaging", value="auto")
+        await s.commit()
+    assert (v1, v2) == (1, 2)
     async with factory() as s:
         r = await svc.resolve(s, org, "autonomy.messaging")
-    assert (r.value, r.source) == ("off", SettingSource.TENANT)
+    assert (r.value, r.source) == ("auto", SettingSource.TENANT)
 
 
 async def test_resolve_at_walks_history(org: uuid.UUID) -> None:

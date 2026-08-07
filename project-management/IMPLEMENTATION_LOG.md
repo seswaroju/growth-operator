@@ -1897,3 +1897,34 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred:** quotes + appointments (link via `lead_id`, not `contact_id`) not yet in the CRM detail; catalog `PATCH` sent without `If-Match` (optimistic concurrency skipped — acceptable for a single-owner dashboard, backend tolerates it); the **CRM depth question** (Zoho/HubSpot-level segmentation/automation/analytics) raised by the founder for post-merge discussion. Settings + autonomy is **3.6** (next). `core/customers` is a new module not in the vault map (additive, flagged; precedent `core/support`/`core/conversations`).
 
 **Next recommended action:** commit 3.4–3.5, merge `feature/phase3-dashboards` to main, push; record the merge hash here + in MVP_STATUS (replace `pending`); then discuss CRM depth + plan Ticket 3.6.
+
+---
+
+## 2026-08-07 — Phase 3 Ticket 3.6: Settings & the autonomy volume-knob (Option A — wired live)
+
+**Branch:** `feature/phase3-6-settings` (off main). **Merge:** `pending`. **No migration, no dependency.** **Completes Phase 3 (customer dashboard, 3.1–3.6).**
+
+**Approved plan (Option A, founder 2026-08-07):** the knob must genuinely change behaviour, not write an inert setting. Discovery: `autonomy.*` settings existed but nothing read them; the real gate is the approval-engine tiers. So the knob is wired into the live decision, floored by the immovable tier-4 money set. Full design + safety proof recorded in DECISIONS 2026-08-07.
+
+**Backend.** `core/tenancy/settings.py`: autonomy keys **free-dial** (`tighten_only=False`, superseding the old rule); default **`auto`** (so wiring changes nothing until an owner tightens); added `autonomy.campaigns` + `autonomy.paused`. `core/approvals/engine.py`: `_autonomy_floor` + a **max-tier overlay** in `evaluate_tool` — `auto` respects pack tiers; else / paused forces `AUTONOMY_REVIEW_TIER (2)`. Because `max()` wins, it can only raise a tier → the `CORE_TIER4_ACTIONS` floor is immovable by construction. `core/tenancy/settings_router.py`: `GET /v1/settings/autonomy` (levels + pause + fixed floor), owner-gated (`org:manage`). The **settings-change audit already exists** (`write_setting` records `settings.changed` with an old→new diff — surfaced, not rebuilt).
+
+**Frontend (`web/`).** `SettingsSection.tsx`: store profile · **Pause-all-autonomy** switch · per-capability **Auto/Review** controls (Messaging/Pricing/Campaigns) · a locked **"always needs your approval"** floor panel · Preferences (reply tone, quiet hours). `lib/settings.ts` (+test).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| `auto` respects pack tiers (no-op) | `test_autonomy_gate::test_auto_default_is_noop` | PASS |
+| Review / Off / Pause force approval | `test_review…` / `test_off…` / `test_pause_forces_approval_globally` | PASS |
+| Priced reply picks up pricing capability | `test_priced_reply_uses_pricing_capability` | PASS |
+| **Tier-4 money floor immovable at every knob position** | `test_tier4_floor_immovable_at_every_knob_position` | PASS |
+| Free-dial loosening allowed (no 409) | `test_free_dial_loosening_is_allowed` + real-HTTP | PASS |
+| Owner-only read/write | real-HTTP smoke (staff 403) | PASS |
+| Knob UI + floor labels | `web` vitest `settings.test` | PASS |
+
+**Commands:** `ruff check .` clean · `mypy core` **121** · **`scripts/guards` 0 violations** · **full `pytest tests/unit` 351 passed** · `test_autonomy_gate`+`test_settings`+no-regression (bridge/send-loop/engine) **30 passed**; `web` `tsc`/`vitest` **37**/`oxlint`(2 pre-existing)/`build` ok; real-HTTP smoke (defaults auto → free-dial write → pause+level persist → staff 403). **Ran the full CI-equivalent locally before push** (the 3.4 lesson).
+
+**Security:** the knob can only *tighten* autonomy (raise a tier); the tier-4 money floor is immovable and tested at every position; owner-only (`org:manage`); every change audited. Frontend gating is UX only.
+
+**Known issues / deferred:** the finer ladder (`suggest`/`off` vs `draft_only`, true-disable) collapses to "force approval" at the binary gate — deeper granularity + all other autonomy depth in `PRODUCTION_DEPTH_BACKLOG.md`; the `autonomy.paused`/`*` resolves add a couple of DB reads per gate eval (fine for MVP; batch later).
+
+**Next recommended action:** commit 3.6, merge `feature/phase3-6-settings` to main, push, verify CI green, record the merge hash. Then **plan Phase 3.5-eng (analytics & intelligence engine)** before building; then Phase 4.

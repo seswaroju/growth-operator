@@ -67,12 +67,17 @@ AUTONOMY_LADDER: tuple[str, ...] = ("off", "draft_only", "suggest", "auto")
 PLATFORM_DEFAULTS: dict[str, PlatformDefault] = {
     "reply.tone": PlatformDefault("warm", schema_ref="core.reply_tone"),
     "quiet_hours.start": PlatformDefault("21:00", schema_ref="core.time"),
-    "autonomy.messaging": PlatformDefault(
-        "draft_only", schema_ref="core.autonomy", tighten_only=True
-    ),
-    "autonomy.pricing": PlatformDefault(
-        "draft_only", schema_ref="core.autonomy", tighten_only=True
-    ),
+    # Autonomy "volume knob" (Ticket 3.6). The owner **free-dials** how much the assistant handles
+    # on its own, per capability — `tighten_only=False` supersedes the old tighten-only rule
+    # (DECISIONS 2026-08-06): loosening no longer needs an earned trust threshold. Default `auto`
+    # = respect the pack/tier rules (routine auto-sends, risky parks), so wiring the knob does not
+    # change existing behaviour until an owner tightens it. The engine's autonomy overlay can only
+    # RAISE a tier, so the CORE_TIER4_ACTIONS money floor stays absolute at every knob position.
+    "autonomy.messaging": PlatformDefault("auto", schema_ref="core.autonomy"),
+    "autonomy.pricing": PlatformDefault("auto", schema_ref="core.autonomy"),
+    "autonomy.campaigns": PlatformDefault("auto", schema_ref="core.autonomy"),
+    # Global "pause all autonomy" panic switch — on ⇒ every capability forces approval.
+    "autonomy.paused": PlatformDefault(False, schema_ref="core.bool"),
 }
 
 

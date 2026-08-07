@@ -589,3 +589,38 @@ knock out one at a time").
 - **Phase 5 — folded into 3.5/4** (ROI/attribution/insight framework is no longer a separate late phase).
 
 **Decided by:** Founder (2026-08-06: "build data models like the high-end google analytics … mathematical model, why the campaign is or isn't working … competitor analysis agent"; "these discussed items mainly for growth operator dashboard, only the final summary or solutions to store owner's dashboard"; "if store owner is knowledgable … ask for more details … I should be able to respond from growth operator to store owner's dashboard … build trust as there is money involved"; "did you add … math, google analytics … to Phase 4 … we should not forget").
+
+---
+
+### 2026-08-07 — Autonomy volume-knob wired live (Option A): free-dial within an immovable tier-4 floor
+
+**Context:** Ticket 3.6 implements the owner-adjustable autonomy "volume knob" the 2026-08-05 entry
+scoped. Discovery: the `autonomy.*` settings existed but were **inert** — nothing in the executor/
+proxy/engine read them; the real gate is the approval-engine tiers. The founder chose **Option A**
+("that way its not fake and genuinely it works") — actually wire the knob into the live decision.
+
+**Decisions (founder-approved 2026-08-07):**
+- **The knob is a max-tier overlay on the approval engine.** `engine.evaluate_tool` adds an
+  `_autonomy_floor` contributor: `auto` respects the pack/tier rules; anything else — or the global
+  `autonomy.paused` — forces approval (`AUTONOMY_REVIEW_TIER = 2`). Because `select_decision` takes
+  the **max**, the overlay can only **raise** a tier, never lower one → the `CORE_TIER4_ACTIONS`
+  money/irreversible floor (payment.charge/refund, payout.create, supplier.order_commit, gbp.update,
+  ads.publish) stays **absolute at every knob position** (proved by test at auto **and** paused).
+- **Free-dial supersedes tighten-only** (per 2026-08-05): the `autonomy.*` keys are now
+  `tighten_only=False`, so the owner may loosen *or* tighten freely — the old `TightenOnlyViolation`
+  on loosening is retired for these keys (the class/mechanism kept for any future tighten-only key).
+- **Default = `auto`** for messaging/pricing/campaigns. Rationale: the pack tiers + tier-4 floor
+  already park everything risky (quotes/discounts/campaigns/money), so `auto` auto-sends **only
+  truly routine replies** — safe *and* good UX. Wiring the knob therefore **changes no existing
+  behaviour** until an owner tightens (zero churn to the send-loop/bridge tests). Flipping the
+  default to `draft_only` (approve-everything-by-default) remains a small future change if desired.
+- **Capabilities:** `messaging` (replies), `pricing` (quotes — a priced reply picks this up),
+  `campaigns`. Plus a global **`autonomy.paused`** panic switch (forces approval everywhere).
+- **Cheap adds included** (founder asked "add more scope … note the rest"): the **global pause
+  switch**; the **settings-change audit trail** was found to **already exist** (`write_setting`
+  records `settings.changed` with an old→new diff). Deeper autonomy depth (per-action thresholds,
+  context/VIP routing, spend caps, trust-ramp, vacation mode, dry-run, explainability) recorded in
+  `project-management/PRODUCTION_DEPTH_BACKLOG.md`.
+
+**Decided by:** Founder (2026-08-07: "I feel option (A) … that way its not fake and genuinely it
+works"; "add more scope … maynot be for MVP but note down … production level in notes somewhere").
