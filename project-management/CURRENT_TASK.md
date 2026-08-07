@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 3 · Customer dashboard — **In progress: 3.1–3.5 done; 3.6 pending** (2026-08-07)
+## Phase 3 · Customer dashboard — **3.1–3.5 merged to main `9a6ebb5`; 3.6 pending** (2026-08-07)
 
 **3.4 Catalog & pricing (frontend-only — catalog backend already complete):** `CatalogSection` — searchable item grid (static **₹** base price vs computed **"Live rate"** badge, availability, generic pack attributes), **create / edit / archive** gated `catalog:write` (staff/viewer read-only), rupees↔minor conversion, surfaces the backend's attribute-validation 422s legibly; `lib/catalog`. No backend change (existing catalog endpoints/tests unchanged; a small `authed` error-detail improvement). **3.5 Customers / CRM:** new read-only module `core/customers/` — `GET /v1/customers` (list + lead/order counts), `GET /v1/customers/{id}` (profile + leads + conversations + **orders/purchase history**; 404 cross-org), RLS + explicit-org + `customers:read`; `CustomersSection` responsive master-detail (profile + consent + preferences + orders-with-total + pipeline + conversations). **Verify (3.4–3.5):** backend **+5 pytest** (customers list+counts / detail-history / cross-org-404 / 403) · ruff · mypy core (**121**); `web` tsc · **vitest 34** (+catalog 4, +customers 3) · oxlint (2 pre-existing) · build; real-HTTP smokes (catalog list/search shapes + 403; customers list/404/403). See below for the original 3.1–3.3 block.
 

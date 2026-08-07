@@ -1844,7 +1844,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-07 — Phase 3 (Tickets 3.1–3.3): Customer dashboard — Home+shell, Approvals queue, Conversations & leads
 
-**Branch:** `feature/phase3-dashboards` (off main). **Commit:** `pending` (this batch). **No migration, no dependency.**
+**Branch:** `feature/phase3-dashboards` (off main). **Commit:** `8930be8`; **merged to main** `9a6ebb5`. **No migration, no dependency.**
 
 **Approved plan:** build the store-owner dashboard on **real data**, operational sections only. Per the founder's 2026-08-06 direction (DECISIONS): the CEO-grade analytics/math lives in the operator console (Phase 4); the owner gets distilled **outcomes** + drill-down + an ask-GO thread once the analytics engine (Phase 3.5) lands. "Almost-production" bar: real endpoints, typed models, RLS + RBAC + isolation-tested; polished role-gated UI with loading/empty/error states; unit-tested nav/logic.
 
@@ -1875,7 +1875,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-07 — Phase 3 (Tickets 3.4–3.5): Catalog & pricing, Customers/CRM
 
-**Branch:** `feature/phase3-dashboards` (continues after `8930be8`). **Merge:** `pending`. **No migration, no dependency.**
+**Branch:** `feature/phase3-dashboards` (continues after `8930be8`). **Commit:** `b32338d`; **merged to main** `9a6ebb5`. **No migration, no dependency.**
 
 **Ticket 3.4 — Catalog & pricing (frontend-only).** The catalog backend (list w/ cursor, detail, hybrid search, create/patch/delete with ETag + idempotency) already exists and is tested, so **no backend change**. `web/`: `CatalogSection` — searchable item grid; each card shows title, SKU, **price** (static → ₹ `base_price_minor`, computed → **"Live rate"** badge), availability badge, and a few pack attributes (rendered generically — no jewelry nouns hardcoded); **create / edit / archive** inline, gated `catalog:write` (staff/viewer read-only), rupees↔minor conversion; the backend's structured 422 (attribute validation) now reads legibly via a small `authed` improvement. Pricing conveyed per-item rather than coupling to `rates/status` (per-source freshness of uncertain shape, needs a pack). `lib/catalog.ts` (priceLabel / availabilityLabel / rupeesToMinor).
 
