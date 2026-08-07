@@ -97,6 +97,8 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | Phase-3.1 | Customer dashboard: Home + shell | ✅ | 2026-08-07 | `pending` | `core/insights` `GET /v1/dashboard/overview` (RLS + `insights:read`, 4 org-scoped KPI counts); `web/` full role-gated 8-section shell + Home KPI tiles (loading/empty/error) + section placeholders; **6 pytest + vitest 16** |
 | Phase-3.2 | Approvals queue (HITL core) | ✅ | 2026-08-07 | `pending` | `GET /v1/approvals` + `matched_rules` + typed model; `ApprovalsSection` queue — draft/"why"/price → approve / reject(+reason) / edit-then-approve (tier-raise guard preserved); viewer read-only; **7 pytest + vitest 6** |
 | Phase-3.3 | Conversations & leads | ✅ | 2026-08-07 | `pending` | new read module `core/conversations` — `GET /v1/conversations` (inbox + last-message), `/{id}` (thread), `/v1/leads` (pipeline), RLS + `conversations:read`; `ConversationsSection` inbox master-detail + pipeline board; **6 pytest + vitest 5** |
+| Phase-3.4 | Catalog & pricing (frontend) | ✅ | 2026-08-07 | `pending` | catalog backend already complete → `CatalogSection` searchable grid (static ₹ vs computed "Live rate"), create/edit/archive gated `catalog:write`, surfaces attribute-validation 422s; `lib/catalog`; **vitest 31**; existing catalog pytest green (no backend change) |
+| Phase-3.5 | Customers / CRM | ✅ | 2026-08-07 | `pending` | new read module `core/customers` — `GET /v1/customers` (+lead/order counts), `/{id}` (profile + leads + conversations + orders), RLS + `customers:read`; `CustomersSection` master-detail w/ purchase history; **5 pytest + vitest 34** |
 
 > **Gap note (resolved 2026-07-22):** MVP-006–010 were leapfrogged after the scaffold; the
 > founder directed implementing them before continuing. Now done/scaffolded on branch

@@ -1870,3 +1870,30 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred:** the layered outcome cards + ROI + campaigns arrive with the analytics engine (Phase 3.5); Catalog/Customers/Settings are placeholders (**3.4–3.6**, next); `core/conversations` is a new module not in the vault module map (additive, flagged — precedent `core/support`); front-ends still not in CI (ops follow-up).
 
 **Next recommended action:** founder review; continue to Ticket 3.4 (Catalog & pricing). Merge/push `feature/phase3-dashboards` per founder instruction (then record the merge hash here + in MVP_STATUS, replacing `pending`).
+
+---
+
+## 2026-08-07 — Phase 3 (Tickets 3.4–3.5): Catalog & pricing, Customers/CRM
+
+**Branch:** `feature/phase3-dashboards` (continues after `8930be8`). **Merge:** `pending`. **No migration, no dependency.**
+
+**Ticket 3.4 — Catalog & pricing (frontend-only).** The catalog backend (list w/ cursor, detail, hybrid search, create/patch/delete with ETag + idempotency) already exists and is tested, so **no backend change**. `web/`: `CatalogSection` — searchable item grid; each card shows title, SKU, **price** (static → ₹ `base_price_minor`, computed → **"Live rate"** badge), availability badge, and a few pack attributes (rendered generically — no jewelry nouns hardcoded); **create / edit / archive** inline, gated `catalog:write` (staff/viewer read-only), rupees↔minor conversion; the backend's structured 422 (attribute validation) now reads legibly via a small `authed` improvement. Pricing conveyed per-item rather than coupling to `rates/status` (per-source freshness of uncertain shape, needs a pack). `lib/catalog.ts` (priceLabel / availabilityLabel / rupeesToMinor).
+
+**Ticket 3.5 — Customers / CRM.** New read-only module `core/customers/` (precedent: `core/support`, `core/conversations`): `GET /v1/customers` (contacts + **lead + order counts** via subqueries) and `GET /v1/customers/{id}` (profile + `language_pref`/consent/attributes + their **leads**, **conversations**, and **orders/purchase history**; 404 for a cross-org id). All RLS + explicit-org-scoped, gated `customers:read`. `CustomersSection` = responsive **master-detail**: list ↔ detail (profile + consent badge, preferences, orders with running total, pipeline stages reusing the leads styling, conversations). `lib/customers.ts` (consentLabel / orderStatusLabel / money).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Catalog list/search render (price + availability); create/edit gated `catalog:write` | `web` vitest `catalog.test` (4) + existing `test_catalog_crud`/`_search` (11) | PASS |
+| Customers list + lead/order counts, org-scoped | `test_customers_api::test_list_customers_with_counts` / `_org_scoped` | PASS |
+| Customer detail = profile + leads + conversations + orders | `test_customers_api::test_customer_detail_has_history` | PASS |
+| Cross-org customer detail → 404 | `test_customers_api::test_customer_detail_cross_org_is_404` | PASS |
+| CRM gated by `customers:read` | `test_customers_api::test_customers_forbidden_without_permission` | PASS |
+
+**Commands:** backend `ruff check .` clean · `mypy core` **121** clean · `pytest test_customers_api` **5 passed** + `test_catalog_crud`/`_search` **11 passed** (regression); `web` `tsc` clean · `vitest` **34/34** (+catalog 4, +customers 3) · `oxlint` exit 0 (2 pre-existing warnings) · `vite build` ok; real-HTTP uvicorn smokes (catalog list/search shapes + 403; customers list `[]` / unknown 404 / no-roles 403).
+
+**Security:** the new `core/customers` endpoints are RLS + explicit-org-scoped + isolation-tested (org A never sees org B); read-only; store's own customer PII (phone/email/orders) shown only to its `customers:read` members. Catalog write path unchanged (`catalog:write`, server-enforced). Frontend gating is UX only.
+
+**Known issues / deferred:** quotes + appointments (link via `lead_id`, not `contact_id`) not yet in the CRM detail; catalog `PATCH` sent without `If-Match` (optimistic concurrency skipped — acceptable for a single-owner dashboard, backend tolerates it); the **CRM depth question** (Zoho/HubSpot-level segmentation/automation/analytics) raised by the founder for post-merge discussion. Settings + autonomy is **3.6** (next). `core/customers` is a new module not in the vault map (additive, flagged; precedent `core/support`/`core/conversations`).
+
+**Next recommended action:** commit 3.4–3.5, merge `feature/phase3-dashboards` to main, push; record the merge hash here + in MVP_STATUS (replace `pending`); then discuss CRM depth + plan Ticket 3.6.

@@ -76,7 +76,14 @@ async function authed<T>(path: string, token: string, init?: RequestInit): Promi
   if (res.status === 204) return undefined as T;
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const detail = typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`;
+    // `detail` is usually a string; some endpoints (e.g. catalog attribute-validation) return a
+    // structured object — stringify it so the message stays informative rather than "Request failed".
+    const detail =
+      typeof body.detail === "string"
+        ? body.detail
+        : body.detail && typeof body.detail === "object"
+          ? JSON.stringify(body.detail)
+          : `Request failed (${res.status})`;
     throw new ApiError(res.status, detail);
   }
   return body as T;
@@ -148,6 +155,135 @@ export function resolveApproval(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+// ---- Customers / CRM (/v1/customers, customers:read) -----------------------
+
+export interface CustomerSummary {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  consent_status: string;
+  lead_count: number;
+  order_count: number;
+  created_at: string;
+}
+
+export interface CustomerLead {
+  id: string;
+  stage: string;
+  source: string;
+  score: number | null;
+  created_at: string;
+}
+
+export interface CustomerConversation {
+  id: string;
+  status: string;
+  updated_at: string;
+}
+
+export interface CustomerOrder {
+  id: string;
+  status: string;
+  total_minor: number;
+  currency: string;
+  created_at: string;
+}
+
+export interface CustomerDetail {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  language_pref: string | null;
+  consent_status: string;
+  attributes: Record<string, unknown>;
+  created_at: string;
+  leads: CustomerLead[];
+  conversations: CustomerConversation[];
+  orders: CustomerOrder[];
+}
+
+export function getCustomers(token: string): Promise<CustomerSummary[]> {
+  return authed<CustomerSummary[]>("/v1/customers", token);
+}
+
+export function getCustomer(token: string, id: string): Promise<CustomerDetail> {
+  return authed<CustomerDetail>(`/v1/customers/${id}`, token);
+}
+
+// ---- Catalog (/v1/catalog, catalog:read / catalog:write) -------------------
+
+export interface CatalogItem {
+  id: string;
+  sku: string | null;
+  title: string;
+  description: string | null;
+  media: string[];
+  price_mode: string; // "static" | "computed"
+  base_price_minor: number | null;
+  currency: string;
+  availability: string;
+  attributes: Record<string, unknown>;
+  attributes_schema_ver: number;
+  status: string;
+}
+
+export interface ItemListResponse {
+  items: CatalogItem[];
+  next_cursor: string | null;
+}
+
+export interface CatalogItemInput {
+  title: string;
+  price_mode: "static" | "computed";
+  base_price_minor?: number | null;
+  sku?: string | null;
+  description?: string | null;
+  availability?: string;
+  attributes?: Record<string, unknown>;
+}
+
+export interface CatalogItemPatch {
+  title?: string;
+  description?: string | null;
+  base_price_minor?: number | null;
+  availability?: string;
+  sku?: string | null;
+  reason?: string;
+}
+
+export function getCatalogItems(token: string, cursor?: string | null): Promise<ItemListResponse> {
+  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return authed<ItemListResponse>(`/v1/catalog/items${q}`, token);
+}
+
+export function searchCatalog(
+  token: string, q: string,
+): Promise<{ results: CatalogItem[]; nearest: CatalogItem[] }> {
+  return authed(`/v1/catalog/search?q=${encodeURIComponent(q)}`, token);
+}
+
+export function createCatalogItem(token: string, input: CatalogItemInput): Promise<CatalogItem> {
+  return authed<CatalogItem>("/v1/catalog/items", token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCatalogItem(
+  token: string, id: string, patch: CatalogItemPatch,
+): Promise<CatalogItem> {
+  return authed<CatalogItem>(`/v1/catalog/items/${id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export function archiveCatalogItem(token: string, id: string): Promise<void> {
+  return authed<void>(`/v1/catalog/items/${id}`, token, { method: "DELETE" });
 }
 
 // ---- Conversations & leads (/v1/conversations, /v1/leads, conversations:read)
