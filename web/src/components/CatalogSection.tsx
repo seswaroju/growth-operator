@@ -72,7 +72,7 @@ function ItemForm({
             className="mt-1 w-full rounded-lg border border-neutral-300 px-2 py-2 text-sm disabled:bg-neutral-50"
           >
             <option value="static">Fixed price</option>
-            <option value="computed">Live gold rate</option>
+            <option value="computed">Live rate</option>
           </select>
         </label>
         {f.priceMode === "static" && (

@@ -1,5 +1,5 @@
 // Catalog presentation helpers — pure + unit-tested. `price_mode` is 'static' (a fixed
-// base_price_minor) or 'computed' (priced live at quote time from the gold rate).
+// base_price_minor) or 'computed' (priced live at quote time from a live rate source).
 
 import type { CatalogItem } from "../api";
 
