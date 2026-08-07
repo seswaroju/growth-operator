@@ -157,6 +157,38 @@ export function resolveApproval(
   });
 }
 
+// ---- Settings & autonomy (/v1/settings, org:manage) ------------------------
+
+export interface AutonomyView {
+  messaging: string;
+  pricing: string;
+  campaigns: string;
+  paused: boolean;
+  floor_actions: string[];
+}
+
+export interface EffectiveSetting {
+  key: string;
+  value: unknown;
+  source: string;
+  version: number | null;
+  schema_ref: string | null;
+}
+
+export function getAutonomy(token: string): Promise<AutonomyView> {
+  return authed<AutonomyView>("/v1/settings/autonomy", token);
+}
+
+export function getEffectiveSetting(token: string, key: string): Promise<EffectiveSetting> {
+  return authed<EffectiveSetting>(`/v1/settings/effective?key=${encodeURIComponent(key)}`, token);
+}
+
+export function writeSetting(
+  token: string, key: string, value: unknown,
+): Promise<{ key: string; version: number }> {
+  return authed(`/v1/settings`, token, { method: "POST", body: JSON.stringify({ key, value }) });
+}
+
 // ---- Customers / CRM (/v1/customers, customers:read) -----------------------
 
 export interface CustomerSummary {
