@@ -1,6 +1,7 @@
-// Tenant role model for the customer app — drives nav visibility + the Team invite picker.
-// This is UX gating only: the backend enforces every action server-side (frontend visibility is
-// never authorization). Mirrors core/tenancy/permissions.py.
+// Tenant role + permission model for the customer app — drives nav visibility + the Team invite
+// picker. UX gating ONLY: the backend enforces every action server-side (frontend visibility is
+// never authorization). Mirrors core/tenancy/permissions.py (the backend stays the source of truth;
+// a section a user shouldn't see would still 403 server-side if forced).
 
 export type Role = "owner" | "manager" | "staff" | "viewer";
 
@@ -13,20 +14,75 @@ export const ROLE_LABEL: Record<Role, string> = {
   viewer: "Viewer",
 };
 
+// Permissions (resource:action) — mirror of core/tenancy/permissions.py.
+export type Perm =
+  | "approvals:read" | "approvals:resolve"
+  | "catalog:read" | "catalog:write"
+  | "conversations:read" | "conversations:respond"
+  | "customers:read" | "customers:write"
+  | "campaigns:read" | "campaigns:send"
+  | "insights:read"
+  | "members:invite" | "members:manage"
+  | "org:manage" | "billing:manage";
+
+const OWNER_PERMS: Perm[] = [
+  "approvals:read", "approvals:resolve", "catalog:read", "catalog:write",
+  "conversations:read", "conversations:respond", "customers:read", "customers:write",
+  "campaigns:read", "campaigns:send", "insights:read",
+  "members:invite", "members:manage", "org:manage", "billing:manage",
+];
+
+// Role → permissions (byte-for-byte with the backend ROLE_PERMISSIONS).
+const ROLE_PERMISSIONS: Record<Role, Perm[]> = {
+  owner: OWNER_PERMS,
+  manager: [
+    "approvals:read", "approvals:resolve", "catalog:read", "catalog:write",
+    "conversations:read", "conversations:respond", "customers:read", "customers:write",
+    "campaigns:read", "campaigns:send", "insights:read", "members:invite",
+  ],
+  staff: [
+    "approvals:read", "approvals:resolve", "catalog:read",
+    "conversations:read", "conversations:respond", "customers:read", "insights:read",
+  ],
+  viewer: [
+    "approvals:read", "catalog:read", "conversations:read",
+    "customers:read", "campaigns:read", "insights:read",
+  ],
+};
+
+export function permissionsFor(roles: string[]): Set<Perm> {
+  const out = new Set<Perm>();
+  for (const r of roles) for (const p of ROLE_PERMISSIONS[r as Role] ?? []) out.add(p);
+  return out;
+}
+
+export function hasPermission(roles: string[], perm: Perm): boolean {
+  return permissionsFor(roles).has(perm);
+}
+
 export interface NavItem {
   path: string;
   label: string;
-  roles: Role[];
+  perm: Perm | null; // null = available to any authenticated store member
 }
 
-// Sections of the customer app. `path` matches the router routes.
+// Sections of the customer app. `path` matches the router routes. Home + Support are base features
+// for any member; the rest gate on the permission the section needs. (Shell.tsx renders the same
+// set with literal typed <Link>s — this array is the tested source of the gating logic.)
 export const NAV: NavItem[] = [
-  { path: "/", label: "Support", roles: ["owner", "manager", "staff", "viewer"] },
-  { path: "/team", label: "Team", roles: ["owner", "manager"] },
+  { path: "/", label: "Home", perm: null },
+  { path: "/approvals", label: "Approvals", perm: "approvals:read" },
+  { path: "/conversations", label: "Conversations", perm: "conversations:read" },
+  { path: "/catalog", label: "Catalog", perm: "catalog:read" },
+  { path: "/customers", label: "Customers", perm: "customers:read" },
+  { path: "/support", label: "Support", perm: null },
+  { path: "/team", label: "Team", perm: "members:invite" },
+  { path: "/settings", label: "Settings", perm: "org:manage" },
 ];
 
 export function visibleNav(roles: string[]): NavItem[] {
-  return NAV.filter((item) => item.roles.some((r) => roles.includes(r)));
+  const perms = permissionsFor(roles);
+  return NAV.filter((item) => item.perm === null || perms.has(item.perm));
 }
 
 function maxRank(roles: string[]): number {
@@ -41,5 +97,5 @@ export function assignableRoles(roles: string[]): Role[] {
 }
 
 export function canInvite(roles: string[]): boolean {
-  return roles.includes("owner") || roles.includes("manager");
+  return hasPermission(roles, "members:invite");
 }

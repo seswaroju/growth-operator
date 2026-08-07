@@ -94,6 +94,124 @@ export function getMe(token: string): Promise<Me> {
   return authed<Me>("/v1/me", token);
 }
 
+// ---- Dashboard overview (/v1/dashboard/overview, insights:read) -------------
+
+export interface Overview {
+  pending_approvals: number;
+  open_conversations: number;
+  catalog_items: number;
+  open_tickets: number;
+}
+
+export function getOverview(token: string): Promise<Overview> {
+  return authed<Overview>("/v1/dashboard/overview", token);
+}
+
+// ---- Approvals (/v1/approvals, approvals:read / approvals:resolve) ----------
+
+export interface Approval {
+  id: string;
+  run_id: string | null;
+  action_type: string;
+  tier: number;
+  payload: Record<string, unknown>;
+  matched_rules: string[];
+  status: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface ResolveResult {
+  approval_id: string;
+  status: string;
+  tier: number;
+  edited: boolean;
+  idempotent_replay: boolean;
+  note: string | null;
+}
+
+export interface ResolveInput {
+  decision: "approve" | "reject";
+  edited_payload?: Record<string, unknown> | null;
+  reason_code?: string | null;
+  note?: string | null;
+}
+
+export function listApprovals(token: string, status = "pending"): Promise<Approval[]> {
+  return authed<Approval[]>(`/v1/approvals?status_filter=${encodeURIComponent(status)}`, token);
+}
+
+export function resolveApproval(
+  token: string, id: string, input: ResolveInput,
+): Promise<ResolveResult> {
+  return authed<ResolveResult>(`/v1/approvals/${id}/resolve`, token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ---- Conversations & leads (/v1/conversations, /v1/leads, conversations:read)
+
+export interface ConvLastMessage {
+  body: string | null;
+  direction: string | null;
+  at: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  status: string;
+  outcome: string | null;
+  message_count: number;
+  last_message: ConvLastMessage | null;
+  updated_at: string;
+}
+
+export interface Message {
+  id: string;
+  direction: string | null;
+  body: string | null;
+  status: string;
+  template_key: string | null;
+  created_at: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  contact_name: string | null;
+  contact_phone: string | null;
+  status: string;
+  outcome: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: Message[];
+}
+
+export interface Lead {
+  id: string;
+  stage: string;
+  source: string;
+  score: number | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  next_followup_at: string | null;
+  updated_at: string;
+}
+
+export function getConversations(token: string): Promise<ConversationSummary[]> {
+  return authed<ConversationSummary[]>("/v1/conversations", token);
+}
+
+export function getConversation(token: string, id: string): Promise<ConversationDetail> {
+  return authed<ConversationDetail>(`/v1/conversations/${id}`, token);
+}
+
+export function getLeads(token: string): Promise<Lead[]> {
+  return authed<Lead[]>("/v1/leads", token);
+}
+
 // ---- Support tickets (owner / manager / staff) -----------------------------
 
 export type TicketSeverity = "minor" | "major" | "critical";

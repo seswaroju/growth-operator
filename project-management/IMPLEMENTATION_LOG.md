@@ -1839,3 +1839,34 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Deferred (disclosed):** store onboarding (create-your-store) flow — the customer app shows a "no store" state; `make make-owner` is the local stand-in. The two front-ends are **not in CI** yet (add a `web`/`web-ops` build job — ops follow-up). The 4 HMR lint warnings (hook+component in one file) are cosmetic. Operator Stores/Debug are placeholders (Phase 4).
 
 **Next recommended action:** founder review + commit/merge/push `feature/phase2-apps`; then Phase 3 (customer dashboards).
+
+---
+
+## 2026-08-07 — Phase 3 (Tickets 3.1–3.3): Customer dashboard — Home+shell, Approvals queue, Conversations & leads
+
+**Branch:** `feature/phase3-dashboards` (off main). **Commit:** `pending` (this batch). **No migration, no dependency.**
+
+**Approved plan:** build the store-owner dashboard on **real data**, operational sections only. Per the founder's 2026-08-06 direction (DECISIONS): the CEO-grade analytics/math lives in the operator console (Phase 4); the owner gets distilled **outcomes** + drill-down + an ask-GO thread once the analytics engine (Phase 3.5) lands. "Almost-production" bar: real endpoints, typed models, RLS + RBAC + isolation-tested; polished role-gated UI with loading/empty/error states; unit-tested nav/logic.
+
+**Ticket 3.1 — Home + shell.** `core/insights/service.py` + `api.py`: `GET /v1/dashboard/overview` — one round-trip of four **org-scoped** counts (pending approvals / open conversations / active catalog items / open tickets), RLS via `set_org_context` **and** explicit `org_id` filter, gated `insights:read`. `web/`: expanded to the full role-gated **8-section** shell (Home · Approvals · Conversations · Catalog · Customers · Support · Team · Settings) with a **permission-based** nav (`lib/roles.ts` mirrors `core/tenancy/permissions.py`), a Home with KPI tiles (loading skeleton / error / empty) + tasteful `ComingSoon` placeholders (each a one-file swap for its later ticket); title fix.
+
+**Ticket 3.2 — Approvals queue (HITL core).** `core/approvals`: `list_approvals` now returns `matched_rules`; the list endpoint got a typed `ApprovalSummary` (was untyped `list[dict]`, unconsumed). `ApprovalsSection` renders each parked draft (friendly title — reply vs **quote** when priced — body, price, tier badge, the "why" chips, expiry) → **approve / reject(+reason) / edit-then-approve**; resolve is unchanged, so the approve-with-edit **tier-raise guard** still holds. Actions gated by `approvals:resolve` (viewer sees the queue read-only). `lib/approvals.ts` label/draft/price/expiry helpers.
+
+**Ticket 3.3 — Conversations & leads.** New read-only module `core/conversations/` (`service.py` + `api.py`; precedent: `core/support`): `GET /v1/conversations` (inbox — contact + last-message preview + count via a LATERAL subquery), `GET /v1/conversations/{id}` (thread — messages ascending; 404 for a cross-org id, so no resource-existence leak), `GET /v1/leads` (pipeline). All RLS + explicit-org-scoped, gated `conversations:read`; `intent` (jsonb, uncertain shape) deliberately not exposed. `ConversationsSection` = **Inbox** (responsive master-detail list↔thread; inbound/outbound bubbles) + **Pipeline** (leads grouped into the 6 stage columns). `lib/leads.ts` (stages/`groupByStage`) + `lib/conversations.ts` (direction/preview).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Overview: 4 org-scoped KPIs, status-filtered, empty→0, 401/400/403 | `test_dashboard_overview` (6) | PASS |
+| Approvals: list+`matched_rules`, org-scoped, approve/reject, 410/404, 403 | `test_approvals_api` (7) | PASS |
+| Approve-with-edit tier-raise still rejected | `test_approval_service` (existing) | PASS |
+| Conversations: inbox+last-msg, thread ascending, 404 cross-org, leads, 403 | `test_conversations_api` (6) | PASS |
+| Role-gated nav (8 sections) + perm map + Home tiles + lead grouping | `web` vitest (roles 14, home 2, approvals 6, leads 3, conversations 2 = 27) | PASS |
+
+**Commands:** backend `ruff check .` clean · `mypy core` **118** clean · `pytest` (3 new API suites + `test_scaffold` import-clean) **21 passed**; `web` `tsc -b` clean · `vitest` **27/27** · `oxlint` exit 0 (2 pre-existing HMR warnings) · `vite build` ok; real-HTTP uvicorn smokes (overview 401-gated + boots; approvals list→approve→pending 0). Both dev servers serve 200.
+
+**Security:** all new endpoints RLS-scoped + explicit `org_id` filter + isolation-tested (org A never sees org B); read-only except the pre-existing resolve; frontend gating is UX only — every call enforces its permission + org context server-side; store's own customer PII (phone/message bodies) shown only to its `conversations:read` members. Also hardened all three new test fixtures to **unique per-fixture emails** (a shared-email literal leaked on a mid-setup error; cleaned 12 orphan test orgs).
+
+**Known issues / deferred:** the layered outcome cards + ROI + campaigns arrive with the analytics engine (Phase 3.5); Catalog/Customers/Settings are placeholders (**3.4–3.6**, next); `core/conversations` is a new module not in the vault module map (additive, flagged — precedent `core/support`); front-ends still not in CI (ops follow-up).
+
+**Next recommended action:** founder review; continue to Ticket 3.4 (Catalog & pricing). Merge/push `feature/phase3-dashboards` per founder instruction (then record the merge hash here + in MVP_STATUS, replacing `pending`).
