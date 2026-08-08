@@ -2013,7 +2013,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-08 — Phase 3.5-eng A4.5: owner⇄GO thread (the cross-tenant one)
 
-**Branch:** `feature/phase35-eng-a45-thread` (off main). **Merge:** `pending`. **No dependency.** Full security rationale in DECISIONS 2026-08-08.
+**Branch:** `feature/phase35-eng-a45-thread` (off main). **Merge:** `8e4e1e1`. **No dependency.** Full security rationale in DECISIONS 2026-08-08.
 
 **Migration 028** `insight_messages` (+RLS) — the owner⇄Growth-Operator Q&A on an insight, with **split-RLS** carrying a scoped operator INSERT: `p_read`= own-org OR platform-admin; `p_insert`= `(own-org AND author_type='owner') OR (platform-admin AND author_type='operator')`. Append-only; a `resolve_report_org` SECURITY DEFINER helper finds a report's org. `core/insights/thread.py` (owner ask/read org-scoped; operator reply on the admin session). Owner `GET`/`POST /v1/insights/reports/{id}/messages` (`insights:read`); operator `POST /v1/admin/insights/reports/{id}/reply` (`require_platform` + admin-plane gate, audited to `platform_access_log`).
 
