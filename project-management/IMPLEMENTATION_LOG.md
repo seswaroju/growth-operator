@@ -2425,7 +2425,7 @@ appears in the existing Approvals queue). Segment-targeting + real Meta remain f
 
 ## 2026-08-08 — Campaign compose/send UI C2 (MVP-089) — completes the owner-facing broadcast loop
 
-**Branch:** `feature/campaign-send-c2-web` (off main). **Merge:** `pending`. Frontend (`web/`) + one
+**Branch:** `feature/campaign-send-c2-web` (off main). **Merge:** `1356b53`. Frontend (`web/`) + one
 tiny backend endpoint (the audience preview the typed-count gate needs a number for).
 
 **Backend:** `GET /v1/campaigns/audience-preview` → `{audience_size}` (`campaigns:send`), declared
