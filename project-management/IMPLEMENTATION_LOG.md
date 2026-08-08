@@ -2109,3 +2109,47 @@ one finding was inspected by reading the source line, not the scanner's raw matc
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **S2 —
 error/exception tracking**, decided as **self-hosted GlitchTip** (founder: "both best UX and tight" →
 Sentry-grade dashboard with error data staying on our cloud).
+
+---
+
+## 2026-08-08 — Security-hardening S2: error tracking via self-hosted GlitchTip (audit #16d)
+
+**Branch:** `feature/security-s2-error-tracking` (off main). **Merge:** `pending`. Second of the three
+security sub-tickets. Founder-approved dependencies (CLAUDE.md §9): **`sentry-sdk`** (Python, MIT) +
+**`@sentry/react`** (JS, MIT) — the standard clients for GlitchTip's Sentry-compatible ingest.
+
+**Both halves: best UX + tight.** GlitchTip is **self-hosted** → the Sentry-grade dashboard, with
+error data never leaving our cloud (no third-party SaaS). And it is **off by default + PII-scrubbing**:
+
+- **Backend** — `core/common/error_tracking.py` (`setup_error_tracking(app)`, wired in `main.py` next
+  to `setup_telemetry`). Inert unless `GROWTH_OPERATOR_ERROR_TRACKING_DSN` is set (with no DSN,
+  `sentry_sdk` is never even imported). When set: `send_default_pii=False`,
+  `max_request_body_size="never"`, `include_local_variables=False`, and a `before_send` that strips
+  request bodies/cookies + redacts `Authorization` and scrubs phone/OTP (reusing `telemetry.scrub`) +
+  email + bearer/JWT tokens across the whole event. Config field `error_tracking_dsn` (default None).
+- **Frontend** — `web/src/lib/errorTracking.ts` (`initErrorTracking` gated on `VITE_ERROR_DSN`, same
+  scrubbing in `beforeSend`/`beforeBreadcrumb`) + `components/ErrorBoundary.tsx` (calm recovery screen
+  + `reportError`, a no-op when tracking is off) wrapping the app in `main.tsx`.
+- **Infra/UX** — `infra/docker/docker-compose.glitchtip.yml` (standalone stack, own PG+Redis, port
+  8888) + `infra/docker/GLITCHTIP.md` runbook + `make glitchtip` + `web/.env.example`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Off by default (no DSN → nothing initialized, nothing sent) | `test_setup_is_inert_without_dsn`; frontend `initErrorTracking()===false` | PASS |
+| When on, init is *tight* (no PII, no body/locals, before_send wired) | `test_setup_initializes_tightly_with_dsn` | PASS |
+| Backend scrubber masks phone/OTP/email/tokens + drops sensitive keys | `test_scrub_text_*`, `test_scrub_obj_*` | PASS |
+| Request body dropped + auth header redacted before send | `test_before_send_strips_request_body_*` | PASS |
+| Frontend scrubber masks PII + drops sensitive keys | `errorTracking.test.ts` scrubText/scrubDeep | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **137** · guards 0 · `uv sync --frozen` in sync ·
+`pytest tests/unit tests/isolation` **389** (5 new). web — oxlint clean · `tsc` OK · `vitest` **50**
+(3 new) · build OK. gitleaks: **no leaks** (new files don't trip the S1 scanner). GlitchTip compose
+validates.
+
+**Security note:** the whole point of S2 is that error reports carry NO customer PII or credentials —
+proven by the scrubber tests. Off by default, so it introduces no external side-effect until a DSN is
+deliberately set to point at our own GlitchTip.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **S3 —
+backup + tested restore runbook** (audit #16e), the last security sub-ticket.

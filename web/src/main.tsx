@@ -5,8 +5,13 @@ import { RouterProvider } from "@tanstack/react-router";
 
 import "./index.css";
 import { AuthProvider, useAuth } from "./auth";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Login from "./components/Login";
+import { initErrorTracking } from "./lib/errorTracking";
 import { router } from "./router";
+
+// Error tracking is inert unless VITE_ERROR_DSN is configured (security S2).
+initErrorTracking();
 
 const queryClient = new QueryClient();
 
@@ -39,10 +44,12 @@ function Root() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Root />
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Root />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -9,6 +9,7 @@ from core.catalog.router import router as catalog_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
 from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
+from core.common.error_tracking import setup_error_tracking
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
 from core.competitors.api import router as competitors_router
@@ -43,6 +44,7 @@ app = FastAPI(title="Growth Operator")
 register_exception_handlers(app)
 register_rbac_handlers(app)
 setup_telemetry(app)  # no-op unless an OTLP endpoint is configured
+setup_error_tracking(app)  # no-op unless an error-tracking DSN is configured (security S2)
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(orgs_router)
