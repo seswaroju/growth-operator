@@ -1986,7 +1986,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-08 — Phase 3.5-eng A4.2 + A4.3 + A4.4: intelligence producers (campaign analysis, tracked competitors, simulated agents)
 
-**Branch:** `feature/phase35-eng-a42-producer` (off main). **Merge:** `pending`. **No dependency.** One CI-cleanable unit; full rationale in DECISIONS 2026-08-08.
+**Branch:** `feature/phase35-eng-a42-producer` (off main). **Commit:** `d71f99c`; **merged to main** `ffead49`. **No dependency.** One CI-cleanable unit; full rationale in DECISIONS 2026-08-08.
 
 **A4.2 — campaign-analysis producer (deterministic, no LLM).** `core/campaigns/producer.py` runs the A2/A3 engine (`campaign_analytics`) and stores a layered `agent_report` (report_type=`campaign_analysis`, subject=campaign, `model="deterministic"`): verdict + drivers + full_breakdown (funnel/significance/ROI/drop-off). `analytics.verdict_line` (pure owner one-liner). `POST /v1/campaigns/{id}/report` (`campaigns:read`).
 
