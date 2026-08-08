@@ -825,3 +825,23 @@ S1 → S2 → S3 approved by the founder 2026-08-08.
   backups, PITR/WAL, scheduled drill against real backups, RTO/RPO).
 
 **Decided by:** Founder (2026-08-08 — approved "run the drill in CI too").
+
+---
+
+## 2026-08-08 — Phase 4 P4.1: curated SECURITY DEFINER roster (cross-tenant read w/o widening the flag)
+
+The operator's cross-store roster must read RLS-protected per-store tables (settings, tickets,
+memberships). Rather than widen the `app.platform_admin` cross-tenant flag (which would break the
+least-privilege lock guarded by `tests/isolation/test_platform_admin_scope`), P4.1 adds a
+**`platform_tenant_roster()` SECURITY DEFINER function** (migration 029) — the same controlled pattern
+as `resolve_report_org` (028). It returns ONLY curated registry + count fields per store
+(id/name/plan/status/created_at/paused/open_tickets/member_count) and **never customer PII**. The
+`GET /v1/admin/tenants` endpoint is gated on `platform.tenants:read` + admin plane and audits every
+listing to `platform_access_log`.
+
+**Why:** keeps the cross-tenant blast radius minimal — a curated, read-only, audited projection beats
+a broad flag. This is the standing pattern for future operator/dashboard cross-store reads (P4.2–P4.5):
+add a curated SECDEF projection returning only what the operator may see, never a raw cross-tenant
+SELECT. The flag allowlist stays exactly `{support_tickets, insight_messages}`.
+
+**Decided by:** implementation choice under the founder-approved P4.1 plan (2026-08-08).

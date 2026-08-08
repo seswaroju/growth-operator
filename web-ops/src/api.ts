@@ -138,3 +138,22 @@ export function adminUpdateTicket(
     body: JSON.stringify(patch),
   });
 }
+
+// ---- Cross-store roster (/v1/admin/tenants, platform.tenants:read) ----------
+// Curated registry + counts per store — never customer data. Backed by the platform_tenant_roster()
+// SECURITY DEFINER function; every listing is audited server-side.
+
+export interface TenantRosterRow {
+  org_id: string;
+  name: string;
+  plan: string | null;
+  status: string;
+  created_at: string;
+  paused: boolean;
+  open_tickets: number;
+  member_count: number;
+}
+
+export function adminListTenants(token: string): Promise<TenantRosterRow[]> {
+  return authed<TenantRosterRow[]>("/v1/admin/tenants", token);
+}

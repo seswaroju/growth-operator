@@ -3,15 +3,7 @@ import { createRootRoute, createRoute, createRouter } from "@tanstack/react-rout
 import Placeholder from "./components/Placeholder";
 import QueueSection from "./components/QueueSection";
 import Shell from "./components/Shell";
-
-function StoresPage() {
-  return (
-    <Placeholder
-      title="Stores"
-      note="Tenant roster + health + ROI per store lands in Phase 4."
-    />
-  );
-}
+import StoresSection from "./components/StoresSection";
 
 function DebugPage() {
   return (
@@ -32,7 +24,7 @@ const queueRoute = createRoute({
 const storesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/stores",
-  component: StoresPage,
+  component: StoresSection,
 });
 const debugRoute = createRoute({
   getParentRoute: () => rootRoute,
