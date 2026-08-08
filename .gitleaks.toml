@@ -1,0 +1,28 @@
+# Secret-scanning config for gitleaks (security-hardening S1, closes audit #16a).
+#
+# Runs in CI (`.github/workflows/ci.yml` secret-scan job) over the FULL git history and locally via
+# `make secret-scan`. Extends gitleaks' built-in ruleset; the allowlist below covers ONLY confirmed
+# non-secrets. Keep it tight — every entry is a deliberate security decision, because a too-broad
+# allowlist can hide a real leak.
+
+title = "Growth Operator secret-scan"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Confirmed non-secrets. Each entry is justified inline."
+# Match the regex against the whole matched line (more precise than the extracted secret alone).
+regexTarget = "match"
+regexes = [
+  # core/packs/bundle.py: `private_key: Ed25519PrivateKey` is a keyword-only FUNCTION PARAMETER
+  # type annotation for passing a signing-key OBJECT at runtime — not a credential. A real leaked
+  # key could never contain the literal type name, so this stays targeted.
+  '''private_key: Ed25519PrivateKey''',
+]
+paths = [
+  # SOPS-encrypted secrets are safe to commit BY DESIGN (that is the whole point of SOPS). Their
+  # ciphertext is high-entropy and would otherwise trip the entropy rules. Only *.enc.yaml is
+  # allowed into git (see .gitignore); plaintext secrets/*.yaml is never tracked.
+  '''\.enc\.yaml$''',
+]

@@ -22,6 +22,24 @@ jobs:
       - name: Architecture guards (MVP-010)
         run: uv run python scripts/guards.py
 
+  # Secret scan (security-hardening S1, audit #16a): fail the build if a credential is ever
+  # committed — over the FULL git history, not just the diff. Pinned gitleaks binary (no third-party
+  # action) run with --redact so a finding never prints the secret value into CI logs.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # full history so the scan covers every commit, not just HEAD
+      - name: Install gitleaks (pinned)
+        run: |
+          VERSION=8.30.1
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      - name: Scan history + tree for secrets
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --verbose
+
   test:
     runs-on: ubuntu-latest
     steps:

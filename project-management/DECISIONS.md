@@ -782,3 +782,27 @@ backups (e)**; payments (f) N/A (no payment code yet). Drives the security-harde
 
 **Decided by:** Founder (2026-08-08 answers to Q1–Q4). Verbatim braindump + full item-by-item
 scoping in `project-management/VISION_INTAKE.md`.
+
+---
+
+## 2026-08-08 — Security-hardening tooling (S1 + S2 direction)
+
+Sub-tickets of the security-hardening initiative from the audit in VISION_INTAKE.md (#16). Sequence
+S1 → S2 → S3 approved by the founder 2026-08-08.
+
+- **S1 secret scanning: gitleaks, pinned binary, no third-party action.** CI installs a pinned
+  gitleaks 8.30.1 binary (not the marketplace action → no supply-chain exposure, no license gate) and
+  scans the **full git history** with `--redact`. A `.gitleaks.toml` extends the default ruleset with a
+  **tight** allowlist: only the confirmed false positive (`private_key: Ed25519PrivateKey` — a function
+  parameter annotation) and SOPS `*.enc.yaml` (encrypted by design). Rationale: proving "no secrets in
+  code/history" must be enforced continuously, not assumed; a narrow allowlist keeps the teeth (a
+  planted fake token is still caught).
+
+- **S2 error tracking: self-hosted GlitchTip (decided, built later).** Founder (2026-08-08): *"I want
+  both the good if not best UX and the working has to be tight."* GlitchTip is the only option that
+  delivers **both** — a Sentry-grade dashboard (grouped errors, counts, alerting) **and** error data
+  that never leaves our cloud (self-hosted, integrated by API, per the Q3 external-tool policy). Sentry
+  SaaS is rejected (payloads can carry customer data off-boundary); OTLP-only is a weaker UX. To be
+  implemented in S2 with a frontend error boundary + backend exception capture feeding it.
+
+**Decided by:** Founder (2026-08-08). S3 (backup + tested restore) tooling TBD when S2 completes.
