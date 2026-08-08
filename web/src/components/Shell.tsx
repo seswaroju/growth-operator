@@ -48,6 +48,11 @@ export default function Shell() {
                   Customers
                 </Link>
               )}
+              {hasPermission(roles, "insights:read") && (
+                <Link to="/insights" className={navLink} activeProps={navActive}>
+                  Insights
+                </Link>
+              )}
               <Link to="/support" className={navLink} activeProps={navActive}>
                 Support
               </Link>

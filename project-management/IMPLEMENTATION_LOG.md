@@ -2031,3 +2031,46 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Commands:** `ruff check .` clean · `mypy core` **136** · **guards 0** · **full `pytest tests/unit` + `tests/isolation`** — **388 tests**; migration 028 up/down round-trip + RLS forced (p_read/p_insert). Full CI-equivalent run locally before push.
 
 **Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.6 (owner Insights UI) — the last analytics/intelligence ticket.
+
+---
+
+## 2026-08-08 — Phase 3.5-eng A4.6: owner Insights UI (engine complete)
+
+**Branch:** `feature/phase35-eng-a46-insights-ui` (off main). **Merge:** `pending`. **Frontend-only —
+no backend, no migration, no new dependency.** Consumes the A4.1/A4.5 endpoints already shipped.
+
+**The design decision (founder, 2026-08-08): leveled questions by intensity, not AI auto-replies.**
+The owner drills through an insight as four escalating questions, each revealing a deeper layer of the
+record — **all real stored data, no AI call, no wait**: (1) *What happened?* → `verdict`; (2) *Why?* →
+`drivers` (plain-language, good/bad/neutral); (3) *Show me the numbers* → `full_breakdown` (funnel,
+significance, ROI); (4) *Prove it* → `evidence`. Below that, a free-text **Ask Growth Operator** thread
+backs anything the four levels don't cover — answered by a **human operator** (the A4.5 thread), with
+honest "Growth Operator will reply here" microcopy. **No fabricated AI answer anywhere.** When the LLM
+provider is wired later it slots in behind the same UI as an operator drafting aid — the interface
+doesn't change.
+
+**Files (all `web/`):** `api.ts` (+`InsightReport*`/`ThreadMessage` types + 4 fetchers);
+`lib/insights.ts` (+`QUESTION_LEVELS`, `reportTypeLabel`, `driverTone`, `confidenceTone`,
+`humanizeBreakdownKey`, `formatBreakdownValue` — all pure); `lib/insights.test.ts` (+14 cases);
+`components/InsightsSection.tsx` (**new** — list → leveled drill-down → thread; generic breakdown
+renderer works across all three report types); `router.tsx` (+`/insights`); `components/Shell.tsx`
+(+nav link gated `insights:read`); `lib/roles.ts` + `roles.test.ts` (Insights added to NAV — a shared
+read section for staff/viewer; pinned nav test updated, not weakened).
+
+**Requirement → evidence:**
+| Criterion | Evidence | Result |
+|---|---|---|
+| Owner sees the verdict headlines (list) | `getInsightReports` + `ReportCard`; `insights:read` gated | PASS |
+| Leveled drill-down reveals each record layer | `QUESTION_LEVELS` + `LayerBody`; `insights.test` layer order | PASS |
+| Numbers formatted correctly across report types | `formatBreakdownValue`/`humanizeBreakdownKey`; 9 assertions | PASS |
+| Ask-GO posts owner Q, shows operator replies, no fake AI | `AskThread` (post + poll), honest microcopy | PASS |
+| Nav gated on `insights:read` (staff/viewer included) | `roles.ts` NAV + `roles.test` visibleNav | PASS |
+| No vertical nouns in the UI (rule zero) | `scripts/guards.py` industry-nouns → 0 | PASS |
+
+**Commands:** oxlint clean (pre-existing warnings only) · `tsc -b --noEmit` OK · **`vitest` 47 pass**
+· `npm run build` OK · **guards 0** · backend unchanged: `ruff` clean · `mypy core` **136** ·
+**`pytest tests/unit tests/isolation` 384 pass** (no regression).
+
+**Next recommended action:** founder review → merge to main + push + record hash + verify CI. Then the
+**security-hardening ticket** (close audit gaps d/e) per the vision-intake sequence. **The Phase
+3.5-eng analytics/intelligence engine (A1–A4.6) is complete.**

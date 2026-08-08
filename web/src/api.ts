@@ -431,6 +431,67 @@ export function listMyTickets(token: string): Promise<Ticket[]> {
   return authed<Ticket[]>("/v1/support/tickets", token);
 }
 
+// ---- Insights / agent reports (/v1/insights, insights:read) ----------------
+// The layered insight record: verdict headline -> drivers (plain-language "why") ->
+// full_breakdown (the numbers) -> evidence (the facts). The owner drills through these as
+// escalating questions; a free-text "Ask Growth Operator" thread (answered by a human operator)
+// backs anything the four layers don't cover. No AI auto-replies.
+
+export interface InsightReportSummary {
+  id: string;
+  report_type: string; // campaign_analysis | competitor_analysis | marketing_strategy
+  subject_ref: string | null;
+  title: string;
+  verdict: string;
+  confidence: string | null; // low | medium | high
+  generated_at: string;
+}
+
+export interface InsightDriver {
+  label: string;
+  detail: string;
+  sentiment: string; // good | bad | neutral
+}
+
+export interface InsightReportDetail extends InsightReportSummary {
+  drivers: InsightDriver[];
+  full_breakdown: Record<string, unknown>;
+  evidence: unknown[];
+  model: string | null;
+  prompt_version: string | null;
+}
+
+export interface ThreadMessage {
+  id: string;
+  author_type: string; // owner | operator
+  body: string;
+  created_at: string;
+}
+
+export function getInsightReports(
+  token: string, reportType?: string,
+): Promise<InsightReportSummary[]> {
+  const q = reportType ? `?report_type=${encodeURIComponent(reportType)}` : "";
+  return authed<InsightReportSummary[]>(`/v1/insights/reports${q}`, token);
+}
+
+export function getInsightReport(token: string, id: string): Promise<InsightReportDetail> {
+  return authed<InsightReportDetail>(`/v1/insights/reports/${id}`, token);
+}
+
+export function getInsightThread(token: string, id: string): Promise<ThreadMessage[]> {
+  return authed<ThreadMessage[]>(`/v1/insights/reports/${id}/messages`, token);
+}
+
+export function postInsightMessage(
+  token: string, id: string, body: string,
+): Promise<ThreadMessage> {
+  return authed<ThreadMessage>(`/v1/insights/reports/${id}/messages`, token, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
 // ---- Team / invites (members:invite) ---------------------------------------
 
 export interface CreateInviteInput {
