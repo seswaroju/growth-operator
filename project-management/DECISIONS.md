@@ -735,3 +735,50 @@ vs. support tickets, where the operator only reads/resolves and can **never** in
 **Decided by:** Founder (2026-08-08: "the sensitive cross-tenant one" / approving A4.5). The scoped
 extension is the implementation of the founder's owner⇄GO answer-into-dashboard requirement
 (DECISIONS 2026-08-06 analytics layer).
+
+---
+
+## 2026-08-08 — Vision-intake scoping decisions (post-braindump)
+
+Following the founder braindump captured in `VISION_INTAKE.md` (17 items). None of the items are
+built; these decisions govern **how** they will be, when each gets its own ticket.
+
+**Approved (founder, 2026-08-08):**
+
+- **Q4 — Agent knowledge/config home: HYBRID.** Cross-vertical agent knowledge (marketing
+  frameworks, SEO rules, competitor tactics) lives in a **shared base** with **per-vertical
+  overrides**, loaded by the runtime. It stays **out of `core/`** (rule zero — no industry logic in
+  core). Directory layout follows the `project-management/vision/` tree once expanded.
+
+- **Q3 — External-tool policy: self-host on our own cloud, integrate by API, never vendor.** AGPL
+  tools (plausible, listmonk) and any external service run as **separate self-hosted containers in
+  our own cloud/VPC**, called over our API boundary — never copied into `core/`. This keeps our app
+  closed-source-safe (AGPL copyleft only bites on modified, publicly-exposed copies of *their* code)
+  and keeps customer data inside our boundary. *Self-hosting is the cloud-native path — it means we
+  run the tool on our cloud, not that we avoid cloud.* External-action / privacy-sensitive tools
+  (listmonk sends, Instagram/FB/social posting, fingerprintjs) stay **simulated/gated** until
+  explicit founder + ToS/privacy sign-off.
+
+- **Q2 — CRM (#3) & HITL (#10): delta-extraction, not fork-and-adopt.** We keep our **RLS-native**
+  CRM (`core/customers`) and approval engine (`core/approvals`). We **mine** trycompai/crm and
+  block/buzz for the specific solved problems/features we're missing and **port those into our own
+  modules** as tickets. Rationale: these repos are whole applications; retrofitting our `app.org_id`
+  tenant isolation into external code is more work than porting features AND re-opens the
+  cross-tenant risk we guard hardest — and modifying AGPL code we run as a service triggers copyleft.
+  Delta-extraction captures their hard-won fixes without the isolation risk or the license
+  entanglement. *(Founder delegated: "whichever you recommend.")*
+
+- **Q1 — Build sequence: all four, one ticket at a time.** Founder wants A4.6, security-hardening,
+  Phase 4, and the marketing-agent framework layer — all of them. Recommended order (pending
+  confirmation per ticket): **(1) A4.6** finish the analytics/intelligence UI (in-flight, small);
+  **(2) Security-hardening** — close the audit's real gaps (error tracking + backup/restore drill +
+  gitleaks history scan) to protect the first pilot; **(3) Phase 4** operator/CEO console (home of
+  the item-17 GO dashboards); **(4) Marketing-agent framework layer** (item 1 — safe, no external
+  side-effects). Each still goes through the normal plan → approval → branch → verify → merge cadence.
+
+**Security-audit first-pass (item 16) recorded in `VISION_INTAKE.md`:** strongest areas are cross-
+tenant isolation (c) and server-side authz (b); real gaps are **error tracking (d)** and **tested
+backups (e)**; payments (f) N/A (no payment code yet). Drives the security-hardening ticket above.
+
+**Decided by:** Founder (2026-08-08 answers to Q1–Q4). Verbatim braindump + full item-by-item
+scoping in `project-management/VISION_INTAKE.md`.
