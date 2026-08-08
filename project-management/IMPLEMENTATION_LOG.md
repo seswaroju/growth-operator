@@ -2114,7 +2114,7 @@ Sentry-grade dashboard with error data staying on our cloud).
 
 ## 2026-08-08 — Security-hardening S2: error tracking via self-hosted GlitchTip (audit #16d)
 
-**Branch:** `feature/security-s2-error-tracking` (off main). **Merge:** `pending`. Second of the three
+**Branch:** `feature/security-s2-error-tracking` (off main). **Merge:** `02038dd`. Second of the three
 security sub-tickets. Founder-approved dependencies (CLAUDE.md §9): **`sentry-sdk`** (Python, MIT) +
 **`@sentry/react`** (JS, MIT) — the standard clients for GlitchTip's Sentry-compatible ingest.
 
