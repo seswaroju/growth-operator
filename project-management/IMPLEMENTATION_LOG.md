@@ -2235,7 +2235,7 @@ Operational dashboard** (what's breaking/delayed across the platform).
 
 ## 2026-08-08 — Phase 4 P4.2: operational dashboard ("what's breaking / delayed")
 
-**Branch:** `feature/phase4-p42-operational` (off main). **Merge:** `pending`. Second Phase-4 ticket;
+**Branch:** `feature/phase4-p42-operational` (off main). **Merge:** `de937de`. Second Phase-4 ticket;
 reuses the curated-SECDEF cross-store pattern from P4.1 (DECISIONS 2026-08-08).
 
 **Migration 030** `platform_operational_health()` **SECURITY DEFINER** function → a SINGLE row of
