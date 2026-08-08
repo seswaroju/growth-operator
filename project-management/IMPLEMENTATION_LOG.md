@@ -2197,7 +2197,7 @@ were already strong; f (payments) N/A.**
 
 ## 2026-08-08 — Phase 4 P4.1: operator console foundation — cross-store roster
 
-**Branch:** `feature/phase4-p41-tenant-roster` (off main). **Merge:** `pending`. First Phase-4 ticket;
+**Branch:** `feature/phase4-p41-tenant-roster` (off main). **Merge:** `98ecb05`. First Phase-4 ticket;
 the backbone the GO business dashboards hang off. **Founder-approved sequence:** foundation (roster)
 first, then the real-data dashboards P4.2–P4.5, then P4.6 financial/sales (needs a billing model).
 
