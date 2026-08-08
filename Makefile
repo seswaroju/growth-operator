@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip backup restore backup-drill
 
 dev:
 	$(COMPOSE) up --build
@@ -50,3 +50,15 @@ secret-scan:
 # See infra/docker/GLITCHTIP.md for first-time setup + wiring the DSN. App is inert without a DSN.
 glitchtip:
 	docker compose -f infra/docker/docker-compose.glitchtip.yml up -d
+
+# Backup / restore / restore-drill (security S3, audit #16e). See infra/db/BACKUP_RESTORE.md.
+# backup + restore need host pg tools (or run on the DB server). backup-drill runs the drill INSIDE
+# the dev Postgres container, so it works locally with just Docker — no host pg client needed.
+backup:
+	./scripts/db_backup.sh
+
+restore:
+	./scripts/db_restore.sh $(DUMP) $(TARGET)
+
+backup-drill:
+	$(COMPOSE) exec -T -e GROWTH_OPERATOR_DATABASE_MIGRATOR_URL=postgresql://growth_operator:growth_operator@localhost:5432/growth_operator postgres bash -s < scripts/db_restore_drill.sh

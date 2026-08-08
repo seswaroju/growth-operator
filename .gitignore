@@ -48,3 +48,7 @@ htmlcov/
 *.tfstate
 *.tfstate.*
 crash.log
+
+# Database backups (security S3) — contain real data; NEVER commit.
+/backups/
+*.dump

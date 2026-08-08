@@ -9,9 +9,18 @@ selects and approves the next ticket.
 
 ---
 
-## Security hardening (from audit #16) — **S1 merged, S2 done; S3 pending** (2026-08-08) — S2 awaiting founder merge approval
+## Security hardening (from audit #16) — **S1 + S2 merged; S3 done** (2026-08-08) — S3 awaiting founder merge approval; initiative complete on merge
 
-**S2 error tracking (audit #16d) — self-hosted GlitchTip (best UX + tight):** backend
+**S3 backup + tested restore (audit #16e) — the restore DRILL is the point:** `scripts/db_backup.sh`
+/ `db_restore.sh` (guardrails: refuses `*prod*` + primary DB without `--force`) / `db_restore_drill.sh`
+(dump→restore-into-scratch→verify table count + alembic head + org rows→drop→PASS/FAIL). **Drill runs
+in CI** (`migrate` job) every push = continuous proof; `make backup-drill` locally (in-container).
+`infra/db/BACKUP_RESTORE.md`; `/backups/` gitignored. **Verified pg16: 71 tables, head 9f9334d2999a,
+orgs round-tripped → PASS.** No app code/migration/dependency. This **completes the security-hardening
+initiative** (S1 secret scan + S2 error tracking + S3 backup/restore; audit #16 a/d/e closed, b/c/g
+already strong, f N/A). **Next (per VISION_INTAKE sequence):** Phase 4 operator/CEO console.
+
+**S2 error tracking (audit #16d) — MERGED `02038dd`, CI green — self-hosted GlitchTip (best UX + tight):** backend
 `core/common/error_tracking.py` + `sentry-sdk` and frontend `@sentry/react` + `ErrorBoundary`, both
 **off by default** (gated on a DSN) and **PII-scrubbing** (bodies/locals dropped; phone/OTP/email/
 tokens masked, sensitive keys dropped, before send). Local `docker-compose.glitchtip.yml` + runbook +
