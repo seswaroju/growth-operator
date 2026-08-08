@@ -9,7 +9,21 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 4 · Operator/CEO console — **P4.1–P4.3 merged; P4.4 done; P4.5–P4.6 pending** (2026-08-08) — P4.4 awaiting founder merge approval
+## Phase 4 · Operator/CEO console — **P4.1–P4.4 merged; P4.5 done; P4.6 blocked on billing** (2026-08-08) — P4.5 awaiting founder merge approval
+
+**P4.5 per-store drill-down (operator reads a store's agent reports):** migration 033 two **SECDEF**
+fns `platform_store_reports(org)` + `platform_store_report(org, report)` (detail **scoped to org_id=
+p_org**). `GET /v1/admin/tenants/{org}/reports(/{id})` gated on **`platform.insights:read`** +
+admin-plane, **each read audited with target_org_id** (most sensitive P4 surface — actual insight
+content). web-ops roster names link → `/stores/$orgId` `StoreReportsSection`. **Verify:** backend ruff/
+mypy(141)/guards/**412 pytest** (6 new incl. cross-store id 404) + mig round-trip + lock intact; web-ops
+lint/tsc/**vitest 6**/build. **The real-data Phase-4 dashboards (P4.1–P4.5) are COMPLETE.** **P4.6
+(Financial+Sales) is BLOCKED** on a per-client billing model (revenue-vs-pass-through-cost Q open — see
+VISION_INTAKE item 17 / [[go-revenue-model]]).
+
+---
+
+## Phase 4 · P4.4 — **merged `c1e202d`, CI green** (2026-08-08)
 
 **P4.4 customer success (store health + at-risk):** migration 032 `platform_customer_health()`
 **SECDEF** fn → one row per store (paused, ticket counts, days_since_activity, WoW revenue, computed
