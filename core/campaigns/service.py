@@ -15,14 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.tenancy.repository import set_org_context
 
-_COLS = ("id, name, channel, audience, status, scheduled_at, sent_count, failed_count, "
-         "created_at, executed_at")
+_COLS = ("id, name, channel, audience, template_key, template_lang, status, scheduled_at, "
+         "sent_count, failed_count, halt_reason, created_at, executed_at")
 
 
 async def create_campaign(
     session: AsyncSession, org_id: UUID, *, name: str, channel: str = "whatsapp",
-    audience: str | None = None, scheduled_at: datetime | None = None,
-    created_by: UUID | None = None,
+    audience: str | None = None, template_key: str | None = None, template_lang: str = "en",
+    scheduled_at: datetime | None = None, created_by: UUID | None = None,
 ) -> UUID:
     """Create a campaign record. A schedule makes it `scheduled`; otherwise `draft`."""
     await set_org_context(session, org_id)
@@ -30,11 +30,13 @@ async def create_campaign(
     return (
         await session.execute(
             text(
-                "INSERT INTO campaigns (org_id, name, channel, audience, status, scheduled_at, "
-                " created_by) VALUES (:o, :n, :ch, :a, :st, :sa, :by) RETURNING id"
+                "INSERT INTO campaigns (org_id, name, channel, audience, template_key, "
+                " template_lang, status, scheduled_at, created_by) "
+                "VALUES (:o, :n, :ch, :a, :tk, :tl, :st, :sa, :by) RETURNING id"
             ),
-            {"o": str(org_id), "n": name, "ch": channel, "a": audience, "st": status,
-             "sa": scheduled_at, "by": str(created_by) if created_by else None},
+            {"o": str(org_id), "n": name, "ch": channel, "a": audience, "tk": template_key,
+             "tl": template_lang, "st": status, "sa": scheduled_at,
+             "by": str(created_by) if created_by else None},
         )
     ).scalar_one()
 

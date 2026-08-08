@@ -2373,3 +2373,50 @@ migration 033 up/down round-trip · restore drill still PASS. web-ops — oxlint
 Phase-4 dashboards (P4.1–P4.5) are complete.** P4.6 (Financial + Sales) is BLOCKED on the per-client
 billing model (see VISION_INTAKE item 17 + go-revenue-model): the revenue-vs-pass-through-cost
 question must be answered and a lightweight billing/revenue record built before those numbers are real.
+
+---
+
+## 2026-08-08 — Campaign SEND execute path C1 (MVP-075 / diagram C5) — the top MVP gap
+
+**Branch:** `feature/campaign-send-c1` (off main). **Merge:** `pending`. Backend only (C2 = the `web/`
+wizard, next). Built to the **authoritative spec** (C5, MVP-075/089/066) in full — founder: "full
+faithful version, don't defer anything."
+
+**Why:** the MVP audit found campaigns could be **created + analyzed but never SENT** (`campaign.*`
+events were never emitted; no compose→approve→send). This closes that loop — the analytics engine +
+the P4.3 marketing dashboard now measure real broadcasts.
+
+**Migration 034:** `campaign_sends` (+RLS) per-recipient ledger (contact, conversation, status
+queued/sent/failed/skipped, reason, message_id); `campaigns` gains `template_key`/`template_lang`/
+`halt_reason` and a widened status CHECK (`pending_approval`/`executing`/`halted`/`rejected`).
+
+**The flow (all through the same gated `send()` — no bypass, gated-simulated):**
+- `POST /v1/campaigns/{id}/send` with a **typed recipient count** → resolve audience (consented +
+  un-suppressed, mirroring `send()`'s `_POSITIVE_CONSENT`) → **typed ≠ actual → 409** (real number
+  shown, no silent fix) → **tier-3 approval**, campaign → `pending_approval`.
+- On `approval.resolved` (new consumer group `campaign-send-exec`): approve → queue one `campaign_sends`
+  row per contact + `executing` → **staggered fan-out ≤ `HOURLY_RATE`/hour**; per recipient
+  get-or-create conversation + mint audit-cap + single-use execution token + gated `send()` template
+  (`message_class='marketing'`) — **its consent/suppression gates are the per-send re-check**; a
+  refusal → `skipped` (consent/suppression) or `failed`. When nothing queued → `record_execution` +
+  emit `campaign.executed.v1` → `executed`. Reject → `rejected`, nothing sent.
+- **Quality-halt:** an opt-out spike (> `OPTOUT_HALT_RATIO` of already-sent contacts now suppressed) or
+  a red Meta `channels.quality_rating` → `halted` + `halt_reason` + a warning (S2 telemetry). The Meta
+  rating is the one simulated input (null until real Meta), consistent with our other gated adapters.
+- **`campaign_fanout`** hourly scheduler resumes the stagger until nothing is queued.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Full fan-out sends to consented/un-suppressed, marks executed | `test_approve_fans_out_and_marks_executed` (2/2 sent, executed, excluded get no row) | PASS |
+| Typed-count mismatch is blocked (no silent fix) | `test_typed_count_mismatch_blocks` (actual=2) | PASS |
+| Broadcast is tier-3 approval-gated | `test_send_creates_tier3_approval` | PASS |
+| Reject sends nothing | `test_reject_sends_nothing` | PASS |
+| Quality-halt on opt-out spike | `test_quality_halt_on_optout_spike` | PASS |
+
+**Commands:** `ruff` clean · `mypy core` **143** · guards 0 · **`pytest` 407** (unit+isolation+all
+campaign tests; 5 new) · migration 034 up/down round-trip · restore drill PASS · gitleaks no-leaks.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **C2** — the
+`web/` Campaigns wizard (audience preview → template → review with typed count → the parked approval
+appears in the existing Approvals queue). Segment-targeting + real Meta remain follow-ups.

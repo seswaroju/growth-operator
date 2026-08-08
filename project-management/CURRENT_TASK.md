@@ -9,7 +9,22 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 4 · Operator/CEO console — **P4.1–P4.4 merged; P4.5 done; P4.6 blocked on billing** (2026-08-08) — P4.5 awaiting founder merge approval
+## Campaign SEND (top MVP gap) — **C1 backend done; C2 frontend next** (2026-08-08) — C1 awaiting founder merge approval
+
+**C1 campaign send execute path (MVP-075 / C5, full faithful spec):** migration 034 `campaign_sends`
+(+RLS) + template/halt cols + widened status. `POST /v1/campaigns/{id}/send` **typed-count gate**
+(409, no silent fix) → **tier-3 approval** → on approve (consumer) **staggered fan-out ≤500/hr** →
+per-recipient gated `send()` template (consent/suppression re-check) → `campaign_sends` row → emit
+`campaign.executed.v1` → executed. **Quality-halt** on opt-out spike / red Meta rating. `campaign_fanout`
+hourly scheduler. Audience = consented + un-suppressed. Gated-simulated. **Verify:** ruff/mypy(143)/
+guards/**407 pytest** (5 new incl. full fan-out 2/2 + typed-count 409 + tier-3 + reject + halt) + mig
+round-trip + drill. **Next:** C2 web/ Campaigns wizard (audience preview → template → typed-count
+review; the parked approval shows in the existing Approvals queue). Then per-client billing → bulk
+import / workflows / marketing agent.
+
+---
+
+## Phase 4 · Operator/CEO console — **P4.1–P4.5 merged, CI green; P4.6 blocked on billing** (2026-08-08)
 
 **P4.5 per-store drill-down (operator reads a store's agent reports):** migration 033 two **SECDEF**
 fns `platform_store_reports(org)` + `platform_store_report(org, report)` (detail **scoped to org_id=
