@@ -1954,3 +1954,30 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred:** campaign send-lifecycle (emits `campaign.executed`) is future — consumer idle until then; A2.2 funnel/significance needs real campaign traffic to be meaningful (correct-but-sparse). Migrations 023/024 not in the vault (additive, flagged).
 
 **Next recommended action:** commit A1+A2.1, merge to main, push, verify CI green, record the merge hash. Then A2.2 (funnel + significance + drop-off).
+
+---
+
+## 2026-08-08 — Phase 3.5-eng A2.2+A3.1 + A3.2 + A4.1: campaign analytics engine + insight-record framework
+
+**Branch:** `feature/phase35-eng-a22-attribution` (off main). **Merge:** `pending`. **No dependency.** Full design + founder rationale in DECISIONS 2026-08-08. Committed as one CI-cleanable unit at a phase checkpoint (founder: "commit to main CI cleanable unit").
+
+**A2.2 + A3.1 (combined — founder wanted exact attribution AND the "why" together).** **Migration 025** `campaign_touches` (+RLS). `core/campaigns/attribution.py`: **exact deterministic first-touch** attribution (a conversion is credited to the campaign that FIRST touched the contact within the window) → `campaign_funnel` (reached→leads→quotes→sales + revenue) + `org_baseline_rate`. `core/campaigns/analytics.py` (pure): one-sample proportion **z-test** (real lift vs noise), funnel conversion rates, **drop-off** diagnosis, verdict headline. `GET /v1/campaigns/{id}/analytics`. Multi-touch + `campaign_metrics` rollup deferred (backlog).
+
+**A3.2 (ROI + drivers).** **Unhackable ROI** — revenue only from immutable `orders.total_minor` (no injectable figure), cost = real `sent_count` × the owner's `campaign.cost_per_message_minor` setting, org-isolated, deterministic; cost 0 → ROI undefined. Plain-language **drivers** (`analytics.drivers` — Reach/Conversion/Bottleneck/ROI, each with a note + good/bad/neutral). Wired into `campaign_analytics` + `/analytics`. No migration.
+
+**A4.1 (agent-report framework).** **Migration 026** `agent_reports` (+RLS) — the layered insight record **verdict → drivers → full_breakdown → evidence** (jsonb) + report_type / subject_ref / confidence / model. `core/insights/reports.py` + `GET /v1/insights/reports(/{id})` (`insights:read`). The shape A4.2 (campaign-analysis producer) + A4.4 (simulated agents) write into.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| z-test / funnel / drop-off / verdict; ROI / drivers | `test_campaign_analytics` (12 unit) | PASS |
+| Exact first-touch (routing/window/untouched) + endpoint | `test_campaign_attribution` (4) | PASS |
+| Layered insight record round-trips + list/detail/isolation/gate | `test_agent_reports` (6) | PASS |
+
+**Commands:** `ruff check .` clean · `mypy core` **130** · **guards 0** · **full `pytest tests/unit` + campaign + attribution + reports** — **369 tests** across the touched suites; migrations 025/026 up/down round-trip + RLS forced. Full CI-equivalent run locally before push.
+
+**Security:** revenue/attribution/ROI are deterministic + **strictly org-isolated** (RLS + explicit filter) — a store can never pull another store's orders; no user-supplied figures enter ROI. All three new tables RLS-forced. No external side effect (no LLM; producers are A4.4, gated-simulated).
+
+**Known issues / deferred (backlog):** multi-touch attribution, configurable window/rule, `campaign_metrics` rollup, confidence intervals; the "replied" funnel stage; the campaign send-flow that populates `campaign_touches` (future). Migrations 025/026 not in the vault (flagged).
+
+**Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.2 (campaign-analysis producer → stored insight record).

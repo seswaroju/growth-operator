@@ -78,6 +78,8 @@ PLATFORM_DEFAULTS: dict[str, PlatformDefault] = {
     "autonomy.campaigns": PlatformDefault("auto", schema_ref="core.autonomy"),
     # Global "pause all autonomy" panic switch — on ⇒ every capability forces approval.
     "autonomy.paused": PlatformDefault(False, schema_ref="core.bool"),
+    # The owner's real per-message send cost (integer minor units) — feeds campaign ROI (A3.2).
+    "campaign.cost_per_message_minor": PlatformDefault(50, schema_ref="core.money_minor"),
 }
 
 

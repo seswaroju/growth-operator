@@ -652,3 +652,38 @@ findings, consistent with the "real, not fake" bar.
 
 **Decided by:** Founder (2026-08-07 phase-plan approval: "Yes, I confirm both. Lets start from
 A1->A4"; "Commit the A1+A2 batch to main first").
+
+---
+
+### 2026-08-08 — Campaign analytics engine: exact first-touch attribution + unhackable ROI + layered insight record (A2.2–A4.1)
+
+**Context:** the founder wanted **both** the "why it worked" engine (Option A) **and** exact
+attribution from the start (Option B), plus a plain-language reasons layer, all "solid, unhackable,
+industry-grade … complex yet easier to understand in terms of depth and clarity."
+
+**Decisions (founder-approved 2026-08-08):**
+- **Exact attribution is deterministic single-touch (first-touch), not multi-touch.** A conversion
+  is credited to the campaign that FIRST touched the contact within the attribution window (default
+  30d) before it — auditable, no estimation (`campaign_touches`, migration 025). **Multi-touch
+  credit-splitting is the genuinely-ambiguous case (a modeling choice, not a fact) and is deferred**
+  to `PRODUCTION_DEPTH_BACKLOG.md`, per the founder ("record the backlog so we can get to it later").
+  A `campaign_metrics` rollup table was intentionally NOT built — analytics compute on-the-fly per
+  view (also backlogged).
+- **ROI is "unhackable" by construction.** Revenue derives *only* from immutable `orders.total_minor`
+  attributed by the deterministic rule — **no field lets anyone inject a revenue figure**. Cost =
+  real `sent_count` × the owner's `campaign.cost_per_message_minor` setting (auditable, not a guess);
+  cost 0 ⇒ ROI undefined (never a fake infinity). Everything is org-isolated (RLS + explicit filter,
+  isolation-tested) and recomputable from source records.
+- **The "why" is a one-sample proportion z-test vs the store's baseline** (real lift or noise, 95%),
+  + funnel conversion + drop-off (bottleneck stage). Two-sample/control-group + confidence intervals
+  + Bayesian small-sample are backlogged.
+- **A layered insight record: `verdict → drivers → full_breakdown → evidence`** (migration 026
+  `agent_reports`). `drivers` are plain-language reasons with a good/bad/neutral flag ("add other
+  reason … with information or note there"). This is the owner's progressive-disclosure record and
+  the shape the campaign-analysis producer (A4.2) + simulated agents (A4.4) write into.
+- **Migrations 025/026 land additively off 024** (not in the vault; flagged — precedent
+  `incidents`/`costs_lite`). No LLM (the A4.4 producers stay gated-simulated).
+
+**Decided by:** Founder (2026-08-08: "I want both … can we achieve that?"; "solid, unhackable,
+industry grade level. Complex yet easier to understand in terms of depth and clarity"; "add other
+reason (with information or note there?)"; "Let's record the backlog … commit to main CI cleanable").

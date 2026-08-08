@@ -7,11 +7,15 @@ This is the container the later Phase-3 sections plug into; the counts come from
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.insights import metrics, service
+from core.insights import metrics, reports, service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import INSIGHTS_READ
@@ -66,3 +70,63 @@ async def weekly_summary(
                          last_week=r.last_week, delta_pct=r.delta_pct)
         for r in rows
     ]
+
+
+# ---- Insight records / agent reports (A4.1) --------------------------------
+
+class ReportSummaryOut(BaseModel):
+    id: UUID
+    report_type: str
+    subject_ref: UUID | None
+    title: str
+    verdict: str
+    confidence: str | None
+    generated_at: datetime
+
+
+class ReportDetailOut(ReportSummaryOut):
+    drivers: list[dict[str, Any]]
+    full_breakdown: dict[str, Any]
+    evidence: list[Any]
+    model: str | None
+    prompt_version: str | None
+
+
+@insights_router.get("/reports", response_model=list[ReportSummaryOut],
+                     summary="Insight records (the verdict headlines)")
+async def list_reports(
+    report_type: str | None = None,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[ReportSummaryOut]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    rows = await reports.list_reports(session, current.org_id, report_type)
+    return [
+        ReportSummaryOut(
+            id=r["id"], report_type=r["report_type"], subject_ref=r["subject_ref"],
+            title=r["title"], verdict=r["verdict"], confidence=r["confidence"],
+            generated_at=r["generated_at"],
+        )
+        for r in rows
+    ]
+
+
+@insights_router.get("/reports/{report_id}", response_model=ReportDetailOut,
+                     summary="One insight record, fully drilled down")
+async def get_report(
+    report_id: UUID,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> ReportDetailOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    r = await reports.get_report(session, current.org_id, report_id)
+    if r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+    return ReportDetailOut(
+        id=r["id"], report_type=r["report_type"], subject_ref=r["subject_ref"], title=r["title"],
+        verdict=r["verdict"], confidence=r["confidence"], generated_at=r["generated_at"],
+        drivers=r["drivers"], full_breakdown=r["full_breakdown"], evidence=r["evidence"],
+        model=r["model"], prompt_version=r["prompt_version"],
+    )

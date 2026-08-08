@@ -68,8 +68,22 @@ lives in the analytics/intelligence engine. Enrichment to fold in incrementally:
 
 ## Analytics & Intelligence depth (mostly Phase 3.5-eng / Phase 4)
 
-- Cohort analysis; **multi-touch attribution** (MVP is basic first/last-touch); forecasting;
-  anomaly detection + alerts; scheduled / exportable reports; peer-store benchmarks.
+**Attribution — MVP does exact *single-touch* (first-touch); the depth below is deferred**
+(founder 2026-08-07: "record the backlog so we can get to it later after MVP is working"):
+- **Multi-touch attribution** — split credit across a customer's several touches (e.g. saw the Diwali
+  blast *and* a nurture reminder before buying). This is the genuinely-ambiguous part (a modeling
+  choice, not a fact): linear / time-decay / position-based / data-driven (Shapley) models.
+- **Configurable attribution window + rule** — per-org window (default 30d) and first- vs last-touch
+  choice; view-through vs click/reply-through.
+- **Cross-channel attribution** (WhatsApp + GBP + ads once those exist); de-duplication across touches.
+- **A `campaign_metrics` rollup table + job** — MVP computes campaign analytics on-the-fly per view;
+  precompute/store for scale + trend history.
+- **Statistical depth** — confidence intervals + sample-size adequacy warnings (not just a z-test
+  pass/fail); Bayesian A/B for small samples.
+
+**Other analytics depth:**
+- Cohort analysis; forecasting; anomaly detection + alerts; scheduled / exportable reports;
+  peer-store benchmarks; the "replied" funnel stage (message-level engagement).
 
 ---
 
