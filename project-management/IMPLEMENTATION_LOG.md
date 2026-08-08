@@ -2079,7 +2079,7 @@ read section for staff/viewer; pinned nav test updated, not weakened).
 
 ## 2026-08-08 — Security-hardening S1: secret scanning (audit #16a)
 
-**Branch:** `feature/security-s1-secret-scan` (off main). **Merge:** `pending`. First of three
+**Branch:** `feature/security-s1-secret-scan` (off main). **Merge:** `bc6e4a6`. First of three
 security sub-tickets (S1 secret-scan → S2 error tracking → S3 backup/restore), per the founder-approved
 sequence in DECISIONS 2026-08-08.
 
