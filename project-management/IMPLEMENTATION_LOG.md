@@ -2342,7 +2342,7 @@ real-data dashboard before P4.6 (financial/sales, which waits on the billing mod
 
 ## 2026-08-08 — Phase 4 P4.5: per-store drill-down (operator reads a store's agent reports)
 
-**Branch:** `feature/phase4-p45-store-drilldown` (off main). **Merge:** `pending`. Fifth Phase-4 ticket
+**Branch:** `feature/phase4-p45-store-drilldown` (off main). **Merge:** `cde833e`. Fifth Phase-4 ticket
 — the **last real-data dashboard**. Reuses the curated-SECDEF pattern, but tighter: this exposes a
 store's actual insight CONTENT, not aggregate counts.
 
