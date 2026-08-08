@@ -306,6 +306,25 @@ belong in the **operator/CEO console** (`web-ops/`, Phase 4) — see the dashboa
 cross-tenant audit discipline as the operator plane. **Where:** `dashboards/go-business/`.
 ⚙️ Prereq: Phase 4 operator console; a company-level metrics source; finance inputs.
 
+**Revenue & sales model (founder, 2026-08-08) — refines c/e:**
+- **GO revenue is PER-CLIENT:** each store pays a **monthly subscription** + service charges —
+  **social-media spend, SEO, campaign payments** — per client. So the **Financial** dashboard's real
+  source is a **per-client billing/revenue model** (recurring + per-service line items).
+- **Sales = GO selling GO to store owners:** the **Sales** dashboard is our own acquisition funnel
+  (prospect → demo → onboarded client), not the stores' sales.
+- **The gap:** we have **no billing/payments layer** yet (billing is deferred scope; zero payment
+  code today). So c/e become real only once a lightweight per-client billing model exists — planned
+  for **P4.6**, or its own billing ticket.
+- **Open question for P4.6 — revenue vs. pass-through cost:** when a client pays for "social-media
+  spend," is that (i) a **fee we keep** (revenue), (ii) **ad budget we spend on their behalf** (cost /
+  pass-through), or (iii) **a managed budget + our margin on top**? This determines how the Financial
+  dashboard models revenue vs. expense vs. margin. Also: is the subscription flat or tiered? To be
+  answered when we build P4.6.
+
+**Split by data source (decides the Phase-4 build order):** a/b/d/f are **aggregations of tenants'
+data** we already generate (buildable now, through the audited platform plane); **c/e are GO's own
+finances + sales pipeline** (need the billing model + a GO-sales record — P4.6).
+
 ---
 
 # 18 — Agent architecture + LLM-API cost optimization  🟡 — **cross-cutting**
