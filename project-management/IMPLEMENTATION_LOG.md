@@ -2230,3 +2230,36 @@ OK. gitleaks: no leaks. No customer-`web/` change.
 
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.2 —
 Operational dashboard** (what's breaking/delayed across the platform).
+
+---
+
+## 2026-08-08 — Phase 4 P4.2: operational dashboard ("what's breaking / delayed")
+
+**Branch:** `feature/phase4-p42-operational` (off main). **Merge:** `pending`. Second Phase-4 ticket;
+reuses the curated-SECDEF cross-store pattern from P4.1 (DECISIONS 2026-08-08).
+
+**Migration 030** `platform_operational_health()` **SECURITY DEFINER** function → a SINGLE row of
+platform-wide COUNTS, never any store's rows or PII: `outbox_pending`, `outbox_stuck` (unpublished
+> 5 min), `approvals_pending`, `approvals_overdue` (pending past expiry), `tickets_open`,
+`tickets_urgent` (open + priority=urgent or severity=critical), `stores_paused`. It reads the
+RLS-protected `approvals`/`support_tickets`/`tenant_settings` via definer privilege plus the RLS-free
+`event_outbox`, so the `app.platform_admin` flag allowlist is **unchanged** (least-privilege lock
+green). `GET /v1/admin/ops/health` (`core/tenancy/ops_admin.py`, `platform.tenants:read` + admin
+plane, **audited**). web-ops `OperationalSection` at `/ops` — severity-colored health cards; error
+DETAIL is explicitly deferred to the self-hosted GlitchTip (S2), so we don't fake an error count.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Health counts move by EXACTLY what we seed | `test_health_counts_move_by_exactly_what_we_seed` (before/after deltas) | PASS |
+| Overdue ≠ pending (query discriminates) | same test: pending Δ=2, overdue Δ=1 | PASS |
+| Gated: non-operator 403 / no-token 401 / plane-off 404 | `test_health_403…` / `_401…` / `_404…` | PASS |
+| Flag allowlist NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **139** · guards 0 · **`pytest` 398** (4 new) ·
+migration 030 up/down round-trip · restore drill still PASS at head. web-ops — oxlint clean · `tsc`
+OK · `vitest` 6 (nav pins updated) · build OK. gitleaks: no leaks. No customer-`web/` change.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.3 —
+Executive + Marketing** (aggregate the per-store analytics engine across all stores; needs a curated
+cross-store analytics projection, same SECDEF discipline).

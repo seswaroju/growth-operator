@@ -24,17 +24,17 @@ const PERMS = {
 };
 
 describe("visibleOpNav — role-aware operator nav", () => {
-  it("dev sees Support queue + Stores + Debug", () => {
-    expect(visibleOpNav(PERMS.dev).map((n) => n.path)).toEqual(["/", "/stores", "/debug"]);
+  it("dev sees Support queue + Stores + Operations + Debug", () => {
+    expect(visibleOpNav(PERMS.dev).map((n) => n.path)).toEqual(["/", "/stores", "/ops", "/debug"]);
   });
-  it("admin sees queue + stores, NOT debug", () => {
-    expect(visibleOpNav(PERMS.admin).map((n) => n.path)).toEqual(["/", "/stores"]);
+  it("admin sees queue + stores + ops, NOT debug", () => {
+    expect(visibleOpNav(PERMS.admin).map((n) => n.path)).toEqual(["/", "/stores", "/ops"]);
   });
-  it("staff sees queue + stores, NOT debug", () => {
-    expect(visibleOpNav(PERMS.staff).map((n) => n.path)).toEqual(["/", "/stores"]);
+  it("staff sees queue + stores + ops, NOT debug", () => {
+    expect(visibleOpNav(PERMS.staff).map((n) => n.path)).toEqual(["/", "/stores", "/ops"]);
   });
-  it("analyst sees only Stores (no ticket queue, no debug)", () => {
-    expect(visibleOpNav(PERMS.analyst).map((n) => n.path)).toEqual(["/stores"]);
+  it("analyst sees Stores + Operations (no ticket queue, no debug)", () => {
+    expect(visibleOpNav(PERMS.analyst).map((n) => n.path)).toEqual(["/stores", "/ops"]);
   });
   it("no permissions → nothing", () => {
     expect(visibleOpNav([])).toEqual([]);

@@ -27,6 +27,7 @@ from core.support.api import owner_router as support_owner_router
 from core.tenancy.api_keys import router as api_keys_router
 from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
+from core.tenancy.ops_admin import router as ops_admin_router
 from core.tenancy.orgs_router import router as orgs_router
 from core.tenancy.otp_delivery import assert_otp_config_safe
 from core.tenancy.platform_router import router as platform_router
@@ -73,3 +74,4 @@ app.include_router(support_owner_router)
 app.include_router(support_admin_router)
 app.include_router(platform_router)
 app.include_router(tenants_admin_router)
+app.include_router(ops_admin_router)
