@@ -2300,3 +2300,40 @@ migration 031 up/down round-trip · restore drill still PASS. web-ops — oxlint
 
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.4 —
 Customer success** (ticket trends + at-risk stores) and **P4.5 — per-store drill-down**.
+
+---
+
+## 2026-08-08 — Phase 4 P4.4: customer success (store health + at-risk stores)
+
+**Branch:** `feature/phase4-p44-customer-health` (off main). **Merge:** `pending`. Fourth Phase-4
+ticket; reuses the curated-SECDEF cross-store pattern.
+
+**Migration 032** `platform_customer_health()` **SECURITY DEFINER** function → ONE row PER STORE of
+aggregate health — never any store's customer rows or PII: `paused`, `open_tickets`, `urgent_tickets`,
+`resolved_7d`, `days_since_activity` (NULL if never active), `revenue_7d`, `revenue_prev_7d`, and a
+computed **`at_risk`** = paused OR urgent tickets OR no activity > 14 days OR revenue halved WoW.
+Aggregates the RLS-protected `support_tickets`/`business_metrics`/`tenant_settings` via definer, so the
+`app.platform_admin` flag allowlist is **unchanged** (least-privilege lock green). `GET
+/v1/admin/customer-health` (`core/tenancy/customer_health_admin.py`, `platform.tenants:read` + admin
+plane, **audited**), rows sorted at-risk first. web-ops `CustomerSuccessSection` at `/health` — an
+at-risk-first table with per-store reason chips (paused / N urgent / inactive / revenue drop) + a
+trend header (at-risk / open / resolved-7d).
+
+**Honest scope:** **NPS** (needs a survey mechanism) and **upsell** (needs plan/billing data) are
+shown as explicit "not yet" notes, **not faked**. Upsell lands with the billing model (P4.6).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| `at_risk` fires for paused / urgent / inactive (each cause) | `test_at_risk_fires_per_cause_and_healthy_is_clear` | PASS |
+| Healthy store stays NOT at-risk (negative case) | same test (recent activity, no tickets, not paused) | PASS |
+| Gated: non-operator 403 / no-token 401 / plane-off 404 | `test_health_403…` / `_401…` / `_404…` | PASS |
+| Flag allowlist NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **141** · guards 0 · **`pytest` 406** (4 new) ·
+migration 032 up/down round-trip · restore drill still PASS. web-ops — oxlint clean · `tsc` OK ·
+`vitest` 6 (nav pins updated) · build OK. gitleaks: no leaks. No customer-`web/` change.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.5 —
+per-store drill-down** (operator opens a specific store's agent reports/reasoning, audited) — the last
+real-data dashboard before P4.6 (financial/sales, which waits on the billing model).

@@ -20,6 +20,7 @@ export const OP_NAV: OpNavItem[] = [
   { path: "/stores", label: "Stores", permission: "platform.tenants:read" },
   { path: "/ops", label: "Operations", permission: "platform.tenants:read" }, // P4.2 health
   { path: "/analytics", label: "Analytics", permission: "platform.tenants:read" }, // P4.3 rollup
+  { path: "/health", label: "Customer success", permission: "platform.tenants:read" }, // P4.4
   { path: "/debug", label: "Debug", permission: "platform.debug" }, // dev-only placeholder
 ];
 
