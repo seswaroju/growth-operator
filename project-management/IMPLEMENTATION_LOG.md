@@ -2305,7 +2305,7 @@ Customer success** (ticket trends + at-risk stores) and **P4.5 — per-store dri
 
 ## 2026-08-08 — Phase 4 P4.4: customer success (store health + at-risk stores)
 
-**Branch:** `feature/phase4-p44-customer-health` (off main). **Merge:** `pending`. Fourth Phase-4
+**Branch:** `feature/phase4-p44-customer-health` (off main). **Merge:** `c1e202d`. Fourth Phase-4
 ticket; reuses the curated-SECDEF cross-store pattern.
 
 **Migration 032** `platform_customer_health()` **SECURITY DEFINER** function → ONE row PER STORE of
