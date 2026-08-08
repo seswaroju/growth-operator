@@ -26,6 +26,7 @@ from core.support.api import admin_router as support_admin_router
 from core.support.api import owner_router as support_owner_router
 from core.tenancy.analytics_admin import router as analytics_admin_router
 from core.tenancy.api_keys import router as api_keys_router
+from core.tenancy.customer_health_admin import router as customer_health_admin_router
 from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
 from core.tenancy.ops_admin import router as ops_admin_router
@@ -77,3 +78,4 @@ app.include_router(platform_router)
 app.include_router(tenants_admin_router)
 app.include_router(ops_admin_router)
 app.include_router(analytics_admin_router)
+app.include_router(customer_health_admin_router)

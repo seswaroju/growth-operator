@@ -9,7 +9,20 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 4 · Operator/CEO console — **P4.1–P4.2 merged; P4.3 done; P4.4–P4.6 pending** (2026-08-08) — P4.3 awaiting founder merge approval
+## Phase 4 · Operator/CEO console — **P4.1–P4.3 merged; P4.4 done; P4.5–P4.6 pending** (2026-08-08) — P4.4 awaiting founder merge approval
+
+**P4.4 customer success (store health + at-risk):** migration 032 `platform_customer_health()`
+**SECDEF** fn → one row per store (paused, ticket counts, days_since_activity, WoW revenue, computed
+**`at_risk`** = paused OR urgent OR inactive>14d OR revenue halved) — **no PII**, flag allowlist
+untouched. `GET /v1/admin/customer-health` (`platform.tenants:read` + admin-plane, audited); web-ops
+`CustomerSuccessSection` at `/health` (at-risk-first + reason chips). **NPS/upsell deferred** (surveys/
+billing — not faked). **Verify:** backend ruff/mypy(141)/guards/**406 pytest** (4 new: at_risk per
+cause + healthy clear; 403/401/404) + mig round-trip + lock intact; web-ops lint/tsc/**vitest 6**/
+build. **Next:** P4.5 per-store drill-down.
+
+---
+
+## Phase 4 · P4.3 — **merged `97663fc`, CI green** (2026-08-08)
 
 **P4.3 executive + marketing (cross-store rollup):** migration 031 `platform_analytics_rollup(days)`
 **SECDEF** fn → one row of platform-wide sums/counts over a window + prior window (WoW): revenue/

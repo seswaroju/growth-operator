@@ -201,3 +201,24 @@ export interface AnalyticsRollup {
 export function adminAnalyticsRollup(token: string, days = 7): Promise<AnalyticsRollup> {
   return authed<AnalyticsRollup>(`/v1/admin/analytics/rollup?days=${days}`, token);
 }
+
+// ---- Customer-success health (/v1/admin/customer-health, platform.tenants:read) -------------
+// Per-store aggregate health + a computed at_risk flag (at-risk first). Aggregate signals only —
+// never a store's customer data. NPS + upsell are deferred (need surveys / billing data).
+
+export interface StoreHealth {
+  org_id: string;
+  name: string;
+  paused: boolean;
+  open_tickets: number;
+  urgent_tickets: number;
+  resolved_7d: number;
+  days_since_activity: number | null;
+  revenue_7d: number;
+  revenue_prev_7d: number;
+  at_risk: boolean;
+}
+
+export function adminCustomerHealth(token: string): Promise<StoreHealth[]> {
+  return authed<StoreHealth[]>("/v1/admin/customer-health", token);
+}
