@@ -17,7 +17,8 @@ export interface OpNavItem {
 // Sections of the operator app. `path` matches the router routes.
 export const OP_NAV: OpNavItem[] = [
   { path: "/", label: "Support queue", permission: "platform.tickets:read" },
-  { path: "/stores", label: "Stores", permission: "platform.tenants:read" }, // Phase-4 placeholder
+  { path: "/stores", label: "Stores", permission: "platform.tenants:read" },
+  { path: "/ops", label: "Operations", permission: "platform.tenants:read" }, // P4.2 health
   { path: "/debug", label: "Debug", permission: "platform.debug" }, // dev-only placeholder
 ];
 

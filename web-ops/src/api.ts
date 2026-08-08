@@ -157,3 +157,21 @@ export interface TenantRosterRow {
 export function adminListTenants(token: string): Promise<TenantRosterRow[]> {
   return authed<TenantRosterRow[]>("/v1/admin/tenants", token);
 }
+
+// ---- Operational health (/v1/admin/ops/health, platform.tenants:read) -------
+// Platform-wide "what's breaking / delayed" COUNTS only — never any store's rows. Error DETAIL lives
+// in the self-hosted GlitchTip (security S2), not here.
+
+export interface OperationalHealth {
+  outbox_pending: number;
+  outbox_stuck: number;
+  approvals_pending: number;
+  approvals_overdue: number;
+  tickets_open: number;
+  tickets_urgent: number;
+  stores_paused: number;
+}
+
+export function adminOpsHealth(token: string): Promise<OperationalHealth> {
+  return authed<OperationalHealth>("/v1/admin/ops/health", token);
+}

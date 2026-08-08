@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 4 · Operator/CEO console — **P4.1 done; P4.2–P4.6 pending** (2026-08-08) — P4.1 awaiting founder merge approval
+## Phase 4 · Operator/CEO console — **P4.1 merged; P4.2 done; P4.3–P4.6 pending** (2026-08-08) — P4.2 awaiting founder merge approval
+
+**P4.2 operational dashboard (what's breaking/delayed):** migration 030 `platform_operational_health()`
+**SECDEF** fn → one row of curated COUNTS (outbox_pending/stuck, approvals_pending/overdue,
+tickets_open/urgent, stores_paused), **no PII**, flag allowlist untouched. `GET /v1/admin/ops/health`
+(`platform.tenants:read` + admin-plane, audited); web-ops `OperationalSection` at `/ops` (severity
+cards; error detail deferred to GlitchTip). **Verify:** backend ruff/mypy(139)/guards/**398 pytest**
+(4 new: before/after deltas + overdue≠pending; 403/401/404) + mig round-trip + lock intact; web-ops
+lint/tsc/**vitest 6**/build. **Next:** P4.3 Executive+Marketing (cross-store analytics rollup).
+
+---
+
+## Phase 4 · P4.1 — **merged `98ecb05`, CI green** (2026-08-08)
 
 **P4.1 cross-store roster (foundation):** migration 029 `platform_tenant_roster()` **SECURITY
 DEFINER** fn → curated per-store rows (id/name/plan/status/created_at/paused/open_tickets/member_count),
