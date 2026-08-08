@@ -1981,3 +1981,30 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred (backlog):** multi-touch attribution, configurable window/rule, `campaign_metrics` rollup, confidence intervals; the "replied" funnel stage; the campaign send-flow that populates `campaign_touches` (future). Migrations 025/026 not in the vault (flagged).
 
 **Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.2 (campaign-analysis producer → stored insight record).
+
+---
+
+## 2026-08-08 — Phase 3.5-eng A4.2 + A4.3 + A4.4: intelligence producers (campaign analysis, tracked competitors, simulated agents)
+
+**Branch:** `feature/phase35-eng-a42-producer` (off main). **Merge:** `pending`. **No dependency.** One CI-cleanable unit; full rationale in DECISIONS 2026-08-08.
+
+**A4.2 — campaign-analysis producer (deterministic, no LLM).** `core/campaigns/producer.py` runs the A2/A3 engine (`campaign_analytics`) and stores a layered `agent_report` (report_type=`campaign_analysis`, subject=campaign, `model="deterministic"`): verdict + drivers + full_breakdown (funnel/significance/ROI/drop-off). `analytics.verdict_line` (pure owner one-liner). `POST /v1/campaigns/{id}/report` (`campaigns:read`).
+
+**A4.3 — tracked competitors.** **Migration 027** `tracked_competitors` (+RLS). `core/competitors/` service (`DELETE … RETURNING`) + api: `POST`/`DELETE` (`campaigns:send`, owner/manager), `GET` list/`{id}` (`insights:read`, all roles). The input to A4.4.
+
+**A4.4 — simulated competitor + marketing agents.** `core/insights/agents.py`: a **competitor-analysis** producer (over `tracked_competitors`) and a **marketing-strategist** producer (heuristics over the A1 weekly metrics), both **gated-simulated** — off (`llm_provider_enabled`=false, default) → deterministic clearly-labelled output (`model="simulated"`); on-but-unwired → **fail closed** (`provider_unavailable`, RealModel posture). `POST /v1/insights/reports/generate {report_type}` (`campaigns:send`).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Campaign producer stores a layered report; endpoint persists; verdict_line | `test_campaign_producer` (2) + `verdict_line` unit | PASS |
+| Competitors CRUD, org-scoped, RBAC split (staff view-only) | `test_competitors` (4) | PASS |
+| Competitor/marketing producers write simulated insights; gate fails closed; endpoint gate | `test_insight_agents` (4) | PASS |
+
+**Commands:** `ruff check .` clean · `mypy core` **135** · **guards 0** (no industry nouns in the simulated output) · **full `pytest tests/unit`** + all four campaign/competitor/agent suites — **374 tests** across the touched suites; migration 027 up/down round-trip + RLS forced. Full CI-equivalent run locally before push.
+
+**Security:** all reads/writes org-scoped + RLS + isolation-tested; no LLM/network (agents gated-simulated, tests never hit a provider); competitor names live only in tests, not `core/` (guards clean). No external side effect.
+
+**Known issues / deferred (backlog):** the competitor agent's body is a placeholder over the tracked list (real web/LLM research is future); real LLM wiring is a gated go-live step. A4.5 (owner⇄GO thread) + A4.6 (owner Insights UI) remain.
+
+**Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.5 (owner⇄GO cross-tenant thread).

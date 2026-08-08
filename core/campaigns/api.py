@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.campaigns import attribution, service
+from core.campaigns import attribution, producer, service
+from core.insights import reports
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
@@ -150,3 +151,27 @@ async def campaign_analytics(
             DriverOut(label=d.label, detail=d.detail, sentiment=d.sentiment) for d in a.drivers
         ],
     )
+
+
+class GeneratedReportOut(BaseModel):
+    report_id: UUID
+    report_type: str
+    verdict: str
+
+
+@router.post("/{campaign_id}/report", response_model=GeneratedReportOut,
+             status_code=status.HTTP_201_CREATED,
+             summary="Analyse a campaign and store a layered insight record")
+async def generate_report(
+    campaign_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> GeneratedReportOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if await service.get_campaign(session, current.org_id, campaign_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found")
+    rid = await producer.produce_campaign_report(session, current.org_id, campaign_id)
+    r = await reports.get_report(session, current.org_id, rid)
+    assert r is not None
+    return GeneratedReportOut(report_id=rid, report_type=r["report_type"], verdict=r["verdict"])

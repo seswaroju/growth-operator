@@ -10,6 +10,7 @@ from core.campaigns.analytics import (
     headline,
     roi,
     significance,
+    verdict_line,
 )
 
 
@@ -86,3 +87,13 @@ def test_drivers_too_early_and_no_cost() -> None:
     by_label = {d.label: d for d in ds}
     assert "too few" in by_label["Conversion"].detail.lower()
     assert by_label["ROI"].sentiment == "neutral"  # cost not set
+
+
+def test_verdict_line() -> None:
+    worked = verdict_line("worked", significance(30, 100, 0.02), roi(1800000, 100000))
+    assert worked.startswith("Worked") and "18×" in worked
+    assert "Too early" in verdict_line("too_early", significance(2, 10, 0.02), roi(0, 0))
+    under = verdict_line("underperformed", significance(5, 1000, 0.02), roi(0, 0))
+    assert "Underperformed" in under
+    none = verdict_line("no_clear_effect", significance(3, 100, 0.02), roi(0, 0))
+    assert "No clear effect" in none
