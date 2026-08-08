@@ -863,3 +863,26 @@ deploy, SOPS keys) are gated on founder accounts/infra, not forgotten.
 P4.6), then bulk import / workflows / marketing-agent layer.** Rationale: campaign-send is the
 highest-leverage gap (proactive outreach = the "growth"; already half-built; makes the analytics +
 P4.3 marketing dashboard measure real campaigns).
+
+---
+
+## 2026-08-08 — Per-client billing model (unblocks P4.6 Financial)
+
+Founder answered the revenue-vs-pass-through question (flagged since VISION_INTAKE item 17 /
+[[go-revenue-model]]):
+
+- **Service charges = managed budget + our margin.** A service charge (social / SEO / campaign)
+  records `amount_minor` (what the client pays) and `cost_minor` (what we pay out); **margin =
+  amount − cost**. Handles managed-with-markup directly; pure-fee = cost 0; pass-through = amount ==
+  cost. The `billing_charges` line shape (amount + cost) is the same regardless.
+- **Subscription = named tiers/plans.** A `billing_plans` catalog (name + price) with each client
+  assigned to a plan (`billing_subscriptions`); **MRR = Σ active plan prices**.
+
+**Billing is OPERATOR-owned data** (GO's revenue records ABOUT clients, not tenant data): plans/
+subscriptions/charges are managed through the **operator plane** (admin-plane gated + audited), not
+by store owners. A client-facing invoice view is a later follow-up. The **Financial dashboard**
+(P4.6, web-ops) reads: MRR, service revenue, COGS, margin, active clients, per-client breakdown.
+
+**Scope:** B1 = billing model + operator CRUD (this ticket); B2 = Financial dashboard (P4.6). The
+**Sales** dashboard needs a SEPARATE GO-sales-pipeline model (prospect→onboarded) — its own later
+ticket. **Decided by:** Founder (2026-08-08).
