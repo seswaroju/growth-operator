@@ -6,6 +6,7 @@ import OperationalSection from "./components/OperationalSection";
 import Placeholder from "./components/Placeholder";
 import QueueSection from "./components/QueueSection";
 import Shell from "./components/Shell";
+import StoreReportsSection from "./components/StoreReportsSection";
 import StoresSection from "./components/StoresSection";
 
 function DebugPage() {
@@ -29,6 +30,11 @@ const storesRoute = createRoute({
   path: "/stores",
   component: StoresSection,
 });
+const storeReportsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/stores/$orgId",
+  component: StoreReportsSection,
+});
 const opsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/ops",
@@ -51,7 +57,7 @@ const debugRoute = createRoute({
 });
 
 const routeTree = rootRoute.addChildren([
-  queueRoute, storesRoute, opsRoute, analyticsRoute, healthRoute, debugRoute,
+  queueRoute, storesRoute, storeReportsRoute, opsRoute, analyticsRoute, healthRoute, debugRoute,
 ]);
 
 export const router = createRouter({ routeTree });

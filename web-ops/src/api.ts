@@ -222,3 +222,34 @@ export interface StoreHealth {
 export function adminCustomerHealth(token: string): Promise<StoreHealth[]> {
   return authed<StoreHealth[]>("/v1/admin/customer-health", token);
 }
+
+// ---- Per-store drill-down: a store's insight reports (/v1/admin/tenants/{org}/reports) -------
+// platform.insights:read; every read is audited server-side with the target org.
+
+export interface StoreReportSummary {
+  id: string;
+  report_type: string;
+  subject_ref: string | null;
+  title: string;
+  verdict: string;
+  confidence: string | null;
+  generated_at: string;
+}
+
+export interface StoreReportDetail extends StoreReportSummary {
+  drivers: { label: string; detail: string; sentiment: string }[];
+  full_breakdown: Record<string, unknown>;
+  evidence: unknown[];
+  model: string | null;
+  prompt_version: string | null;
+}
+
+export function adminStoreReports(token: string, orgId: string): Promise<StoreReportSummary[]> {
+  return authed<StoreReportSummary[]>(`/v1/admin/tenants/${orgId}/reports`, token);
+}
+
+export function adminStoreReport(
+  token: string, orgId: string, reportId: string,
+): Promise<StoreReportDetail> {
+  return authed<StoreReportDetail>(`/v1/admin/tenants/${orgId}/reports/${reportId}`, token);
+}

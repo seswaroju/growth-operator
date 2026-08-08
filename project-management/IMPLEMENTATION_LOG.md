@@ -2337,3 +2337,39 @@ migration 032 up/down round-trip · restore drill still PASS. web-ops — oxlint
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.5 —
 per-store drill-down** (operator opens a specific store's agent reports/reasoning, audited) — the last
 real-data dashboard before P4.6 (financial/sales, which waits on the billing model).
+
+---
+
+## 2026-08-08 — Phase 4 P4.5: per-store drill-down (operator reads a store's agent reports)
+
+**Branch:** `feature/phase4-p45-store-drilldown` (off main). **Merge:** `pending`. Fifth Phase-4 ticket
+— the **last real-data dashboard**. Reuses the curated-SECDEF pattern, but tighter: this exposes a
+store's actual insight CONTENT, not aggregate counts.
+
+**Migration 033** two **SECURITY DEFINER** functions over one store's RLS-protected `agent_reports`:
+`platform_store_reports(p_org)` (summaries) and `platform_store_report(p_org, p_report)` (full report,
+**scoped to `org_id = p_org`** so a report id from another store can never resolve under the wrong
+org). Flag allowlist unchanged (lock green). Two endpoints on the tenants-admin router:
+`GET /v1/admin/tenants/{org}/reports` (list) + `/{report_id}` (detail), gated on
+**`platform.insights:read`** (the purpose-built permission) + admin plane, and **each read audited to
+`platform_access_log` with `target_org_id`** — a permanent record of which operator opened which
+store's insights. web-ops: roster store names now link → `/stores/$orgId` `StoreReportsSection` —
+verdict headlines → expand into drivers + numbers, operator-side (dark theme).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Operator reads a store's report list (only that store's) | `test_operator_reads_a_stores_reports_list` | PASS |
+| Operator reads full report detail (drivers + breakdown) | `test_operator_reads_a_stores_report_detail` | PASS |
+| **A report id from another store 404s under wrong org** | `test_report_id_from_another_store_404s_under_wrong_org` | PASS |
+| Gated: non-operator 403 / no-token 401 / plane-off 404 | `test_reports_403…` / `_401…` / `_404…` | PASS |
+| Flag allowlist NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **141** · guards 0 · **`pytest` 412** (6 new) ·
+migration 033 up/down round-trip · restore drill still PASS. web-ops — oxlint clean · `tsc` OK ·
+`vitest` 6 · build OK. gitleaks: no leaks. No customer-`web/` change.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. **The real-data
+Phase-4 dashboards (P4.1–P4.5) are complete.** P4.6 (Financial + Sales) is BLOCKED on the per-client
+billing model (see VISION_INTAKE item 17 + go-revenue-model): the revenue-vs-pass-through-cost
+question must be answered and a lightweight billing/revenue record built before those numbers are real.

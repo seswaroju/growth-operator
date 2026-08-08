@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { adminListTenants, type TenantRosterRow } from "../api";
@@ -25,7 +26,13 @@ function StoreRow({ store }: { store: TenantRosterRow }) {
   return (
     <tr className="border-t border-slate-700/60">
       <td className="py-2 pr-3">
-        <div className="text-sm font-medium text-slate-100">{store.name}</div>
+        <Link
+          to="/stores/$orgId"
+          params={{ orgId: store.org_id }}
+          className="text-sm font-medium text-slate-100 hover:text-indigo-300 hover:underline"
+        >
+          {store.name}
+        </Link>
         <div className="text-[11px] text-slate-500">since {fmtDate(store.created_at)}</div>
       </td>
       <td className="px-3"><StatusBadge paused={store.paused} status={store.status} /></td>
