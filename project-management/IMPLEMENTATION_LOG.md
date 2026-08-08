@@ -1928,3 +1928,29 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred:** the finer ladder (`suggest`/`off` vs `draft_only`, true-disable) collapses to "force approval" at the binary gate — deeper granularity + all other autonomy depth in `PRODUCTION_DEPTH_BACKLOG.md`; the `autonomy.paused`/`*` resolves add a couple of DB reads per gate eval (fine for MVP; batch later).
 
 **Next recommended action:** commit 3.6, merge `feature/phase3-6-settings` to main, push, verify CI green, record the merge hash. Then **plan Phase 3.5-eng (analytics & intelligence engine)** before building; then Phase 4.
+
+---
+
+## 2026-08-07 — Phase 3.5-eng A1 + A2.1: analytics rollup foundation + campaigns model
+
+**Branch:** `feature/phase35-eng-analytics` (off main). **Merge:** `pending`. **No dependency.** Founder-approved phase plan (~8 tickets A1→A4.3); this batch is the first two, committing at a phase checkpoint.
+
+**A1 — event-facts + rollup foundation.** **Migration 023** `business_metrics` (org-scoped +RLS): `(org_id, metric_date, metric_key, dimension, value_numeric, value_minor)` + UNIQUE for idempotent upsert. `core/insights/metrics.py`: `compute_day` (counts leads/quotes/orders/revenue/messages_in/out from the domain tables), `upsert_day` (idempotent), `weekly_summary` (this-week vs last-week + WoW %). `core/insights/rollup.py`: `rollup_org` + the scheduled `business_metrics_rollup` job (daily 00:15 UTC, fans out per org via `org_scoped_session`, recomputes the trailing 30 days) — registered in `core/scheduler.py` (scheduler job-set test updated). `GET /v1/insights/summary` (`insights:read`). Owner surfacing: Home's placeholder → a real **"This week"** outcome card (New inquiries · Quotes · Orders · Revenue, each with a ↑/↓ WoW delta; empty state until a store has data). `lib/insights.ts` (+test).
+
+**A2.1 — campaigns model + persistence.** **Migration 024** `campaigns` (org-scoped +RLS; lands at 024, not the doc's 018 slot — flagged, precedent `incidents`). `core/campaigns/`: `service` (create/list/get + `record_execution`), `consumer` (`@consumer(campaign.executed.v1)` → records send/failed counts, org-scoped, idempotent; wired in `core/worker.py`), `api` (`POST /v1/campaigns` `campaigns:send`; `GET` list/`{id}` `campaigns:read`). **Honest finding (flagged):** `campaign.*` events are *defined* (topics.yaml/types.py) but **emitted by nothing** — there is no campaign send-lifecycle yet (the campaigner agent's execution is future work). So the consumer is wired + ready and idle; `create` makes a real record now so the model + (A2.2) analytics have data. Backend-only (campaign analytics is operator-side, Phase 4).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Rollup counts domain tables; idempotent; org-scoped | `test_business_metrics` (compute/idempotent/scoped) | PASS |
+| Week-over-week summary + delta + `insights:read` gate | `test_weekly_summary_wow_delta` / `test_summary_endpoint` / `_requires_permission` | PASS |
+| Campaign create/list/get, org-scoped, gated | `test_campaigns` (create/list/404/send-gate/read-gate) | PASS |
+| `campaign.executed` consumer records send counts | `test_campaigns::test_consumer_records_execution` | PASS |
+
+**Commands:** `ruff check .` clean · `mypy core` **127** · **`scripts/guards` 0** · **full `pytest tests/unit` 358** (+scheduler job-set updated, +campaigns import-clean) · A1 **6** + A2.1 **7** pytest; migrations 023/024 up/down round-trip + RLS forced (2 policies each); `web` `tsc`/`vitest` **41** (+insights 4)/`oxlint`(2 pre-existing)/`build`; real-HTTP smokes (summary WoW; campaign create→list→consumer→executed). **Full CI-equivalent run locally before push** (the 3.4 lesson).
+
+**Security:** both new tables RLS + org-scoped + isolation-tested; the consumer opens one `org_scoped_session` per event (never cross-tenant). Read/write gated (`insights:read`, `campaigns:read`/`:send`). No external side effect (consumer only records; no real send).
+
+**Known issues / deferred:** campaign send-lifecycle (emits `campaign.executed`) is future — consumer idle until then; A2.2 funnel/significance needs real campaign traffic to be meaningful (correct-but-sparse). Migrations 023/024 not in the vault (additive, flagged).
+
+**Next recommended action:** commit A1+A2.1, merge to main, push, verify CI green, record the merge hash. Then A2.2 (funnel + significance + drop-off).

@@ -624,3 +624,31 @@ proxy/engine read them; the real gate is the approval-engine tiers. The founder 
 
 **Decided by:** Founder (2026-08-07: "I feel option (A) … that way its not fake and genuinely it
 works"; "add more scope … maynot be for MVP but note down … production level in notes somewhere").
+
+---
+
+### 2026-08-07 — Analytics & Intelligence engine: migrations 023/024 (additive, flagged); rollup-from-domain-tables; campaign events not yet emitted
+
+**Context:** starting the founder-approved Phase 3.5-eng (analytics/intelligence engine, ~8 tickets
+A1→A4.3). This entry records the first two tickets' structural decisions + the honest scaffolding
+findings, consistent with the "real, not fake" bar.
+
+**Decisions (founder-approved plan 2026-08-07):**
+- **Migrations `023 business_metrics` + `024 campaigns` land additively off head `022`,** not in the
+  vault migration-order doc (which schedules a campaigns/metrics cluster under 018/MVP-074). Same
+  posture + precedent as `incidents`/`costs_lite`/`support_tickets` (flagged; MVP-074 must skip
+  re-creating `campaigns`). Both org-scoped (+RLS forced), up/down round-tripped.
+- **A1 computes metrics by rolling up the domain tables, not a separate event-fact store.** The
+  scheduled `business_metrics_rollup` (daily, per-org, trailing 30 days) recomputes counts from
+  `leads`/`quotes`/`orders`/`messages` + upserts idempotently (UNIQUE + ON CONFLICT). A dedicated
+  `analytics_facts` event-log is **not** built — the domain tables carry timestamps, so rollups are
+  the leaner real foundation. Deferred to the backlog if event-level detail is later needed.
+- **Honest finding (flagged): `campaign.*` events are defined but emitted by nothing.** There is no
+  campaign send-lifecycle yet (the campaigner agent's execution is future work). So A2.1 builds the
+  `campaigns` model + a **create-record** path (campaigns exist + are measurable now) + the
+  **`campaign.executed` consumer wired and ready** (idle until a real send-flow emits). The A2.2
+  funnel/significance will therefore be **correct-but-sparse until real campaign traffic exists** —
+  expected, not a defect. The campaign send-lifecycle is out of the analytics engine's scope.
+
+**Decided by:** Founder (2026-08-07 phase-plan approval: "Yes, I confirm both. Lets start from
+A1->A4"; "Commit the A1+A2 batch to main first").

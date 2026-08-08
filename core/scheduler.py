@@ -37,11 +37,13 @@ def _install_jobs() -> None:
     idempotent across process (re)starts."""
     from core.approvals import notify, trust
     from core.catalog import embed
+    from core.insights import rollup
 
     sched.clear()
     notify.register_jobs()  # approval_ladder — every minute
     trust.register_jobs()  # trust_ledger_settle — hourly
     embed.register_jobs()  # embeddings_batch — every 5 min (simulated embedder)
+    rollup.register_jobs()  # business_metrics_rollup — daily 00:15 UTC
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 

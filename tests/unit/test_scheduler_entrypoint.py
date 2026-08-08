@@ -15,7 +15,8 @@ from typing import Any
 from core import scheduler
 from core.events import scheduler as sched
 
-EXPECTED_JOBS = {"approval_ladder", "trust_ledger_settle", "embeddings_batch", "dedupe_prune"}
+EXPECTED_JOBS = {"approval_ladder", "trust_ledger_settle", "embeddings_batch",
+                 "business_metrics_rollup", "dedupe_prune"}
 
 
 class FakeRedis:

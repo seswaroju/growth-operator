@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from core.api.health import router as health_router
 from core.approvals.api import router as approvals_router
+from core.campaigns.api import router as campaigns_router
 from core.catalog.router import router as catalog_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
 from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
@@ -13,6 +14,7 @@ from core.common.telemetry import setup_telemetry
 from core.conversations.api import router as conversations_router
 from core.customers.api import router as customers_router
 from core.ingestion.api import router as imports_router
+from core.insights.api import insights_router
 from core.insights.api import router as dashboard_router
 from core.packs.router import router as packs_router
 from core.pricing.api import rates_router
@@ -51,7 +53,9 @@ app.include_router(whatsapp_ingress_router)
 app.include_router(whatsapp_connect_router)
 app.include_router(packs_router)
 app.include_router(catalog_router)
+app.include_router(campaigns_router)
 app.include_router(dashboard_router)
+app.include_router(insights_router)
 app.include_router(conversations_router)
 app.include_router(customers_router)
 app.include_router(pricing_router)

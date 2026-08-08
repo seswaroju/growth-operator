@@ -114,6 +114,17 @@ export function getOverview(token: string): Promise<Overview> {
   return authed<Overview>("/v1/dashboard/overview", token);
 }
 
+export interface MetricSummary {
+  metric_key: string;
+  this_week: number;
+  last_week: number;
+  delta_pct: number | null;
+}
+
+export function getInsightsSummary(token: string): Promise<MetricSummary[]> {
+  return authed<MetricSummary[]>("/v1/insights/summary", token);
+}
+
 // ---- Approvals (/v1/approvals, approvals:read / approvals:resolve) ----------
 
 export interface Approval {
