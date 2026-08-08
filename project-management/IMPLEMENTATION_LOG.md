@@ -2268,7 +2268,7 @@ cross-store analytics projection, same SECDEF discipline).
 
 ## 2026-08-08 — Phase 4 P4.3: executive + marketing (cross-store analytics rollup)
 
-**Branch:** `feature/phase4-p43-analytics-rollup` (off main). **Merge:** `pending`. Third Phase-4
+**Branch:** `feature/phase4-p43-analytics-rollup` (off main). **Merge:** `97663fc`. Third Phase-4
 ticket; reuses the curated-SECDEF cross-store pattern (029/030).
 
 **Migration 031** `platform_analytics_rollup(p_days)` **SECURITY DEFINER** function → a SINGLE row of
