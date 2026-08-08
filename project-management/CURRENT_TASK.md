@@ -9,7 +9,22 @@ selects and approves the next ticket.
 
 ---
 
-## Security hardening (from audit #16) — **S1 + S2 merged; S3 done** (2026-08-08) — S3 awaiting founder merge approval; initiative complete on merge
+## Phase 4 · Operator/CEO console — **P4.1 done; P4.2–P4.6 pending** (2026-08-08) — P4.1 awaiting founder merge approval
+
+**P4.1 cross-store roster (foundation):** migration 029 `platform_tenant_roster()` **SECURITY
+DEFINER** fn → curated per-store rows (id/name/plan/status/created_at/paused/open_tickets/member_count),
+**no customer PII**; reads RLS-protected settings/tickets/user_orgs via definer **without widening the
+`app.platform_admin` flag** (least-privilege lock stays green). `GET /v1/admin/tenants`
+(`platform.tenants:read` + admin-plane, **audited**); web-ops `StoresSection` roster table. **Verify:**
+backend ruff/mypy(138)/guards/**394 pytest** (5 new: reflects state; curated-no-PII; 403/401/404) +
+mig round-trip + lock intact; web-ops lint/tsc/**vitest 6**/build. **Founder-approved Phase-4 order:**
+P4.1 foundation → P4.2 Operational → P4.3 Executive+Marketing → P4.4 Customer-success → P4.5 per-store
+drill-down → P4.6 Financial+Sales (needs a per-client billing model; revenue-vs-passthrough Q open).
+**Next:** P4.2 Operational dashboard.
+
+---
+
+## Security hardening (from audit #16) — **COMPLETE: S1 + S2 + S3 merged** (2026-08-08)
 
 **S3 backup + tested restore (audit #16e) — the restore DRILL is the point:** `scripts/db_backup.sh`
 / `db_restore.sh` (guardrails: refuses `*prod*` + primary DB without `--force`) / `db_restore_drill.sh`

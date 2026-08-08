@@ -2192,3 +2192,41 @@ automation (scheduled/off-site/encrypted/PITR/scheduled-drill) deferred to PRODU
 job will run the drill natively with host pg tools). **This completes the security-hardening
 initiative (S1 secret scan + S2 error tracking + S3 backup/restore) — audit #16 a/d/e closed; b/c/g
 were already strong; f (payments) N/A.**
+
+---
+
+## 2026-08-08 — Phase 4 P4.1: operator console foundation — cross-store roster
+
+**Branch:** `feature/phase4-p41-tenant-roster` (off main). **Merge:** `pending`. First Phase-4 ticket;
+the backbone the GO business dashboards hang off. **Founder-approved sequence:** foundation (roster)
+first, then the real-data dashboards P4.2–P4.5, then P4.6 financial/sales (needs a billing model).
+
+**The security shape (this is the cross-tenant surface, handled deliberately):** a cross-store roster
+must read RLS-protected per-store tables, but we refused to widen the `app.platform_admin` flag (that
+would break the least-privilege lock). Instead — migration 029 adds **`platform_tenant_roster()`, a
+`SECURITY DEFINER` function** (same controlled pattern as `resolve_report_org`/028) that returns ONLY
+curated registry + count fields per store — `org_id, name, plan, status, created_at, paused,
+open_tickets, member_count` — and **never customer PII** (no contacts, messages, revenue). It runs
+with definer privilege to count `tenant_settings`/`support_tickets`/`user_orgs`, so the flag allowlist
+is unchanged and `test_platform_admin_scope` stays green (verified). `GET /v1/admin/tenants`
+(`core/tenancy/tenants_admin.py`) is gated on `platform.tenants:read` + the admin plane and **audits
+every listing** to `platform_access_log` (cross-tenant reads are audited, not just writes). web-ops
+`StoresSection` renders the roster table (name · active/paused · plan · members · open tickets),
+replacing the placeholder; nav was already gated on `platform.tenants:read`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Roster reflects real per-store state (paused + counts) | `test_roster_reflects_real_store_state` (paused=true, open=1, members=1) | PASS |
+| Roster exposes ONLY curated fields — no customer PII | `test_roster_exposes_only_curated_fields_no_pii` (exact field set + forbidden-substring scan) | PASS |
+| Non-operator can't read the roster | `test_roster_403_for_non_operator` | PASS |
+| Unauthenticated → 401; plane off → 404 | `test_roster_401_without_token`, `test_roster_404_when_plane_disabled` | PASS |
+| Cross-tenant flag NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **138** · guards 0 · **`pytest tests/unit
+tests/isolation tests/integration/test_tenants_admin.py` 394** (5 new) · migration 029 up/down
+round-trip · restore drill still PASS at head. web-ops — oxlint clean · `tsc` OK · `vitest` 6 · build
+OK. gitleaks: no leaks. No customer-`web/` change.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.2 —
+Operational dashboard** (what's breaking/delayed across the platform).
