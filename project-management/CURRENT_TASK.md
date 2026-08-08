@@ -9,7 +9,20 @@ selects and approves the next ticket.
 
 ---
 
-## Campaign SEND (top MVP gap) — **C1 backend done; C2 frontend next** (2026-08-08) — C1 awaiting founder merge approval
+## Campaign SEND (top MVP gap) — **C1 merged; C2 done → feature COMPLETE** (2026-08-08) — C2 awaiting founder merge approval
+
+**C2 campaign compose/send UI (MVP-089):** frontend `CampaignsSection` at `/campaigns` (list + create
+w/ approved-template picker + **send wizard**: audience preview → **type the count to confirm** [C5
+typed-count gate; 409 shows the real number] → parks tier-3 approval → shows in Approvals queue) + a
+tiny `GET /v1/campaigns/audience-preview`. Nav gated `campaigns:read` (staff excluded — pinned nav test
+restructured). **Verify:** web oxlint/tsc/**vitest 50**/build; backend ruff/mypy(143)/guards + 12
+campaign tests + scaffold import; gitleaks clean. **This completes campaign-send (C1 backend `291dd68`
++ C2 UI) — the top MVP gap is CLOSED.** **Next (founder priority):** per-client billing model (unblock
+P4.6) → bulk import (MVP-077–080) / workflows (MVP-071–73) / marketing-agent layer.
+
+---
+
+## Campaign SEND · C1 — **merged `291dd68`, CI green** (2026-08-08)
 
 **C1 campaign send execute path (MVP-075 / C5, full faithful spec):** migration 034 `campaign_sends`
 (+RLS) + template/halt cols + widened status. `POST /v1/campaigns/{id}/send` **typed-count gate**

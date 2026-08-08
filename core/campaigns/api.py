@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.campaigns import attribution, producer, service
+from core.campaigns import attribution, audience, producer, service
 from core.campaigns import send as campaign_send
 from core.insights import reports
 from core.tenancy.deps import CurrentAuth
@@ -115,6 +115,23 @@ async def list_campaigns(
     if current.org_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
     return [CampaignOut(**r) for r in await service.list_campaigns(session, current.org_id)]
+
+
+class AudiencePreviewOut(BaseModel):
+    audience_size: int
+
+
+# Declared BEFORE `/{campaign_id}` so the literal path isn't captured as a campaign id.
+@router.get("/audience-preview", response_model=AudiencePreviewOut,
+            summary="How many contacts a broadcast would reach right now (typed-count preview)")
+async def audience_preview(
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> AudiencePreviewOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    return AudiencePreviewOut(
+        audience_size=await audience.audience_count(session, current.org_id))
 
 
 @router.get("/{campaign_id}", response_model=CampaignOut, summary="Get a campaign")

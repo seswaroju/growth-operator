@@ -2420,3 +2420,30 @@ campaign tests; 5 new) · migration 034 up/down round-trip · restore drill PASS
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **C2** — the
 `web/` Campaigns wizard (audience preview → template → review with typed count → the parked approval
 appears in the existing Approvals queue). Segment-targeting + real Meta remain follow-ups.
+
+---
+
+## 2026-08-08 — Campaign compose/send UI C2 (MVP-089) — completes the owner-facing broadcast loop
+
+**Branch:** `feature/campaign-send-c2-web` (off main). **Merge:** `pending`. Frontend (`web/`) + one
+tiny backend endpoint (the audience preview the typed-count gate needs a number for).
+
+**Backend:** `GET /v1/campaigns/audience-preview` → `{audience_size}` (`campaigns:send`), declared
+before `/{campaign_id}` so the literal path isn't captured as a campaign id. Uses
+`audience.audience_count`.
+
+**Frontend:** `CampaignsSection` at `/campaigns` — list (status badge + sent/failed + halt reason +
+"awaiting approval" hint), a create form (name + a picker limited to **approved** WhatsApp templates →
+`draft`), and the **send wizard**: it fetches the audience preview ("this will message N contacts"),
+the owner **types N to confirm** (the C5 typed-count gate — a wrong number surfaces the 409's real
+count), and Send parks the tier-3 approval, which then shows up in the existing **Approvals** queue for
+approve/reject. Nav gated on `campaigns:read` — owner/manager/viewer see it, **staff does not** (RBAC);
+the pinned `visibleNav` test was restructured to reflect that staff/viewer divergence (not weakened).
+
+**Commands:** web — oxlint clean (pre-existing warnings only) · `tsc` OK · **`vitest` 50** · build OK.
+backend — `ruff` clean · `mypy core` **143** · guards 0 · campaign api/send tests **12** · app imports
+clean (scaffold). gitleaks: no leaks.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. **This completes
+the campaign-send feature (C1 backend + C2 UI) — the top original-MVP gap is closed.** Then the
+per-client billing model (unblocks P4.6), then bulk import / workflows / the marketing-agent layer.

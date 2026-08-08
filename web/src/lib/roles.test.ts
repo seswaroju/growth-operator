@@ -2,21 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import { assignableRoles, canInvite, hasPermission, visibleNav } from "./roles";
 
-const ALL =
-  ["/", "/approvals", "/conversations", "/catalog", "/customers", "/insights", "/support"];
+const READ = ["/", "/approvals", "/conversations", "/catalog", "/customers"];
+// owner/manager/viewer hold campaigns:read; staff does NOT (RBAC) — so Campaigns diverges them.
+const WITH_CAMPAIGNS = [...READ, "/campaigns", "/insights", "/support"];
+const STAFF_NAV = [...READ, "/insights", "/support"];
 
 describe("visibleNav — permission-gated nav", () => {
-  it("owner sees every section (incl. Team + Settings)", () => {
-    expect(visibleNav(["owner"]).map((n) => n.path)).toEqual([...ALL, "/team", "/settings"]);
+  it("owner sees every section (incl. Campaigns, Team + Settings)", () => {
+    expect(visibleNav(["owner"]).map((n) => n.path)).toEqual(
+      [...WITH_CAMPAIGNS, "/team", "/settings"]);
   });
-  it("manager sees Team but NOT Settings (no org:manage)", () => {
-    expect(visibleNav(["manager"]).map((n) => n.path)).toEqual([...ALL, "/team"]);
+  it("manager sees Campaigns + Team but NOT Settings (no org:manage)", () => {
+    expect(visibleNav(["manager"]).map((n) => n.path)).toEqual([...WITH_CAMPAIGNS, "/team"]);
   });
-  it("staff sees the read sections, no Team/Settings", () => {
-    expect(visibleNav(["staff"]).map((n) => n.path)).toEqual(ALL);
+  it("staff sees the read sections but NOT Campaigns (no campaigns:read)", () => {
+    expect(visibleNav(["staff"]).map((n) => n.path)).toEqual(STAFF_NAV);
   });
-  it("viewer sees the same read sections as staff", () => {
-    expect(visibleNav(["viewer"]).map((n) => n.path)).toEqual(ALL);
+  it("viewer sees the read sections including Campaigns", () => {
+    expect(visibleNav(["viewer"]).map((n) => n.path)).toEqual(WITH_CAMPAIGNS);
   });
   it("no roles → only the base member sections (Home + Support)", () => {
     expect(visibleNav([]).map((n) => n.path)).toEqual(["/", "/support"]);
