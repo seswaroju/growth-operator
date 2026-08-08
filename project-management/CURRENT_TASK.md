@@ -9,7 +9,18 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 3.5-eng · Analytics & Intelligence engine — **COMPLETE: A1–A4.6 done** (2026-08-08) — A4.6 awaiting founder merge approval
+## Security hardening (from audit #16) — **S1 done; S2 → S3 pending** (2026-08-08) — S1 awaiting founder merge approval
+
+**S1 secret scanning (audit #16a):** recon verdict — **134 commits, zero real secrets** (the one
+gitleaks finding is a false-positive `private_key: Ed25519PrivateKey` param annotation). Made
+permanent: `.gitleaks.toml` (default ruleset + tight allowlist) + CI `secret-scan` job (pinned
+gitleaks 8.30.1, **full history**, `--redact`) + `make secret-scan`. Verified the scanner still catches
+a planted fake token. **Next:** S2 error tracking = **self-hosted GlitchTip** (founder: best UX + data
+stays on our cloud), then S3 backup + tested restore. Sequence & rationale in DECISIONS 2026-08-08.
+
+---
+
+## Phase 3.5-eng · Analytics & Intelligence engine — **COMPLETE: A1–A4.6 done** (2026-08-08) — merged (A4.6 `9bbb031`)
 
 **A4.6 owner Insights UI (frontend-only, engine's front door):** the store owner opens an insight and
 drills through it as **four escalating questions by intensity** — *What happened?* (verdict) → *Why?*

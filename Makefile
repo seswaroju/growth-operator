@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan
 
 dev:
 	$(COMPOSE) up --build
@@ -39,3 +39,9 @@ make-owner:
 
 down:
 	$(COMPOSE) down -v
+
+# Scan the full git history + working tree for committed secrets (security-hardening S1).
+# Mirrors the CI secret-scan job. --redact so a finding never prints the secret value.
+# Requires a local gitleaks (`brew install gitleaks`). CI pins its own copy.
+secret-scan:
+	gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --verbose

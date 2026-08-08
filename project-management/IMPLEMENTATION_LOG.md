@@ -2074,3 +2074,38 @@ read section for staff/viewer; pinned nav test updated, not weakened).
 **Next recommended action:** founder review → merge to main + push + record hash + verify CI. Then the
 **security-hardening ticket** (close audit gaps d/e) per the vision-intake sequence. **The Phase
 3.5-eng analytics/intelligence engine (A1–A4.6) is complete.**
+
+---
+
+## 2026-08-08 — Security-hardening S1: secret scanning (audit #16a)
+
+**Branch:** `feature/security-s1-secret-scan` (off main). **Merge:** `pending`. First of three
+security sub-tickets (S1 secret-scan → S2 error tracking → S3 backup/restore), per the founder-approved
+sequence in DECISIONS 2026-08-08.
+
+**Recon (read-only) verdict — audit #16a is CLEAN.** A full gitleaks history scan (134 commits,
+3.4 MB) surfaced exactly **one** finding, confirmed a **false positive**: `core/packs/bundle.py:175`
+`private_key: Ed25519PrivateKey` is a keyword-only *function parameter type annotation* (for passing a
+signing-key object at runtime), not a credential. No real secret has ever been committed. `.env` and
+`secrets/*.yaml` are gitignored; only SOPS `*.enc.yaml` + `*.example.yaml` are tracked (both safe).
+
+**Made it permanent (so #16a stays proven, not assumed):**
+- `.gitleaks.toml` — extends the default ruleset; a **tight** allowlist covering only (a) the confirmed
+  `private_key: Ed25519PrivateKey` annotation (matched against the whole line, so a real key can't slip
+  through) and (b) SOPS `*.enc.yaml` by path (encrypted-by-design, high-entropy ciphertext).
+- CI `secret-scan` job — pinned **gitleaks 8.30.1** binary (no third-party action → supply-chain safe),
+  `fetch-depth: 0` for **full-history** coverage, `--redact` so a finding never prints the secret into
+  CI logs. Fails the build on any real leak.
+- `make secret-scan` — the same scan locally.
+
+**Verification:** history scan **clean** (exit 0) with the config; working-tree scan **clean**; a
+planted fake GitHub PAT is **still caught** (leaks found: 1 → non-zero → CI fails), proving the
+allowlist is narrow, not a blanket suppression; the annotation remains ignored. CI YAML validated
+(6 jobs). No Python/web/test files touched → engine + suites unaffected.
+
+**Security note:** no secret value was ever printed during this work — `--redact` on every scan; the
+one finding was inspected by reading the source line, not the scanner's raw match.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **S2 —
+error/exception tracking**, decided as **self-hosted GlitchTip** (founder: "both best UX and tight" →
+Sentry-grade dashboard with error data staying on our cloud).
