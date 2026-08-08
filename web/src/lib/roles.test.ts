@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { assignableRoles, canInvite, hasPermission, visibleNav } from "./roles";
 
-const ALL = ["/", "/approvals", "/conversations", "/catalog", "/customers", "/support"];
+const ALL =
+  ["/", "/approvals", "/conversations", "/catalog", "/customers", "/insights", "/support"];
 
 describe("visibleNav — permission-gated nav", () => {
   it("owner sees every section (incl. Team + Settings)", () => {

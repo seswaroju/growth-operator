@@ -6,6 +6,7 @@ import ApprovalsSection from "./components/ApprovalsSection";
 import ConversationsSection from "./components/ConversationsSection";
 import CatalogSection from "./components/CatalogSection";
 import CustomersSection from "./components/CustomersSection";
+import InsightsSection from "./components/InsightsSection";
 import SupportSection from "./components/SupportSection";
 import TeamSection from "./components/TeamSection";
 import SettingsSection from "./components/SettingsSection";
@@ -23,6 +24,8 @@ const catalogRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/catalog", component: CatalogSection });
 const customersRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/customers", component: CustomersSection });
+const insightsRoute = createRoute({
+  getParentRoute: () => rootRoute, path: "/insights", component: InsightsSection });
 const supportRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/support", component: SupportSection });
 const teamRoute = createRoute({
@@ -32,7 +35,7 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   homeRoute, approvalsRoute, conversationsRoute, catalogRoute,
-  customersRoute, supportRoute, teamRoute, settingsRoute,
+  customersRoute, insightsRoute, supportRoute, teamRoute, settingsRoute,
 ]);
 
 export const router = createRouter({ routeTree });

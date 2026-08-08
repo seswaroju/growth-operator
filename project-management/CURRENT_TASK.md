@@ -9,7 +9,17 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 3.5-eng · Analytics & Intelligence engine — **In progress: A1–A4.5 done; A4.6 pending** (2026-08-08)
+## Phase 3.5-eng · Analytics & Intelligence engine — **COMPLETE: A1–A4.6 done** (2026-08-08) — A4.6 awaiting founder merge approval
+
+**A4.6 owner Insights UI (frontend-only, engine's front door):** the store owner opens an insight and
+drills through it as **four escalating questions by intensity** — *What happened?* (verdict) → *Why?*
+(drivers) → *Show me the numbers* (full breakdown) → *Prove it* (evidence) — **all real stored data,
+no AI, no wait**. A free-text **Ask Growth Operator** thread (human operator answers, no fabricated AI)
+backs the rest. New `InsightsSection.tsx` + `api.ts` fetchers + `lib/insights` helpers/`QUESTION_LEVELS`
++ `/insights` route + nav gated `insights:read`. **Verify:** oxlint · tsc · **vitest 47** · build ·
+guards 0 · backend regression `pytest tests/unit tests/isolation` **384**. **This completes the
+analytics/intelligence engine (A1–A4.6).** **Next (per VISION_INTAKE sequence):** security-hardening
+ticket → Phase 4 → marketing-agent framework layer.
 
 **A4.5 owner⇄GO thread (the cross-tenant one):** migration 028 `insight_messages` (+RLS) with **split-RLS carrying a scoped operator INSERT** — owner posts own-org owner-messages; operator answers cross-tenant with `author_type='operator'` only (`resolve_report_org` SECDEF; owner GET/POST + operator `POST /v1/admin/insights/.../reply`, audited). **The least-privilege lock was updated to a tighter invariant** (flag on exactly `{support_tickets, insight_messages}`; INSERT-check only on insight_messages, scoped to operator) + teeth-tested (owner can't forge an operator message; cross-org read 404; non-operator 403). **Verify:** ruff · mypy core (**136**) · guards 0 · **388 tests** (unit + isolation + thread); migration 028 round-trip + RLS forced. **Next:** A4.6 (owner Insights UI). *(Also: a large founder braindump of post-MVP frameworks/tools/agents captured 2026-08-08 — see project-management/VISION_INTAKE.md.)*
 
