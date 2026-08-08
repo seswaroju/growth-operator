@@ -9,14 +9,20 @@ selects and approves the next ticket.
 
 ---
 
-## Security hardening (from audit #16) — **S1 done; S2 → S3 pending** (2026-08-08) — S1 awaiting founder merge approval
+## Security hardening (from audit #16) — **S1 merged, S2 done; S3 pending** (2026-08-08) — S2 awaiting founder merge approval
 
-**S1 secret scanning (audit #16a):** recon verdict — **134 commits, zero real secrets** (the one
-gitleaks finding is a false-positive `private_key: Ed25519PrivateKey` param annotation). Made
-permanent: `.gitleaks.toml` (default ruleset + tight allowlist) + CI `secret-scan` job (pinned
-gitleaks 8.30.1, **full history**, `--redact`) + `make secret-scan`. Verified the scanner still catches
-a planted fake token. **Next:** S2 error tracking = **self-hosted GlitchTip** (founder: best UX + data
-stays on our cloud), then S3 backup + tested restore. Sequence & rationale in DECISIONS 2026-08-08.
+**S2 error tracking (audit #16d) — self-hosted GlitchTip (best UX + tight):** backend
+`core/common/error_tracking.py` + `sentry-sdk` and frontend `@sentry/react` + `ErrorBoundary`, both
+**off by default** (gated on a DSN) and **PII-scrubbing** (bodies/locals dropped; phone/OTP/email/
+tokens masked, sensitive keys dropped, before send). Local `docker-compose.glitchtip.yml` + runbook +
+`make glitchtip` so the dashboard UX is reachable; data never leaves our cloud. **Verify:** backend
+ruff/mypy(137)/guards/`pytest unit+isolation` **389** (5 new); web oxlint/tsc/**vitest 50**(3 new)/
+build; gitleaks clean. **Next:** S3 backup + tested restore (audit #16e).
+
+**S1 secret scanning (audit #16a) — MERGED `bc6e4a6`, CI green:** recon verdict — **134 commits, zero
+real secrets** (lone finding a false-positive param annotation). `.gitleaks.toml` + CI `secret-scan`
+job (pinned gitleaks 8.30.1, full history, `--redact`) + `make secret-scan`. Scanner verified to still
+catch a planted fake token. Sequence & rationale in DECISIONS 2026-08-08.
 
 ---
 

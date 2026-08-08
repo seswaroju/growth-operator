@@ -83,6 +83,11 @@ class Settings(BaseSettings):
     database_migrator_url: str = Field(default="postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator")
     redis_url: str = Field(default="redis://localhost:6379/0")
     otel_exporter_otlp_endpoint: str | None = Field(default=None)
+    # Error/exception tracking (security S2, audit #16d). OFF by default — with no DSN the SDK is
+    # never initialized and no event leaves the process (see core/common/error_tracking.py). Points
+    # at a SELF-HOSTED GlitchTip (Sentry-compatible ingest); no third-party SaaS ever receives data.
+    # When set, PII collection is disabled and every event is scrubbed before send.
+    error_tracking_dsn: str | None = Field(default=None)
     jwt_secret: str = Field(default="dev-only-insecure-secret")
     # OTP delivery channel. INTERIM default is "email" as a bridge while Meta WhatsApp
     # API access is pending (see project-management/TODO.md, DECISIONS.md 2026-07-22).

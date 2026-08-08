@@ -705,6 +705,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "redis" },
+    { name = "sentry-sdk" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
     { name = "zstandard" },
@@ -743,6 +744,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "redis", specifier = ">=5.2" },
+    { name = "sentry-sdk", specifier = ">=2.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "zstandard", specifier = ">=0.23" },
@@ -2284,6 +2286,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b4/73/ea51c58748d2326a66957b11c116902a77114be25a6bd2cd86880cf9477c/schemathesis-4.22.4.tar.gz", hash = "sha256:1ddaf39e8062a6dc8fc9e14e6e48eac67b879655dc4f5aed725f484c36588437", size = 2349745, upload-time = "2026-07-08T10:50:39.666Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c4/3b/20ac0d9e41a8a43e3fb9a0072088d9cb3dd1edbe23b90d39405bfc18eb67/schemathesis-4.22.4-py3-none-any.whl", hash = "sha256:62ff5d1657e823fc485ac9083e24995f497ae1aba6957b86b310d399317f21cb", size = 785130, upload-time = "2026-07-08T10:50:37.493Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.66.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/6f/d59cad0889d15fde85254cf58e701484de3f3f0406003b3197746910b19b/sentry_sdk-2.66.1.tar.gz", hash = "sha256:f882fb08710c5f8bfc603aafa3e901b384009a19cc3f76a572b863392ee81cdc", size = 940543, upload-time = "2026-07-22T12:26:54.553Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/d3/726bd88f0eece09ddf431bea4c9191c18e7a8d070b854eb0014d447712ee/sentry_sdk-2.66.1-py3-none-any.whl", hash = "sha256:86002793161d9a95ef04bdd8d442e9bfece5d989b755f05d6360215094a7aff6", size = 505555, upload-time = "2026-07-22T12:26:52.71Z" },
 ]
 
 [[package]]

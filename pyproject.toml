@@ -29,6 +29,9 @@ dependencies = [
     "boto3>=1.35",
     "langgraph>=0.2,<0.3",
     "python-multipart>=0.0.32",
+    # Error/exception tracking client for a SELF-HOSTED GlitchTip (Sentry ingest protocol).
+    # Inert unless GROWTH_OPERATOR_ERROR_TRACKING_DSN is set (security S2). MIT-licensed.
+    "sentry-sdk>=2.0",
 ]
 
 [dependency-groups]

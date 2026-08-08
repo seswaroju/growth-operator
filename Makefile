@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip
 
 dev:
 	$(COMPOSE) up --build
@@ -45,3 +45,8 @@ down:
 # Requires a local gitleaks (`brew install gitleaks`). CI pins its own copy.
 secret-scan:
 	gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --verbose
+
+# Run a local self-hosted GlitchTip error-tracking dashboard (security S2) at http://localhost:8888.
+# See infra/docker/GLITCHTIP.md for first-time setup + wiring the DSN. App is inert without a DSN.
+glitchtip:
+	docker compose -f infra/docker/docker-compose.glitchtip.yml up -d
