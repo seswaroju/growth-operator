@@ -91,3 +91,15 @@ lives in the analytics/intelligence engine. Enrichment to fold in incrementally:
 
 - SOC2 / ISO posture; data residency; SSO for operators; MFA / step-up (already noted for the
   operator plane in DECISIONS 2026-08-06); pen-test; DPA/DPDP data-subject workflows.
+
+### Backup / disaster recovery (from security S3, audit #16e)
+
+S3 delivered the mechanism + **continuous restore proof** (`scripts/db_backup.sh`,
+`db_restore.sh`, `db_restore_drill.sh`; the drill runs in CI on every push;
+`infra/db/BACKUP_RESTORE.md`). Production hardening still to do:
+
+- **Scheduled** backups (managed service or cron) with **retention** (e.g. daily 7d + weekly 4w).
+- **Off-site + encrypted at rest** dump storage (a dump is sensitive customer data).
+- **Point-in-time recovery** (WAL archiving) for RPO ≈ minutes.
+- A **scheduled** restore drill against *real* backups (not just the CI schema round-trip).
+- Documented **RTO/RPO** target for the pilot; alert if a scheduled backup or drill fails.

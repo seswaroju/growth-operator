@@ -2153,3 +2153,42 @@ deliberately set to point at our own GlitchTip.
 
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **S3 —
 backup + tested restore runbook** (audit #16e), the last security sub-ticket.
+
+---
+
+## 2026-08-08 — Security-hardening S3: backup + tested restore (audit #16e) — security initiative complete
+
+**Branch:** `feature/security-s3-backup-restore` (off main). **Merge:** `pending`. Last of the three
+security sub-tickets. **No app code / migration / dependency** — scripts + CI + docs only.
+
+**#16e was "backups that have never been restored" — so the deliverable is the RESTORE DRILL, not just
+a dump.** An untested backup is a false sense of safety.
+- `scripts/db_restore_drill.sh` — dumps the live DB → restores into a throwaway scratch DB → verifies
+  the restore matched on **table count + `alembic_version` + `organizations` row count** → drops the
+  scratch DB → prints PASS/FAIL (non-zero on mismatch). Only ever touches its own scratch DB.
+- **Runs in CI** (`migrate` job, right after `alembic upgrade head`) on every push (founder-approved) —
+  the restore path is proven **continuously**, which is what actually closes #16e.
+- Locally: `make backup-drill` pipes the drill into the dev Postgres container → works with just
+  Docker, no host pg tools. **Verified against pg16: 71 tables, head `9f9334d2999a`, orgs
+  round-tripped → PASS.**
+- `scripts/db_backup.sh` (pg_dump custom format → gitignored `./backups`); `scripts/db_restore.sh`
+  (drop+recreate a target, **guardrails**: refuses `*prod*`, refuses the primary DB without `--force`);
+  `make backup` / `restore` / `backup-drill`; `infra/db/BACKUP_RESTORE.md` runbook; `/backups/` +
+  `*.dump` gitignored (dumps hold real data).
+
+**Requirement → evidence:**
+| Criterion | Evidence | Result |
+|---|---|---|
+| A backup demonstrably restores (not assumed) | `db_restore_drill.sh` run vs pg16 → PASS (71 tbl / head / orgs) | PASS |
+| Restore is proven continuously | CI `migrate` job runs the drill every push | PASS (verify on merge) |
+| Restore can't clobber prod/primary by accident | `db_restore.sh` guardrails (`*prod*`, `--force`) | PASS |
+| Dumps never committed | `.gitignore` `/backups/` + `*.dump`; gitleaks clean | PASS |
+
+**Commands:** `bash -n` all three scripts OK · CI YAML valid (drill step in `migrate`) · **gitleaks
+no-leaks** (dev connection strings don't trip) · guards 0 · **`make backup-drill` → PASS**. Production
+automation (scheduled/off-site/encrypted/PITR/scheduled-drill) deferred to PRODUCTION_DEPTH_BACKLOG.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI (the CI `migrate`
+job will run the drill natively with host pg tools). **This completes the security-hardening
+initiative (S1 secret scan + S2 error tracking + S3 backup/restore) — audit #16 a/d/e closed; b/c/g
+were already strong; f (payments) N/A.**

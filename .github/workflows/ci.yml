@@ -81,6 +81,13 @@ jobs:
       - name: Create app_rw runtime role
         run: psql "postgresql://growth_operator:growth_operator@localhost:5432/growth_operator" -f infra/db/roles.sql
       - run: uv run alembic upgrade head
+      # Prove a backup actually restores (security S3, audit #16e): dump the freshly-migrated DB,
+      # restore into a scratch DB, verify table count + alembic head + row-count match. The drill
+      # only touches its own scratch DB, so it leaves the main DB intact for the e2e step below.
+      - name: Restore drill (S3 — backups must restore)
+        env:
+          GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql://growth_operator:growth_operator@localhost:5432/growth_operator
+        run: bash scripts/db_restore_drill.sh
       - name: Reference install + kirana dry-run e2e (MVP-041 / MVP-043)
         env:
           GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@localhost:5432/growth_operator

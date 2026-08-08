@@ -806,3 +806,22 @@ S1 → S2 → S3 approved by the founder 2026-08-08.
   implemented in S2 with a frontend error boundary + backend exception capture feeding it.
 
 **Decided by:** Founder (2026-08-08). S3 (backup + tested restore) tooling TBD when S2 completes.
+
+---
+
+## 2026-08-08 — Security-hardening S3: backup + tested restore (audit #16e)
+
+- **The restore DRILL is the deliverable, not just backups.** #16e was "backups never restored"; an
+  untested backup is a false sense of safety. `scripts/db_restore_drill.sh` dumps → restores into a
+  throwaway scratch DB → verifies (table count + `alembic_version` + `organizations` row count) →
+  drops scratch. **It runs in CI (`migrate` job) on every push** (founder-approved 2026-08-08), so the
+  restore path is proven continuously — this is what closes #16e. Also `make backup-drill` locally
+  (piped into the dev Postgres container → no host pg tools needed). Verified against pg16: 71 tables,
+  head `9f9334d2999a`, orgs round-tripped → PASS.
+- **Restore guardrails.** `scripts/db_restore.sh` refuses any target named `*prod*` and refuses to
+  overwrite the primary DB without `--force`. Dumps are gitignored (`/backups/`, `*.dump`) — they hold
+  real data and must never be committed.
+- **Production automation deferred** to PRODUCTION_DEPTH_BACKLOG (scheduled + off-site + encrypted
+  backups, PITR/WAL, scheduled drill against real backups, RTO/RPO).
+
+**Decided by:** Founder (2026-08-08 — approved "run the drill in CI too").
