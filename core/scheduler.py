@@ -36,6 +36,7 @@ def _install_jobs() -> None:
     """(Re)register the canonical job set. Clears first so registration is authoritative and
     idempotent across process (re)starts."""
     from core.approvals import notify, trust
+    from core.campaigns import send as campaign_send
     from core.catalog import embed
     from core.insights import rollup
 
@@ -44,6 +45,7 @@ def _install_jobs() -> None:
     trust.register_jobs()  # trust_ledger_settle — hourly
     embed.register_jobs()  # embeddings_batch — every 5 min (simulated embedder)
     rollup.register_jobs()  # business_metrics_rollup — daily 00:15 UTC
+    campaign_send.register_jobs()  # campaign_fanout — hourly (staggered broadcast resume)
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 

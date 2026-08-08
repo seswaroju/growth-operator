@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.campaigns import attribution, producer, service
+from core.campaigns import send as campaign_send
 from core.insights import reports
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
@@ -27,6 +28,8 @@ class CampaignCreate(BaseModel):
     name: str = Field(..., min_length=1)
     channel: str = "whatsapp"
     audience: str | None = None
+    template_key: str | None = None
+    template_lang: str = "en"
     scheduled_at: datetime | None = None
 
 
@@ -35,12 +38,26 @@ class CampaignOut(BaseModel):
     name: str
     channel: str
     audience: str | None
+    template_key: str | None
+    template_lang: str
     status: str
     scheduled_at: datetime | None
     sent_count: int
     failed_count: int
+    halt_reason: str | None
     created_at: datetime
     executed_at: datetime | None
+
+
+class CampaignSendRequest(BaseModel):
+    # Typed recipient count — must equal the actual audience or the send is blocked (409, no silent
+    # fix). The owner reads the audience preview, types the number, and confirms.
+    recipient_count: int = Field(..., ge=0)
+
+
+class CampaignSendOut(BaseModel):
+    approval_id: UUID
+    recipient_count: int
 
 
 @router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED,
@@ -54,11 +71,40 @@ async def create_campaign(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
     cid = await service.create_campaign(
         session, current.org_id, name=body.name, channel=body.channel,
-        audience=body.audience, scheduled_at=body.scheduled_at, created_by=current.user_id,
+        audience=body.audience, template_key=body.template_key, template_lang=body.template_lang,
+        scheduled_at=body.scheduled_at, created_by=current.user_id,
     )
     row = await service.get_campaign(session, current.org_id, cid)
     assert row is not None
     return CampaignOut(**row)
+
+
+@router.post("/{campaign_id}/send", response_model=CampaignSendOut,
+             status_code=status.HTTP_201_CREATED,
+             summary="Request a broadcast — typed-count gate → tier-3 approval (no bypass)")
+async def send_campaign(
+    campaign_id: UUID,
+    body: CampaignSendRequest,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> CampaignSendOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        approval_id = await campaign_send.request_campaign_send(
+            session, current.org_id, campaign_id,
+            recipient_count=body.recipient_count, requested_by=current.user_id)
+    except campaign_send.CountMismatch as exc:
+        # 409 with the REAL number — no silent fix (diagram C5).
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"recipient count mismatch: you typed {body.recipient_count}, actual is {exc.actual}",
+        ) from exc
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return CampaignSendOut(approval_id=approval_id, recipient_count=body.recipient_count)
 
 
 @router.get("", response_model=list[CampaignOut], summary="List campaigns")

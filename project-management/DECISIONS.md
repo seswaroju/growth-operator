@@ -845,3 +845,21 @@ add a curated SECDEF projection returning only what the operator may see, never 
 SELECT. The flag allowlist stays exactly `{support_tickets, insight_messages}`.
 
 **Decided by:** implementation choice under the founder-approved P4.1 plan (2026-08-08).
+
+---
+
+## 2026-08-08 — MVP-completion check + priority: close campaign-send before billing/marketing
+
+Founder flagged "don't forget the original MVP." Honest audit vs CLAUDE.md §1: the **core loop (auth →
+org → pack → catalog → inquiry → grounded draft → HITL approve → gated send → audit → lead/ROI →
+owner dashboard) is built and tested** (steps 1–11; send-loop ticket "completes 5–9"). Three genuine
+gaps remain inside original MVP scope: **(1) campaign SEND flow** (campaigns model + analytics exist,
+but `campaign.*` events are never emitted — no compose→approve→send), **(2) bulk catalog import**
+(MVP-077–080; batch API exists, extract→review→load doesn't; manual CRUD works), **(3) workflow
+engine** (MVP-071/72/73; `core/workflows` empty). Go-live items (real WhatsApp/LLM/rates, staging
+deploy, SOPS keys) are gated on founder accounts/infra, not forgotten.
+
+**Founder priority (2026-08-08): close CAMPAIGN-SEND first, then the per-client billing model (unblocks
+P4.6), then bulk import / workflows / marketing-agent layer.** Rationale: campaign-send is the
+highest-leverage gap (proactive outreach = the "growth"; already half-built; makes the analytics +
+P4.3 marketing dashboard measure real campaigns).
