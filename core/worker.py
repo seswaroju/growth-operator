@@ -31,6 +31,7 @@ def _install_consumers() -> None:
     """Import the modules whose `@consumer` decorators register handlers. Import is idempotent
     (Python caches modules), so this is safe to call more than once."""
     import core.approvals.notify  # noqa: F401  approval.requested → notify owner
+    import core.campaigns.consumer  # noqa: F401  campaign.executed → record send counts
     import core.events.consumer  # noqa: F401  msg.received logger
     import core.runtime.planner  # noqa: F401  msg.received → classify + route + enqueue run
     import core.runtime.resume  # noqa: F401  approval.resolved → resume parked run

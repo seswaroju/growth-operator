@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
-import { getOverview, type Overview } from "../api";
+import { getInsightsSummary, getOverview, type Overview } from "../api";
 import { useAuth } from "../auth";
 import { HOME_TILES } from "../lib/home";
+import { delta, formatValue, metricLabel, OUTCOME_METRICS } from "../lib/insights";
 
 function TileShell({ children }: { children: ReactNode }) {
   return (
@@ -43,6 +44,46 @@ function Tiles({ data }: { data: Overview }) {
   );
 }
 
+function WeeklyOutcomes({ token }: { token: string }) {
+  const { data } = useQuery({
+    queryKey: ["insights", "summary"],
+    queryFn: () => getInsightsSummary(token),
+    enabled: !!token,
+  });
+  const byKey = new Map((data ?? []).map((m) => [m.metric_key, m]));
+  const anyActivity = (data ?? []).some((m) => m.this_week > 0 || m.last_week > 0);
+
+  return (
+    <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+      <h2 className="text-sm font-semibold text-neutral-800">This week</h2>
+      {!anyActivity ? (
+        <p className="mt-1 text-sm text-neutral-500">
+          Once your store is active, your results — new inquiries, quotes, sales, revenue — appear
+          here with how they compare to last week.
+        </p>
+      ) : (
+        <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-4">
+          {OUTCOME_METRICS.map((key) => {
+            const m = byKey.get(key);
+            const d = delta(m?.delta_pct ?? null);
+            const dirClass =
+              d.dir === "up" ? "text-green-600" : d.dir === "down" ? "text-red-600" : "text-neutral-400";
+            return (
+              <div key={key}>
+                <div className="text-2xl font-semibold tabular-nums text-neutral-900">
+                  {formatValue(key, m?.this_week ?? 0)}
+                </div>
+                <div className="text-xs text-neutral-500">{metricLabel(key)}</div>
+                <div className={`text-[11px] ${dirClass}`}>{d.text} vs last week</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function HomeSection() {
   const { token, me } = useAuth();
   const { data, isLoading, isError, error } = useQuery({
@@ -68,15 +109,9 @@ export default function HomeSection() {
       )}
       {data && <Tiles data={data} />}
 
-      {/* The plain-language "what worked / what didn't" outcome cards + ROI land with the
-          analytics engine (Phase 3.5); the CEO-grade math lives in the operator console. */}
-      <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-neutral-800">Results &amp; what's working</h2>
-        <p className="mt-1 text-sm text-neutral-500">
-          Once your campaigns are running, this is where you'll see plain-language results —
-          what worked, by how much, and what to do next. Nothing to show yet.
-        </p>
-      </section>
+      {/* A1: real week-over-week outcomes from the analytics engine (business_metrics). The
+          plain-language "why it worked" narrative + campaign/ROI detail arrive in A2–A4. */}
+      {token && <WeeklyOutcomes token={token} />}
     </div>
   );
 }
