@@ -75,6 +75,7 @@ export const NAV: NavItem[] = [
   { path: "/conversations", label: "Conversations", perm: "conversations:read" },
   { path: "/catalog", label: "Catalog", perm: "catalog:read" },
   { path: "/customers", label: "Customers", perm: "customers:read" },
+  { path: "/campaigns", label: "Campaigns", perm: "campaigns:read" },
   { path: "/insights", label: "Insights", perm: "insights:read" },
   { path: "/support", label: "Support", perm: null },
   { path: "/team", label: "Team", perm: "members:invite" },

@@ -492,6 +492,69 @@ export function postInsightMessage(
   });
 }
 
+// ---- Campaigns (/v1/campaigns, campaigns:read / campaigns:send) -------------
+// Compose → typed-count review → tier-3 approval → staggered send. The approval then appears in the
+// Approvals queue. Everything stays gated-simulated until a real WhatsApp channel is connected.
+
+export interface Campaign {
+  id: string;
+  name: string;
+  channel: string;
+  audience: string | null;
+  template_key: string | null;
+  template_lang: string;
+  status: string; // draft | pending_approval | executing | executed | halted | rejected
+  scheduled_at: string | null;
+  sent_count: number;
+  failed_count: number;
+  halt_reason: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
+export interface WhatsappTemplate {
+  template_key: string;
+  language: string;
+  category: string | null;
+  provider_status: string; // approved | pending | rejected | draft
+}
+
+export interface CampaignCreateInput {
+  name: string;
+  template_key: string;
+  template_lang: string;
+  audience?: string | null;
+}
+
+export function getCampaigns(token: string): Promise<Campaign[]> {
+  return authed<Campaign[]>("/v1/campaigns", token);
+}
+
+export function createCampaign(token: string, input: CampaignCreateInput): Promise<Campaign> {
+  return authed<Campaign>("/v1/campaigns", token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getWhatsappTemplates(token: string): Promise<WhatsappTemplate[]> {
+  return authed<WhatsappTemplate[]>("/v1/channels/whatsapp/templates", token);
+}
+
+export function getAudiencePreview(token: string): Promise<{ audience_size: number }> {
+  return authed<{ audience_size: number }>("/v1/campaigns/audience-preview", token);
+}
+
+// Returns {approval_id} on success; throws ApiError(409) with the real count on a typed-count mismatch.
+export function sendCampaign(
+  token: string, id: string, recipientCount: number,
+): Promise<{ approval_id: string; recipient_count: number }> {
+  return authed(`/v1/campaigns/${id}/send`, token, {
+    method: "POST",
+    body: JSON.stringify({ recipient_count: recipientCount }),
+  });
+}
+
 // ---- Team / invites (members:invite) ---------------------------------------
 
 export interface CreateInviteInput {
