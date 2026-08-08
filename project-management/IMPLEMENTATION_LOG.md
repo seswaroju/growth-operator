@@ -2036,7 +2036,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-08 — Phase 3.5-eng A4.6: owner Insights UI (engine complete)
 
-**Branch:** `feature/phase35-eng-a46-insights-ui` (off main). **Merge:** `pending`. **Frontend-only —
+**Branch:** `feature/phase35-eng-a46-insights-ui` (off main). **Merge:** `9bbb031`. **Frontend-only —
 no backend, no migration, no new dependency.** Consumes the A4.1/A4.5 endpoints already shipped.
 
 **The design decision (founder, 2026-08-08): leveled questions by intensity, not AI auto-replies.**
