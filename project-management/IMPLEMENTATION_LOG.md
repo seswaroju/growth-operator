@@ -2378,7 +2378,7 @@ question must be answered and a lightweight billing/revenue record built before 
 
 ## 2026-08-08 — Campaign SEND execute path C1 (MVP-075 / diagram C5) — the top MVP gap
 
-**Branch:** `feature/campaign-send-c1` (off main). **Merge:** `pending`. Backend only (C2 = the `web/`
+**Branch:** `feature/campaign-send-c1` (off main). **Merge:** `291dd68`. Backend only (C2 = the `web/`
 wizard, next). Built to the **authoritative spec** (C5, MVP-075/089/066) in full — founder: "full
 faithful version, don't defer anything."
 
