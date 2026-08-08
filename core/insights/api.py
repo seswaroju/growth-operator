@@ -12,17 +12,27 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.insights import agents, metrics, reports, service
-from core.tenancy.deps import CurrentAuth
+from core.insights import agents, metrics, reports, service, thread
+from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_SEND, INSIGHTS_READ
+from core.tenancy.platform_admin import (
+    log_platform_access,
+    require_admin_plane_enabled,
+    require_platform,
+)
+from core.tenancy.platform_permissions import PLATFORM_TICKETS_RESOLVE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
 insights_router = APIRouter(prefix="/v1/insights", tags=["insights"])
+insight_admin_router = APIRouter(
+    prefix="/v1/admin/insights", tags=["admin-insights"],
+    dependencies=[Depends(require_admin_plane_enabled)],
+)
 
 
 class OverviewResponse(BaseModel):
@@ -159,3 +169,67 @@ async def generate_report(
     r = await reports.get_report(session, current.org_id, rid)
     assert r is not None
     return GeneratedInsightOut(report_id=rid, report_type=r["report_type"], verdict=r["verdict"])
+
+
+# ---- Owner⇄GO thread on an insight (A4.5) ----------------------------------
+
+class ThreadMessageOut(BaseModel):
+    id: UUID
+    author_type: str  # owner | operator
+    body: str
+    created_at: datetime
+
+
+class PostMessageRequest(BaseModel):
+    body: str = Field(..., min_length=1)
+
+
+@insights_router.get("/reports/{report_id}/messages", response_model=list[ThreadMessageOut],
+                     summary="Read the owner⇄Growth-Operator thread")
+async def list_messages(
+    report_id: UUID,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[ThreadMessageOut]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if await reports.get_report(session, current.org_id, report_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+    msgs = await thread.list_thread(session, current.org_id, report_id)
+    return [ThreadMessageOut(**m) for m in msgs]
+
+
+@insights_router.post("/reports/{report_id}/messages", response_model=ThreadMessageOut,
+                      status_code=status.HTTP_201_CREATED, summary="Ask Growth Operator about this")
+async def post_message(
+    report_id: UUID,
+    body: PostMessageRequest,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> ThreadMessageOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if await reports.get_report(session, current.org_id, report_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+    msg = await thread.post_owner_message(
+        session, current.org_id, report_id, current.user_id, body.body)
+    return ThreadMessageOut(**msg)
+
+
+@insight_admin_router.post("/reports/{report_id}/reply", response_model=ThreadMessageOut,
+                           status_code=status.HTTP_201_CREATED,
+                           summary="Operator answers into the owner's dashboard (cross-tenant)")
+async def operator_reply(
+    report_id: UUID,
+    body: PostMessageRequest,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TICKETS_RESOLVE)),
+) -> ThreadMessageOut:
+    result = await thread.post_operator_message(session, report_id, current.user_id, body.body)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "report not found")
+    msg, org_id = result
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="insight.replied",
+        target_org_id=org_id, detail={"report_id": str(report_id)})
+    return ThreadMessageOut(**msg)
