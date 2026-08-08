@@ -2263,3 +2263,40 @@ OK · `vitest` 6 (nav pins updated) · build OK. gitleaks: no leaks. No customer
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.3 —
 Executive + Marketing** (aggregate the per-store analytics engine across all stores; needs a curated
 cross-store analytics projection, same SECDEF discipline).
+
+---
+
+## 2026-08-08 — Phase 4 P4.3: executive + marketing (cross-store analytics rollup)
+
+**Branch:** `feature/phase4-p43-analytics-rollup` (off main). **Merge:** `pending`. Third Phase-4
+ticket; reuses the curated-SECDEF cross-store pattern (029/030).
+
+**Migration 031** `platform_analytics_rollup(p_days)` **SECURITY DEFINER** function → a SINGLE row of
+platform-wide SUMS/COUNTS over the last `p_days` **and the prior `p_days`** (for week-over-week) —
+never any store's rows or PII. Executive: `revenue_minor`, `orders`, `leads`, `quotes` (each with a
+`*_prev`), `active_stores`. Marketing: `campaigns_run`, `messages_sent`, `campaigns_analyzed`,
+`attributed_revenue_minor` (summed from `agent_reports.full_breakdown`). Aggregates the RLS-protected
+`business_metrics`/`campaigns`/`agent_reports` via definer privilege, so the `app.platform_admin` flag
+allowlist is **unchanged** (least-privilege lock green). `GET /v1/admin/analytics/rollup?days=`
+(`core/tenancy/analytics_admin.py`, `platform.tenants:read` + admin plane, **audited**). web-ops
+`AnalyticsSection` at `/analytics` — Executive WoW cards + Marketing cards.
+
+**Honest scope:** **CAC & churn** (Executive) and **impressions & CPL** (Marketing) need per-client
+billing + ad-platform data we don't capture yet — shown as explicit "deferred" notes, **not faked**.
+CAC/churn land with the billing model (P4.6).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Aggregates move by EXACTLY what we seed (current window) | `test_rollup_aggregates_move_by_exactly_what_we_seed` | PASS |
+| Prior-window (WoW) is separate | same test: `revenue_minor_prev` Δ from a 10-day-ago row | PASS |
+| Campaign + attributed-revenue aggregation | same test: campaigns_run/messages_sent/analyzed/attributed | PASS |
+| Gated: non-operator 403 / no-token 401 / plane-off 404 | `test_rollup_403…` / `_401…` / `_404…` | PASS |
+| Flag allowlist NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** backend — `ruff` clean · `mypy core` **140** · guards 0 · **`pytest` 402** (4 new) ·
+migration 031 up/down round-trip · restore drill still PASS. web-ops — oxlint clean · `tsc` OK ·
+`vitest` 6 (nav pins updated) · build OK. gitleaks: no leaks. No customer-`web/` change.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **P4.4 —
+Customer success** (ticket trends + at-risk stores) and **P4.5 — per-store drill-down**.

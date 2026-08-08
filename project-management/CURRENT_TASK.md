@@ -9,7 +9,21 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 4 · Operator/CEO console — **P4.1 merged; P4.2 done; P4.3–P4.6 pending** (2026-08-08) — P4.2 awaiting founder merge approval
+## Phase 4 · Operator/CEO console — **P4.1–P4.2 merged; P4.3 done; P4.4–P4.6 pending** (2026-08-08) — P4.3 awaiting founder merge approval
+
+**P4.3 executive + marketing (cross-store rollup):** migration 031 `platform_analytics_rollup(days)`
+**SECDEF** fn → one row of platform-wide sums/counts over a window + prior window (WoW): revenue/
+orders/leads/quotes (+prev), active_stores, campaigns_run, messages_sent, campaigns_analyzed,
+attributed_revenue — **no PII**, flag allowlist untouched. `GET /v1/admin/analytics/rollup?days=`
+(`platform.tenants:read` + admin-plane, audited); web-ops `AnalyticsSection` at `/analytics`
+(Executive WoW cards + Marketing cards). **CAC/churn + impressions/CPL deferred** (need billing/ad data
+— not faked; CAC/churn land with P4.6 billing). **Verify:** backend ruff/mypy(140)/guards/**402
+pytest** (4 new: before/after deltas incl. prior-window; 403/401/404) + mig round-trip + lock intact;
+web-ops lint/tsc/**vitest 6**/build. **Next:** P4.4 Customer-success, P4.5 per-store drill-down.
+
+---
+
+## Phase 4 · P4.2 — **merged `de937de`, CI green** (2026-08-08)
 
 **P4.2 operational dashboard (what's breaking/delayed):** migration 030 `platform_operational_health()`
 **SECDEF** fn → one row of curated COUNTS (outbox_pending/stuck, approvals_pending/overdue,

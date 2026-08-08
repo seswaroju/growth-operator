@@ -175,3 +175,29 @@ export interface OperationalHealth {
 export function adminOpsHealth(token: string): Promise<OperationalHealth> {
   return authed<OperationalHealth>("/v1/admin/ops/health", token);
 }
+
+// ---- Cross-store analytics rollup (/v1/admin/analytics/rollup, platform.tenants:read) -------
+// Platform-wide SUMS/COUNTS for the Executive + Marketing views (+prev window for WoW). Aggregates
+// only — no store's rows or customer data. CAC/churn + impressions/CPL are deferred (need billing /
+// ad-platform data), not faked.
+
+export interface AnalyticsRollup {
+  period_days: number;
+  revenue_minor: number;
+  revenue_minor_prev: number;
+  orders: number;
+  orders_prev: number;
+  leads: number;
+  leads_prev: number;
+  quotes: number;
+  quotes_prev: number;
+  active_stores: number;
+  campaigns_run: number;
+  messages_sent: number;
+  campaigns_analyzed: number;
+  attributed_revenue_minor: number;
+}
+
+export function adminAnalyticsRollup(token: string, days = 7): Promise<AnalyticsRollup> {
+  return authed<AnalyticsRollup>(`/v1/admin/analytics/rollup?days=${days}`, token);
+}
