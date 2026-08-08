@@ -2158,7 +2158,7 @@ backup + tested restore runbook** (audit #16e), the last security sub-ticket.
 
 ## 2026-08-08 — Security-hardening S3: backup + tested restore (audit #16e) — security initiative complete
 
-**Branch:** `feature/security-s3-backup-restore` (off main). **Merge:** `pending`. Last of the three
+**Branch:** `feature/security-s3-backup-restore` (off main). **Merge:** `2b4182f`. Last of the three
 security sub-tickets. **No app code / migration / dependency** — scripts + CI + docs only.
 
 **#16e was "backups that have never been restored" — so the deliverable is the RESTORE DRILL, not just
