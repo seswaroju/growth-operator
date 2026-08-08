@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.campaigns import service
+from core.campaigns import attribution, service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
@@ -82,3 +82,71 @@ async def get_campaign(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found")
     return CampaignOut(**row)
+
+
+class SignificanceOut(BaseModel):
+    campaign_rate: float
+    baseline_rate: float
+    z: float
+    p_value: float
+    is_significant: bool
+    lift_pct: float | None
+
+
+class RoiOut(BaseModel):
+    revenue_minor: int
+    cost_minor: int
+    net_minor: int
+    roas: float | None
+    roi_pct: float | None
+
+
+class DriverOut(BaseModel):
+    label: str
+    detail: str
+    sentiment: str
+
+
+class CampaignAnalyticsOut(BaseModel):
+    campaign_id: UUID
+    window_days: int
+    reached: int
+    leads: int
+    quotes: int
+    sales: int
+    revenue_minor: int
+    cost_minor: int
+    roi: RoiOut
+    significance: SignificanceOut
+    drop_off: str | None
+    headline: str
+    drivers: list[DriverOut]
+
+
+@router.get("/{campaign_id}/analytics", response_model=CampaignAnalyticsOut,
+            summary="Campaign funnel + attribution + why (did it work?)")
+async def campaign_analytics(
+    campaign_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> CampaignAnalyticsOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if await service.get_campaign(session, current.org_id, campaign_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "campaign not found")
+    a = await attribution.campaign_analytics(session, current.org_id, campaign_id)
+    return CampaignAnalyticsOut(
+        campaign_id=a.campaign_id, window_days=a.window_days, reached=a.reached, leads=a.leads,
+        quotes=a.quotes, sales=a.sales, revenue_minor=a.revenue_minor, cost_minor=a.cost_minor,
+        roi=RoiOut(revenue_minor=a.roi.revenue_minor, cost_minor=a.roi.cost_minor,
+                   net_minor=a.roi.net_minor, roas=a.roi.roas, roi_pct=a.roi.roi_pct),
+        significance=SignificanceOut(
+            campaign_rate=a.significance.campaign_rate, baseline_rate=a.significance.baseline_rate,
+            z=a.significance.z, p_value=a.significance.p_value,
+            is_significant=a.significance.is_significant, lift_pct=a.significance.lift_pct,
+        ),
+        drop_off=a.drop_off, headline=a.headline,
+        drivers=[
+            DriverOut(label=d.label, detail=d.detail, sentiment=d.sentiment) for d in a.drivers
+        ],
+    )
