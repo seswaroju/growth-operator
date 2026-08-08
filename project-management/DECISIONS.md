@@ -709,3 +709,29 @@ reason (with information or note there?)"; "Let's record the backlog … commit 
 
 **Decided by:** Founder (2026-08-08 phase approval "Yes, lets proceed" through A4.2→A4.4; the
 LLM-simulated-now/real-later posture was set 2026-08-06, DECISIONS analytics entry).
+
+---
+
+### 2026-08-08 — A4.5 owner⇄GO thread: the cross-tenant surface widened to a SECOND table (scoped operator INSERT)
+
+**Context:** the owner⇄Growth-Operator Q&A thread on an insight (`insight_messages`, migration 028)
+needs the operator to **answer cross-tenant into the owner's dashboard** — a genuinely new capability
+vs. support tickets, where the operator only reads/resolves and can **never** insert into a tenant.
+
+**Decisions (founder-approved 2026-08-08, "the sensitive cross-tenant one"):**
+- **Split-RLS with a scoped operator INSERT.** `p_read` = own-org OR the `app.platform_admin` flag;
+  `p_insert` = `(own-org AND author_type='owner') OR (platform_admin AND author_type='operator')`.
+  So an owner posts only owner-authored rows into their own org, and an operator posts only
+  **operator-authored** rows (its answer) into any tenant. Append-only (no UPDATE/DELETE). A
+  `resolve_report_org` SECURITY DEFINER helper finds a report's org without broadening
+  `agent_reports` RLS. Every operator reply is audited to `platform_access_log`.
+- **The least-privilege lock (security #1) was updated, not loosened.** The `app.platform_admin`
+  blast radius is now **exactly two** deliberately-chosen tables — `support_tickets` + `insight_messages`
+  — each with its own isolation tests. The flag may appear in an **INSERT WITH CHECK only on
+  `insight_messages`, and only scoped by `author_type='operator'`** (a structural test enforces both;
+  a teeth test proves an owner cannot forge an operator-authored message). Any future third table, or
+  an unscoped operator INSERT, fails CI.
+
+**Decided by:** Founder (2026-08-08: "the sensitive cross-tenant one" / approving A4.5). The scoped
+extension is the implementation of the founder's owner⇄GO answer-into-dashboard requirement
+(DECISIONS 2026-08-06 analytics layer).

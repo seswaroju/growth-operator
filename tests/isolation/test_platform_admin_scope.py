@@ -1,12 +1,16 @@
 """Least-privilege lock for the cross-tenant operator flag (support-tickets track, security #1).
 
-The `app.platform_admin='on'` GUC is the platform's only cross-tenant read escape hatch. Its blast
-radius MUST be exactly one table — `support_tickets`. These tests freeze that:
+The `app.platform_admin='on'` GUC is the platform's only cross-tenant escape hatch. Its blast radius
+MUST be exactly two deliberately-chosen tables — `support_tickets` (operator reads/resolves) and
+`insight_messages` (operator *answers* an owner's question). These tests freeze that:
 
-- **Structural (exhaustive):** across *every* RLS policy in the database, the flag may appear in
-  `support_tickets`' policies and nowhere else. The moment a future migration adds the exception to
-  another table, this fails — so the operator can never silently gain cross-tenant reach into
-  customers' conversations, contacts, catalog, revenue, etc.
+- **Structural (exhaustive):** across *every* RLS policy in the DB, the flag may appear only on the
+  allowlisted tables. The moment a future migration adds the exception to another table, this
+  fails — so the operator can never silently gain cross-tenant reach into customers' conversations,
+  contacts, catalog, revenue, etc.
+- **Insert scoping:** the flag may appear in an INSERT WITH CHECK ONLY on `insight_messages`, and
+  only guarded by `author_type='operator'` — the operator can post its own answer, never forge an
+  owner row or write arbitrary data; every other table's INSERT stays org-only (incl. tickets).
 - **Runtime (behavioural):** with the flag on and no org context, a representative org-scoped table
   (`contacts`) still returns zero rows — the flag is inert outside `support_tickets`.
 
@@ -25,7 +29,12 @@ from core.common.config import get_settings
 
 # The complete set of tables allowed to honour the cross-tenant operator flag. Adding a table here
 # is a deliberate security decision that must come with its own isolation tests.
-ALLOWED_CROSS_TENANT_TABLES = {"support_tickets"}
+#   support_tickets  — operator reads the queue + resolves (018)
+#   insight_messages — operator ANSWERS an owner's insight question, cross-tenant (A4.5/028)
+ALLOWED_CROSS_TENANT_TABLES = {"support_tickets", "insight_messages"}
+# The one table whose INSERT policy may honour the admin flag (the operator's answer). It MUST scope
+# that insert to author_type='operator'. Every other table's INSERT stays org-only.
+ADMIN_INSERT_ALLOWED = {"insight_messages"}
 
 
 def _owner_dsn() -> str:
@@ -75,9 +84,10 @@ async def test_platform_admin_flag_referenced_by_exactly_the_allowlisted_tables(
     )
 
 
-async def test_platform_admin_flag_only_ever_appears_in_using_never_in_insert_check() -> None:
-    """Defence in depth: even on support_tickets, the flag must never appear in an INSERT WITH CHECK
-    — reads/updates may cross tenants, writes (INSERT) never can."""
+async def test_platform_admin_flag_in_insert_check_only_where_allowed_and_scoped() -> None:
+    """Defence in depth: the admin flag may appear in an INSERT WITH CHECK ONLY on the allowlisted
+    insert table(s) (`insight_messages` — the operator answer), and there only guarded by
+    `author_type='operator'`. On every other table (incl. support_tickets) INSERT stays org-only."""
     if not await _db_ready():
         pytest.skip("Postgres not ready")
     conn = await asyncpg.connect(_owner_dsn())
@@ -91,8 +101,15 @@ async def test_platform_admin_flag_only_ever_appears_in_using_never_in_insert_ch
         )
     finally:
         await conn.close()
-    leaky = [r["tbl"] for r in insert_checks if "platform_admin" in r["chk"]]
-    assert leaky == [], f"INSERT policy must never honour the admin flag; leaked on {leaky}"
+    with_flag = [(r["tbl"], r["chk"]) for r in insert_checks if "platform_admin" in r["chk"]]
+    unexpected = [t for t, _ in with_flag if t not in ADMIN_INSERT_ALLOWED]
+    assert unexpected == [], (
+        f"INSERT policy honours the admin flag on unexpected table(s): {sorted(set(unexpected))}. "
+        "An operator INSERT crosses tenants — allow only with author_type scoping + isolation."
+    )
+    for tbl, chk in with_flag:
+        assert "author_type" in chk and "operator" in chk, (
+            f"{tbl}'s admin-flag INSERT must be scoped to author_type='operator'; got: {chk}")
 
 
 @pytest.fixture()

@@ -9,7 +9,9 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 3.5-eng · Analytics & Intelligence engine — **In progress: A1–A4.4 done; A4.5–A4.6 pending** (2026-08-08)
+## Phase 3.5-eng · Analytics & Intelligence engine — **In progress: A1–A4.5 done; A4.6 pending** (2026-08-08)
+
+**A4.5 owner⇄GO thread (the cross-tenant one):** migration 028 `insight_messages` (+RLS) with **split-RLS carrying a scoped operator INSERT** — owner posts own-org owner-messages; operator answers cross-tenant with `author_type='operator'` only (`resolve_report_org` SECDEF; owner GET/POST + operator `POST /v1/admin/insights/.../reply`, audited). **The least-privilege lock was updated to a tighter invariant** (flag on exactly `{support_tickets, insight_messages}`; INSERT-check only on insight_messages, scoped to operator) + teeth-tested (owner can't forge an operator message; cross-org read 404; non-operator 403). **Verify:** ruff · mypy core (**136**) · guards 0 · **388 tests** (unit + isolation + thread); migration 028 round-trip + RLS forced. **Next:** A4.6 (owner Insights UI). *(Also: a large founder braindump of post-MVP frameworks/tools/agents captured 2026-08-08 — see project-management/VISION_INTAKE.md.)*
 
 **A4.2+A4.3+A4.4 (2026-08-08, one committed batch — the intelligence producers):** A4.2 `core/campaigns/producer` (deterministic — engine → stored `campaign_analysis` insight; `POST /v1/campaigns/{id}/report`); A4.3 migration 027 `tracked_competitors` + `core/competitors` CRUD (`campaigns:send` write / `insights:read` view); A4.4 `core/insights/agents` — **gated-simulated** competitor + marketing producers (off→deterministic `model=simulated`; on→fail-closed `provider_unavailable`), `POST /v1/insights/reports/generate`. **Verify:** ruff · mypy core (**135**) · guards 0 · **374 tests** (3 producer + 4 competitors + 4 agents + no-regression); migration 027 round-trip + RLS forced. **Next:** A4.5 (owner⇄GO cross-tenant thread).
 

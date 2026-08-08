@@ -2008,3 +2008,26 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 **Known issues / deferred (backlog):** the competitor agent's body is a placeholder over the tracked list (real web/LLM research is future); real LLM wiring is a gated go-live step. A4.5 (owner⇄GO thread) + A4.6 (owner Insights UI) remain.
 
 **Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.5 (owner⇄GO cross-tenant thread).
+
+---
+
+## 2026-08-08 — Phase 3.5-eng A4.5: owner⇄GO thread (the cross-tenant one)
+
+**Branch:** `feature/phase35-eng-a45-thread` (off main). **Merge:** `pending`. **No dependency.** Full security rationale in DECISIONS 2026-08-08.
+
+**Migration 028** `insight_messages` (+RLS) — the owner⇄Growth-Operator Q&A on an insight, with **split-RLS** carrying a scoped operator INSERT: `p_read`= own-org OR platform-admin; `p_insert`= `(own-org AND author_type='owner') OR (platform-admin AND author_type='operator')`. Append-only; a `resolve_report_org` SECURITY DEFINER helper finds a report's org. `core/insights/thread.py` (owner ask/read org-scoped; operator reply on the admin session). Owner `GET`/`POST /v1/insights/reports/{id}/messages` (`insights:read`); operator `POST /v1/admin/insights/reports/{id}/reply` (`require_platform` + admin-plane gate, audited to `platform_access_log`).
+
+**Security (the important part): the least-privilege lock (isolation #1) was UPDATED to a tighter invariant, not loosened.** The `app.platform_admin` blast radius is now exactly `{support_tickets, insight_messages}` (each with isolation tests); the flag may appear in an INSERT WITH CHECK **only on `insight_messages`, only scoped by `author_type='operator'`** — a structural test enforces both, and a teeth test proves an owner **cannot forge an operator-authored message** (RLS `WITH CHECK` rejects it). A cross-org read is 404; a non-operator is 403 on the reply endpoint.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Owner asks, operator answers cross-tenant, owner sees both | `test_insight_thread::test_owner_asks_operator_answers` | PASS |
+| Owner can't read another org's thread | `test_owner_cannot_read_another_orgs_thread` | PASS |
+| **Owner can't forge an operator message (RLS teeth)** | `test_owner_cannot_forge_an_operator_message` | PASS |
+| Reply forbidden for a non-operator | `test_reply_forbidden_for_non_operator` | PASS |
+| Least-privilege lock: flag on exactly 2 tables; INSERT-check scoped | `test_platform_admin_scope` (updated) | PASS |
+
+**Commands:** `ruff check .` clean · `mypy core` **136** · **guards 0** · **full `pytest tests/unit` + `tests/isolation`** — **388 tests**; migration 028 up/down round-trip + RLS forced (p_read/p_insert). Full CI-equivalent run locally before push.
+
+**Next recommended action:** commit + merge to main + push + verify CI + record hash. Then A4.6 (owner Insights UI) — the last analytics/intelligence ticket.
