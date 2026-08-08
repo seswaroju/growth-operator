@@ -1933,7 +1933,7 @@ Brought up `clamav` + `minio` (`docker compose --profile media up`) and verified
 
 ## 2026-08-07 — Phase 3.5-eng A1 + A2.1: analytics rollup foundation + campaigns model
 
-**Branch:** `feature/phase35-eng-analytics` (off main). **Merge:** `pending`. **No dependency.** Founder-approved phase plan (~8 tickets A1→A4.3); this batch is the first two, committing at a phase checkpoint.
+**Branch:** `feature/phase35-eng-analytics` (off main). **Commit:** `aa30edf`; **merged to main** `ab1aed0`. **No dependency.** Founder-approved phase plan (~8 tickets A1→A4.3); this batch is the first two, committing at a phase checkpoint.
 
 **A1 — event-facts + rollup foundation.** **Migration 023** `business_metrics` (org-scoped +RLS): `(org_id, metric_date, metric_key, dimension, value_numeric, value_minor)` + UNIQUE for idempotent upsert. `core/insights/metrics.py`: `compute_day` (counts leads/quotes/orders/revenue/messages_in/out from the domain tables), `upsert_day` (idempotent), `weekly_summary` (this-week vs last-week + WoW %). `core/insights/rollup.py`: `rollup_org` + the scheduled `business_metrics_rollup` job (daily 00:15 UTC, fans out per org via `org_scoped_session`, recomputes the trailing 30 days) — registered in `core/scheduler.py` (scheduler job-set test updated). `GET /v1/insights/summary` (`insights:read`). Owner surfacing: Home's placeholder → a real **"This week"** outcome card (New inquiries · Quotes · Orders · Revenue, each with a ↑/↓ WoW delta; empty state until a store has data). `lib/insights.ts` (+test).
 
