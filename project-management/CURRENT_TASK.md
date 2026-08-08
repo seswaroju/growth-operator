@@ -9,7 +9,9 @@ selects and approves the next ticket.
 
 ---
 
-## Phase 3.5-eng · Analytics & Intelligence engine — **In progress: A1–A4.1 done; A4.2–A4.6 pending** (2026-08-08)
+## Phase 3.5-eng · Analytics & Intelligence engine — **In progress: A1–A4.4 done; A4.5–A4.6 pending** (2026-08-08)
+
+**A4.2+A4.3+A4.4 (2026-08-08, one committed batch — the intelligence producers):** A4.2 `core/campaigns/producer` (deterministic — engine → stored `campaign_analysis` insight; `POST /v1/campaigns/{id}/report`); A4.3 migration 027 `tracked_competitors` + `core/competitors` CRUD (`campaigns:send` write / `insights:read` view); A4.4 `core/insights/agents` — **gated-simulated** competitor + marketing producers (off→deterministic `model=simulated`; on→fail-closed `provider_unavailable`), `POST /v1/insights/reports/generate`. **Verify:** ruff · mypy core (**135**) · guards 0 · **374 tests** (3 producer + 4 competitors + 4 agents + no-regression); migration 027 round-trip + RLS forced. **Next:** A4.5 (owner⇄GO cross-tenant thread).
 
 **A2.2+A3.1+A3.2+A4.1 (2026-08-08, one committed batch):** the **campaign analytics engine** + the **insight-record framework**. Migration 025 `campaign_touches` → **exact deterministic first-touch attribution** + funnel + one-sample z-test ("real lift or noise") + drop-off diagnosis (`GET /v1/campaigns/{id}/analytics`); **unhackable ROI** (revenue only from immutable orders; cost = real sent × owner rate; org-isolated) + plain-language **drivers** (verdict→reasons, good/bad/neutral); migration 026 `agent_reports` → the layered insight record `verdict→drivers→full_breakdown→evidence` + read API. Multi-touch / configurable window / `campaign_metrics` rollup / confidence intervals **deferred to `PRODUCTION_DEPTH_BACKLOG.md`**. **Verify:** ruff · mypy core (**130**) · guards 0 · **369 tests** (12 analytics unit + 4 attribution + 6 reports + no-regression); migrations 025/026 round-trip + RLS forced. **Next:** A4.2 (campaign-analysis producer). *(A1+A2.1 previously merged `ab1aed0`.)*
 

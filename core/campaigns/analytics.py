@@ -171,3 +171,16 @@ def drivers(
             roi_sentiment,
         ))
     return out
+
+
+def verdict_line(headline_word: str, sig: Significance, roi_result: Roi) -> str:
+    """A one-line plain-language verdict for the owner (used by the campaign-analysis report)."""
+    rate = f"{sig.campaign_rate * 100:.0f}%"
+    if headline_word == "worked":
+        roi_bit = f", {roi_result.roas:g}× ROI" if roi_result.roas else ""
+        return f"Worked — {rate} converted, a real lift over your baseline{roi_bit}."
+    if headline_word == "underperformed":
+        return f"Underperformed — {rate} converted, below your usual baseline."
+    if headline_word == "too_early":
+        return "Too early to tell — not enough people reached yet."
+    return f"No clear effect — {rate} is within your normal range."

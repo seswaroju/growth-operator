@@ -11,6 +11,7 @@ from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
 from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
+from core.competitors.api import router as competitors_router
 from core.conversations.api import router as conversations_router
 from core.customers.api import router as customers_router
 from core.ingestion.api import router as imports_router
@@ -57,6 +58,7 @@ app.include_router(campaigns_router)
 app.include_router(dashboard_router)
 app.include_router(insights_router)
 app.include_router(conversations_router)
+app.include_router(competitors_router)
 app.include_router(customers_router)
 app.include_router(pricing_router)
 app.include_router(rates_router)

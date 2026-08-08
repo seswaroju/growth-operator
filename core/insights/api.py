@@ -8,17 +8,17 @@ This is the container the later Phase-3 sections plug into; the counts come from
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.insights import metrics, reports, service
+from core.insights import agents, metrics, reports, service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import INSIGHTS_READ
+from core.tenancy.permissions import CAMPAIGNS_SEND, INSIGHTS_READ
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
@@ -130,3 +130,32 @@ async def get_report(
         drivers=r["drivers"], full_breakdown=r["full_breakdown"], evidence=r["evidence"],
         model=r["model"], prompt_version=r["prompt_version"],
     )
+
+
+class GenerateReportRequest(BaseModel):
+    report_type: Literal["competitor_analysis", "marketing_strategy"]
+
+
+class GeneratedInsightOut(BaseModel):
+    report_id: UUID
+    report_type: str
+    verdict: str
+
+
+@insights_router.post("/reports/generate", response_model=GeneratedInsightOut,
+                      status_code=status.HTTP_201_CREATED,
+                      summary="Run a (simulated) intelligence agent and store its insight")
+async def generate_report(
+    body: GenerateReportRequest,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> GeneratedInsightOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    if body.report_type == "competitor_analysis":
+        rid = await agents.produce_competitor_report(session, current.org_id)
+    else:
+        rid = await agents.produce_marketing_report(session, current.org_id)
+    r = await reports.get_report(session, current.org_id, rid)
+    assert r is not None
+    return GeneratedInsightOut(report_id=rid, report_type=r["report_type"], verdict=r["verdict"])

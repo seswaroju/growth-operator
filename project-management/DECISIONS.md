@@ -687,3 +687,25 @@ industry-grade … complex yet easier to understand in terms of depth and clarit
 **Decided by:** Founder (2026-08-08: "I want both … can we achieve that?"; "solid, unhackable,
 industry grade level. Complex yet easier to understand in terms of depth and clarity"; "add other
 reason (with information or note there?)"; "Let's record the backlog … commit to main CI cleanable").
+
+---
+
+### 2026-08-08 — Intelligence producers (A4.2–A4.4): deterministic campaign analysis + gated-simulated competitor/marketing agents
+
+**Decisions (founder-approved 2026-08-08):**
+- **A4.2 — the campaign-analysis producer is deterministic (no LLM).** It runs the A2/A3 engine and
+  stores the result as a layered `agent_report` (`campaign_analysis`, `model="deterministic"`). This
+  is the numeric analysis — it does not need and does not use a model.
+- **A4.3 — `tracked_competitors` (migration 027)** is the owner-curated list of rivals; owner/manager
+  (`campaigns:send`) manage it, all roles (`insights:read`) view it. It's the input to A4.4.
+- **A4.4 — the competitor-analysis + marketing-strategist agents are gated-simulated.** While
+  `llm_provider_enabled` is off (default) they produce **deterministic, clearly-labelled** output
+  (`model="simulated"`, verdict carries "Simulated analysis — a real model + live data replace this
+  at go-live"); when the flag is on but the real agent isn't wired they **fail closed**
+  (`provider_unavailable`) — identical posture to `RealModel`/embeddings/providers. The competitor
+  agent's body is a placeholder over the tracked list (real web/LLM research is future); the
+  marketing agent's heuristics are grounded in the store's real weekly metrics. Swapping in the real
+  LLM + a competitor-data source at go-live changes no interface. No paid API, no network in tests.
+
+**Decided by:** Founder (2026-08-08 phase approval "Yes, lets proceed" through A4.2→A4.4; the
+LLM-simulated-now/real-later posture was set 2026-08-06, DECISIONS analytics entry).
