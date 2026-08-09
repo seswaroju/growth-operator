@@ -90,11 +90,17 @@ async def extract_import(
 ) -> dict[str, Any]:
     if current.org_id is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
-    from core.ingestion import extract_csv
+    from core.ingestion import extract_csv, extract_photo
     from core.ingestion.state import IllegalTransition
 
+    batch = await service.get_batch(session, current.org_id, batch_id)
+    if batch is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown import batch")
     try:
-        rows = await extract_csv.extract_batch(session, current.org_id, batch_id)
+        if batch["source_kind"] == "photo":  # gated-simulated vision (MVP-077)
+            rows = await extract_photo.extract_photos(session, current.org_id, batch_id)
+        else:  # CSV / XLSX (MVP-078)
+            rows = await extract_csv.extract_batch(session, current.org_id, batch_id)
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown import batch") from exc
     except IllegalTransition as exc:
