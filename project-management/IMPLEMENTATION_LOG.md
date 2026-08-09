@@ -2447,3 +2447,40 @@ clean (scaffold). gitleaks: no leaks.
 **Next recommended action:** founder review → merge + push + record hash + verify CI. **This completes
 the campaign-send feature (C1 backend + C2 UI) — the top original-MVP gap is closed.** Then the
 per-client billing model (unblocks P4.6), then bulk import / workflows / the marketing-agent layer.
+
+---
+
+## 2026-08-08 — Per-client billing model B1 (unblocks P4.6 Financial)
+
+**Branch:** `feature/billing-b1` (off main). **Merge:** `pending`. Backend only (B2 = the web-ops
+Financial dashboard). Founder-approved model (DECISIONS 2026-08-08): service charges = **managed budget
++ margin**; subscription = **named tiers/plans**.
+
+**Migration 035:** `billing_plans` (GO tier catalog — global, no org_id, admin-plane only);
+`billing_subscriptions` (org-scoped RLS; one active plan/client via a partial unique index);
+`billing_charges` (org-scoped RLS; **amount_minor** client pays + **cost_minor** we pay → margin =
+amount − cost); `platform_billing_rollup()` **SECURITY DEFINER** aggregate → MRR (Σ active plan
+prices) + this-month charge revenue/cost/**margin** + active-client count (sums only, never a client's
+rows).
+
+**Operator API `/v1/admin/billing/*`** (`core/billing/`) — admin-plane gated, `platform.tenants:manage`
+(writes) / `:read` (reads): plans (create/list), per-client subscription (assign/cancel/get), per-client
+charges (record/list), and the rollup. **Billing is operator-owned — there is NO tenant endpoint.** A
+subscription/charge write is a **scoped** write (session set to the target org — no `app.platform_admin`
+flag) and is **audited with `target_org_id`**; the cross-client rollup is the curated SECDEF (so the
+flag allowlist stays `{support_tickets, insight_messages}` and the least-privilege lock stays green).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Margin = amount − cost; MRR from active plan; rollup adds up | `test_plan_subscription_charge_and_rollup_margin` (deltas) | PASS |
+| A client's charges are org-isolated (RLS) | `test_a_clients_charges_are_org_isolated` | PASS |
+| Operator-only: non-operator 403 / no-token 401 / plane-off 404 | `test_billing_403/401/404` | PASS |
+| Flag allowlist NOT widened (lock intact) | `tests/isolation/test_platform_admin_scope` (4 pass) | PASS |
+
+**Commands:** `ruff` clean · `mypy core` **146** · guards 0 · **`pytest` 394** (5 new) · migration 035
+up/down round-trip · restore drill PASS · gitleaks no-leaks.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **B2** — the
+**P4.6 Financial** dashboard in `web-ops` (MRR / revenue / margin / active clients from the rollup).
+The **Sales** dashboard remains a separate later ticket (needs its own GO-sales-pipeline model).

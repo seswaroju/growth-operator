@@ -9,7 +9,21 @@ selects and approves the next ticket.
 
 ---
 
-## Campaign SEND (top MVP gap) — **C1 merged; C2 done → feature COMPLETE** (2026-08-08) — C2 awaiting founder merge approval
+## Per-client billing model — **B1 done; B2 (P4.6 Financial) next** (2026-08-08) — B1 awaiting founder merge approval
+
+**B1 billing model + operator CRUD:** migration 035 `billing_plans` (global tiers) + `billing_subscriptions`
+(RLS, 1 active/client) + `billing_charges` (RLS: **amount + cost** → margin) + `platform_billing_rollup()`
+**SECDEF** (MRR / this-month revenue/cost/margin / active clients). **Operator-only** `/v1/admin/billing/*`
+(plans, per-client subscription + charges, rollup) — admin-plane + tenants:manage/read, scoped writes
+audited w/ target_org, no tenant path, flag allowlist untouched. Model: managed-budget+margin, named
+tiers (founder). **Verify:** ruff/mypy(146)/guards/**394 pytest** (5 new: margin=amount−cost + MRR via
+rollup deltas; charges org-isolated; 403/401/404) + mig round-trip + lock intact + drill. **Next:** B2 =
+P4.6 **Financial** dashboard in web-ops (from the rollup). **Sales** = separate later ticket
+(GO-sales-pipeline model).
+
+---
+
+## Campaign SEND (top MVP gap) — **COMPLETE: C1 `291dd68` + C2 `1356b53` merged, CI green** (2026-08-08)
 
 **C2 campaign compose/send UI (MVP-089):** frontend `CampaignsSection` at `/campaigns` (list + create
 w/ approved-template picker + **send wizard**: audience preview → **type the count to confirm** [C5

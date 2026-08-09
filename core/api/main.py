@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from core.api.health import router as health_router
 from core.approvals.api import router as approvals_router
+from core.billing.api import router as billing_admin_router
 from core.campaigns.api import router as campaigns_router
 from core.catalog.router import router as catalog_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
@@ -79,3 +80,4 @@ app.include_router(tenants_admin_router)
 app.include_router(ops_admin_router)
 app.include_router(analytics_admin_router)
 app.include_router(customer_health_admin_router)
+app.include_router(billing_admin_router)
