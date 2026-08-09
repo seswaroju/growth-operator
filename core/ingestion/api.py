@@ -194,6 +194,45 @@ async def confirm_all_ep(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
+@router.post("/{batch_id}/load", summary="Load confirmed rows into the catalog (MVP-080)")
+async def load_import(
+    batch_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    from core.ingestion import load
+    from core.ingestion.state import IllegalTransition
+
+    try:
+        result = await load.load_batch(session, current.org_id, batch_id)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown import batch") from exc
+    except IllegalTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "batch is not ready to load") from exc
+    return {"batch_id": str(batch_id), "state": "loaded", **result}
+
+
+@router.post("/{batch_id}/revert", summary="Revert a load within 30 days (MVP-080)")
+async def revert_import(
+    batch_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    from core.ingestion import load
+
+    try:
+        result = await load.revert_batch(session, current.org_id, batch_id)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown import batch") from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return {"batch_id": str(batch_id), "state": "reverted", **result}
+
+
 @router.get("/{batch_id}/rows", summary="List a batch's extracted rows")
 async def list_import_rows(
     batch_id: UUID,

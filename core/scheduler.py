@@ -38,6 +38,7 @@ def _install_jobs() -> None:
     from core.approvals import notify, trust
     from core.campaigns import send as campaign_send
     from core.catalog import embed
+    from core.ingestion import load as ingestion_load
     from core.insights import rollup
 
     sched.clear()
@@ -46,6 +47,7 @@ def _install_jobs() -> None:
     embed.register_jobs()  # embeddings_batch — every 5 min (simulated embedder)
     rollup.register_jobs()  # business_metrics_rollup — daily 00:15 UTC
     campaign_send.register_jobs()  # campaign_fanout — hourly (staggered broadcast resume)
+    ingestion_load.register_jobs()  # import_batch_reaper — daily 03:45 UTC (free staging data)
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 
