@@ -2646,7 +2646,7 @@ layer.
 
 ## 2026-08-09 — MVP-072: Workflow DSL parser + guard library (engine foundation)
 
-**Branch:** `feature/mvp-072-workflow-dsl` (off main). **Merge:** `pending`. **Option A approved**
+**Branch:** `feature/mvp-072-workflow-dsl` (off main). **Merge:** `78aa0ae`. **Option A approved**
 (readable sugar; grammar frozen). The last empty original-MVP module (`core/workflows`) now has its
 foundation; the executor is MVP-073.
 
