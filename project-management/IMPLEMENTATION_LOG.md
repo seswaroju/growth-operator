@@ -2513,7 +2513,7 @@ sequence: bulk catalog import (MVP-077–080) / workflow engine (MVP-071–73) /
 
 ## 2026-08-08 — Bulk import I1 / MVP-078: CSV/XLSX extraction + column mapping
 
-**Branch:** `feature/ingest-i1-extract-csv` (off main). **Merge:** `pending`. First sub-ticket of the
+**Branch:** `feature/ingest-i1-extract-csv` (off main). **Merge:** `ca763a0`. First sub-ticket of the
 bulk-import track (MVP audit gap "catalog is imported"). The batch upload + state machine (MVP-076)
 existed; this fills the **extract** stage for structured sheets. Photo/vision extraction (MVP-077)
 stays gated-simulated (needs a real vision LLM). No migration (uses `import_rows`/`import_batches`).
