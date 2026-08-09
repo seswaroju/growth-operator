@@ -2489,7 +2489,7 @@ The **Sales** dashboard remains a separate later ticket (needs its own GO-sales-
 
 ## 2026-08-08 — P4.6 Financial dashboard B2 (web-ops) — makes billing visible
 
-**Branch:** `feature/billing-b2-financial` (off main). **Merge:** `pending`. Frontend-only (`web-ops`)
+**Branch:** `feature/billing-b2-financial` (off main). **Merge:** `01e2646`. Frontend-only (`web-ops`)
 — consumes the B1 billing endpoints; no backend change.
 
 `FinancialSection` at `/financial` (nav gated `platform.tenants:read`): **rollup cards** — MRR,
