@@ -2578,7 +2578,7 @@ revert — the stage that actually creates the catalog items. Then I4 (MVP-077 p
 
 ## 2026-08-09 — Bulk import I3 / MVP-080: load + 30-day revert
 
-**Branch:** `feature/ingest-i3-load` (off main). **Merge:** `pending`. The payoff stage — confirmed
+**Branch:** `feature/ingest-i3-load` (off main). **Merge:** `79adc2f`. The payoff stage — confirmed
 rows become catalog items, reversibly. **No migration** (`catalog_items.import_batch_id` already
 existed from mig 012; `crud.create_item` already accepts `import_batch_id`).
 
