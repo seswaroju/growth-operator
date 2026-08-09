@@ -15,6 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,6 +104,94 @@ async def extract_import(
         # the batch is now 'failed' (resumable); return normally so get_db commits that state
         return {"batch_id": str(batch_id), "state": "failed", "error": str(exc)}
     return {"batch_id": str(batch_id), "state": "extracted", "rows": rows}
+
+
+@router.post("/{batch_id}/validate", summary="Validate + flag rows, move to review (MVP-079)")
+async def validate_import(
+    batch_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    from core.ingestion import review
+    from core.ingestion.state import IllegalTransition
+
+    try:
+        return await review.validate_batch(session, current.org_id, batch_id)
+    except IllegalTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "batch is not ready to validate") from exc
+
+
+class RowEdit(BaseModel):
+    normalized: dict[str, Any]
+
+
+async def _row_action(action: str, org_id: UUID, batch_id: UUID, seq: int,
+                      session: AsyncSession, body: RowEdit | None = None) -> dict[str, Any]:
+    from core.ingestion import review
+
+    try:
+        if action == "confirm":
+            await review.confirm_row(session, org_id, batch_id, seq)
+        elif action == "reject":
+            await review.reject_row(session, org_id, batch_id, seq)
+        elif action == "edit" and body is not None:
+            await review.edit_row(session, org_id, batch_id, seq, body.normalized)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "row not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return await review.review_summary(session, org_id, batch_id)
+
+
+@router.post("/{batch_id}/rows/{seq}/confirm", summary="Confirm a row")
+async def confirm_row_ep(
+    batch_id: UUID, seq: int,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    return await _row_action("confirm", current.org_id, batch_id, seq, session)
+
+
+@router.post("/{batch_id}/rows/{seq}/reject", summary="Reject a row (won't load)")
+async def reject_row_ep(
+    batch_id: UUID, seq: int,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    return await _row_action("reject", current.org_id, batch_id, seq, session)
+
+
+@router.patch("/{batch_id}/rows/{seq}", summary="Edit a row's fields then confirm")
+async def edit_row_ep(
+    batch_id: UUID, seq: int, body: RowEdit,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    return await _row_action("edit", current.org_id, batch_id, seq, session, body)
+
+
+@router.post("/{batch_id}/rows/confirm-all", summary="Bulk-confirm rows (auto = confidence gate)")
+async def confirm_all_ep(
+    batch_id: UUID, auto: bool = False,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    from core.ingestion import review
+
+    try:
+        return await review.confirm_all(session, current.org_id, batch_id, auto=auto)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
 @router.get("/{batch_id}/rows", summary="List a batch's extracted rows")

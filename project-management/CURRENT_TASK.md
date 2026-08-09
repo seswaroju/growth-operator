@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## Bulk import — **I1 (MVP-078) done; I2→I4 pending** (2026-08-08) — I1 awaiting founder merge approval
+## Bulk import — **I1 merged; I2 (MVP-079) done; I3→I4 pending** (2026-08-09) — I2 awaiting founder merge approval
+
+**I2 review queue (MVP-079):** `core/ingestion/review.py` — `validate` (advance extracted→validating→
+review; flag missing_title [blocking] + duplicate_sku); confirm/edit→re-flag→confirm/reject a row;
+bulk confirm-all (skips rejected+blocking); auto-approve gate (all ≥0.95 conf + no flags + ≥5% sample).
+Endpoints `POST /validate`, `/rows/{seq}/confirm|reject`, `PATCH /rows/{seq}`, `/rows/confirm-all?auto=`
+(catalog:write). No migration/dep. **Verify:** ruff/mypy(148)/guards/**396 pytest** (3 new); gitleaks.
+**Next:** I3 (MVP-080 load + 30-day revert) → I4 (MVP-077 photo, gated). Then workflow engine → Sales →
+marketing agent.
+
+---
+
+## Bulk import · I1 — **merged `ca763a0`, CI green** (2026-08-08)
 
 **I1 CSV/XLSX extract + mapping (MVP-078):** `core/ingestion/extract_csv.py` — parse CSV (stdlib) +
 XLSX (openpyxl) → `import_rows` (raw + normalized mapped to catalog fields; price ₹→minor; unmapped→
