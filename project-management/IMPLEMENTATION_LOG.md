@@ -2610,3 +2610,34 @@ updated for `import_batch_reaper`) · gitleaks no-leaks. No migration.
 the CSV/XLSX bulk-import path (I1 extract → I2 review → I3 load/revert) — a jeweler can upload a
 spreadsheet and it becomes reviewable, loadable, revertable catalog items.** Then **I4 / MVP-077**
 (photo/vision extraction, gated-simulated), then the workflow engine.
+
+---
+
+## 2026-08-09 — Bulk import I4 / MVP-077: photo extraction (gated-simulated)
+
+**Branch:** `feature/ingest-i4-photo` (off main). **Merge:** `pending`. Completes the bulk-import track.
+No migration, no dependency.
+
+**`core/ingestion/extract_photo.py`** — gated-simulated vision extraction (same `_gate()` posture as
+the intelligence agents / embeddings / rates): provider **disabled** (default) → a deterministic
+**simulated** row per image (`Photo item N`, confidence 0.5, `simulated_vision` flag) so a photo batch
+still flows through review → load in dev/pilot-simulation; provider **enabled** but the vision worker
+unwired → fail-closed `provider_unavailable`. The real sandboxed vision worker + the pack's hint set +
+post-processing (logprob confidence, weight rules) land when a provider is wired. The
+`POST /v1/imports/{id}/extract` endpoint now **dispatches by `source_kind`** (`photo` → vision, else
+CSV/XLSX). Rule Zero honoured (no vertical nouns in `core/` — the guard caught + I fixed a "jewelry"
+reference in the docstring).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Simulated extraction → placeholder rows (title/conf/flag) | `test_simulated_photo_extraction_produces_placeholder_rows` | PASS |
+| Enabling the provider (vision unwired) fails closed | `test_photo_gate_fails_closed_when_provider_enabled` (`provider_unavailable`) | PASS |
+
+**Commands:** `ruff` clean · `mypy core` **150** · **guards 0** (Rule Zero) · **`pytest` 391** (2 new) ·
+gitleaks no-leaks. No migration.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. **This completes
+the bulk-import track (I1 CSV/XLSX extract → I2 review → I3 load/revert → I4 photo, gated).** Then the
+**workflow engine (MVP-071–73)** — the last original-MVP gap — then Sales dashboard + marketing-agent
+layer.

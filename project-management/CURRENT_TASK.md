@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## Bulk import — **I1–I2 merged; I3 (MVP-080) done; I4 pending** (2026-08-09) — I3 awaiting founder merge approval
+## Bulk import — **I1–I3 merged; I4 (MVP-077) done → TRACK COMPLETE** (2026-08-09) — I4 awaiting founder merge approval
+
+**I4 photo extraction (MVP-077, gated-simulated):** `core/ingestion/extract_photo.py` — provider off →
+deterministic placeholder row per image (`simulated_vision`, conf 0.5) so a photo batch flows through
+review→load; provider on but vision unwired → fail-closed `provider_unavailable`. `POST /extract`
+dispatches by `source_kind` (photo→vision, else CSV/XLSX). Rule Zero honoured (guard caught a "jewelry"
+docstring ref, fixed). No migration/dep. **Verify:** ruff/mypy(150)/**guards 0**/**391 pytest** (2 new).
+**The bulk-import track is COMPLETE** (I1 extract → I2 review → I3 load/revert → I4 photo). **Next:**
+workflow engine (MVP-071–73) — last MVP gap → Sales dashboard → marketing-agent layer.
+
+---
+
+## Bulk import · I3 — **merged `79adc2f`, CI green** (2026-08-09)
 
 **I3 load + 30-day revert (MVP-080):** `core/ingestion/load.py` — `load_batch` (confirmed rows →
 `crud.create_item` [validate + identity dedup], stamped import_batch_id; DuplicateIdentity→skipped,
