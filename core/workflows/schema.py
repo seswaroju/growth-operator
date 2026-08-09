@@ -119,6 +119,9 @@ DSL_SCHEMA: dict[str, Any] = {
             "properties": {
                 "for": {"type": "string", "enum": ["reply", "event", "duration"]},
                 "timeout": _DURATION,
+                # `for: event` names the event type it resumes on (optional; a bare event-wait can
+                # only time out). Reply-waits correlate on the conversation; durations on time.
+                "event": {"type": "string"},
             },
         },
         "branch": {

@@ -35,6 +35,7 @@ def _install_consumers() -> None:
     import core.events.consumer  # noqa: F401  msg.received logger
     import core.runtime.planner  # noqa: F401  msg.received → classify + route + enqueue run
     import core.runtime.resume  # noqa: F401  approval.resolved → resume parked run
+    import core.workflows.consumer  # noqa: F401  msg.received → wake workflow reply-waits
 
 
 async def run_worker(

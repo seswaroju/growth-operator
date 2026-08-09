@@ -128,23 +128,25 @@ async def _default_agent_runner(org_id: UUID, instr: dict[str, Any]) -> dict[str
 
 async def _apply_concurrency(
     s: AsyncSession, org_id: UUID, definition_id: UUID, policy: str, key: str
-) -> bool:
-    """Return True if a new run may start. `drop` blocks when a live run exists; `replace`
-    supersedes live runs then allows the new one. Live = status in (running, waiting)."""
+) -> str:
+    """Decide what a new run does against live runs (running/waiting) for the key: `start` (none
+    live, or replace after superseding), `drop` (skip), or `queue` (park behind the live run)."""
     live = (await s.execute(
         text("SELECT id FROM workflow_runs WHERE org_id = :o AND definition_id = :d "
              "AND concurrency_key = :k AND status IN ('running','waiting')"),
         {"o": str(org_id), "d": str(definition_id), "k": key})).scalars().all()
     if not live:
-        return True
+        return "start"
     if policy == "drop":
-        return False
+        return "drop"
+    if policy == "queue":
+        return "queue"
     if policy == "replace":
         for run_id in live:
             await _set_cursor(s, org_id, run_id, 0, status="superseded")
             await _append(s, org_id, run_id, "superseded", data={"by": "replace"})
-        return True
-    return True  # 'queue' semantics arrive in MVP-073b; until then behave permissively
+        return "start"
+    return "start"
 
 
 # ---- public API -----------------------------------------------------------------------
@@ -168,40 +170,49 @@ async def start_run(
         except Exception:  # noqa: BLE001 - unresolved key → treat as keyless (no coalescing)
             key = None
 
+    decision = "start"
     async with org_scoped_session(org_id) as s:
         await set_org_context(s, org_id)
-        if conc and key is not None and not await _apply_concurrency(
-            s, org_id, definition_id, conc["policy"], key
-        ):
-            await s.commit()
-            logger.info("workflow.skipped: concurrency %s on %s/%s", conc["policy"],
-                        definition_id, key)
-            return None
+        if conc and key is not None:
+            decision = await _apply_concurrency(s, org_id, definition_id, conc["policy"], key)
+            if decision == "drop":
+                await s.commit()
+                logger.info("workflow.skipped: concurrency drop on %s/%s", definition_id, key)
+                return None
+        status = "queued" if decision == "queue" else "running"
         run_id = (await s.execute(
             text("INSERT INTO workflow_runs "
-                 "(org_id, definition_id, definition_version, concurrency_key, subject, vars) "
-                 "VALUES (:o, :d, :v, :k, CAST(:sub AS jsonb), '{}'::jsonb) RETURNING id"),
+                 "(org_id, definition_id, definition_version, concurrency_key, subject, vars, "
+                 " status) VALUES (:o, :d, :v, :k, CAST(:sub AS jsonb), '{}'::jsonb, :st) "
+                 "RETURNING id"),
             {"o": str(org_id), "d": str(definition_id), "v": version, "k": key,
-             "sub": json.dumps(subject)})).scalar_one()
-        await _append(s, org_id, run_id, "run_started", data={"subject": subject})
+             "sub": json.dumps(subject), "st": status})).scalar_one()
+        await _append(s, org_id, run_id, "run_queued" if status == "queued" else "run_started",
+                      data={"subject": subject})
         await s.commit()
 
-    await _advance(org_id, run_id, agent_runner or _default_agent_runner)
+    if decision != "queue":
+        await _advance(org_id, run_id, agent_runner or _default_agent_runner)
     return run_id
 
 
 async def _load(s: AsyncSession, org_id: UUID, run_id: UUID) -> dict[str, Any] | None:
     row = (await s.execute(
-        text("SELECT r.status, r.cursor, r.vars, r.subject, d.dsl "
-             "FROM workflow_runs r JOIN workflow_definitions d ON d.id = r.definition_id "
+        text("SELECT r.status, r.cursor, r.vars, r.subject, r.definition_id, r.concurrency_key, "
+             "d.dsl FROM workflow_runs r JOIN workflow_definitions d ON d.id = r.definition_id "
              "WHERE r.id = :r AND r.org_id = :o"),
         {"r": str(run_id), "o": str(org_id)})).mappings().first()
     return dict(row) if row else None
 
 
 async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> None:
-    """Drive the run from its cursor until it completes or parks. Safe to call repeatedly."""
+    """Drive the run from its cursor until it completes or parks. Safe to call repeatedly. Steps
+    with external effects (AGENT) or follow-on work (queued promotion) run OUTSIDE the run session
+    to avoid nesting the per-org advisory lock."""
     while True:
+        agent_ins: dict[str, Any] | None = None
+        agent_pc = 0
+        promote: tuple[UUID, str | None] | None = None
         async with org_scoped_session(org_id) as s:
             await set_org_context(s, org_id)
             run = await _load(s, org_id, run_id)
@@ -209,78 +220,133 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                 return
             program = compile_program(run["dsl"])
             pc: int = run["cursor"]
-            if pc >= len(program):
-                await _set_cursor(s, org_id, run_id, pc, status="completed")
-                await _append(s, org_id, run_id, "run_completed")
-                await s.commit()
-                return
-            ins = program[pc]
-            op = ins["op"]
-            sid = ins["sid"]
-            activation = {"subject": run["subject"], "vars": run["vars"]}
+            # Expose vars both namespaced (`vars.refresh_ok`) and promoted to top level
+            # (`wait.result`, matching how the DSL branches reference them); subject/vars win.
+            activation = {**run["vars"], "subject": run["subject"], "vars": run["vars"]}
 
-            if op == "END":
+            if pc >= len(program) or program[pc]["op"] == "END":
                 await _set_cursor(s, org_id, run_id, pc, status="completed")
                 await _append(s, org_id, run_id, "run_completed")
                 await s.commit()
-                return
-            if op == "SET":
-                new_vars = {**run["vars"], **ins["vars"]}
-                await s.execute(
-                    text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb) WHERE id = :r"),
-                    {"v": json.dumps(new_vars), "r": str(run_id)})
-                await _append(s, org_id, run_id, "step_completed", step_id=sid, data={"op": "set"})
-                await _set_cursor(s, org_id, run_id, pc + 1)
-                await s.commit()
-                continue
-            if op == "EMIT":
-                await _do_emit(s, org_id, ins, activation)
-                await _append(s, org_id, run_id, "step_completed", step_id=sid,
-                              data={"op": "emit", "event": ins["event"]})
-                await _set_cursor(s, org_id, run_id, pc + 1)
-                await s.commit()
-                continue
-            if op == "BRANCH":
-                target = next((c["target"] for c in ins["cases"]
-                               if _truthy(c["when"], activation)), ins["default"])
-                await _append(s, org_id, run_id, "branch_taken", step_id=sid,
-                              data={"target": target})
-                await _set_cursor(s, org_id, run_id, target)
-                await s.commit()
-                continue
-            if op in ("JUMP", "NOOP"):
-                await _set_cursor(s, org_id, run_id, ins.get("target", pc + 1))
-                await s.commit()
-                continue
-            if op in ("WAIT", "HUMAN"):
-                await _set_cursor(s, org_id, run_id, pc, status="waiting")
-                await _append(s, org_id, run_id, "step_parked", step_id=sid,
-                              data={"op": op.lower()})
-                await s.commit()
-                return
-            if op == "AGENT":
-                if await _step_done(s, run_id, sid):
+                promote = (run["definition_id"], run["concurrency_key"])
+            else:
+                ins = program[pc]
+                op = ins["op"]
+                sid = ins["sid"]
+                if op == "SET":
+                    new_vars = {**run["vars"], **ins["vars"]}
+                    await s.execute(
+                        text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb) WHERE id = :r"),
+                        {"v": json.dumps(new_vars), "r": str(run_id)})
+                    await _append(s, org_id, run_id, "step_completed", step_id=sid,
+                                  data={"op": "set"})
                     await _set_cursor(s, org_id, run_id, pc + 1)
                     await s.commit()
                     continue
-                await _append(s, org_id, run_id, "step_started", step_id=sid,
-                              data={"task": ins["task"]})
-                await s.commit()  # release the session before the runtime call (deadlock-safe)
-        # --- outside any workflow session: run the agent ---
-        output = await agent_runner(org_id, ins)
-        async with org_scoped_session(org_id) as s:
-            await set_org_context(s, org_id)
-            await _append(s, org_id, run_id, "step_completed", step_id=sid, data=output)
-            await _set_cursor(s, org_id, run_id, pc + 1)
-            await s.commit()
+                if op == "EMIT":
+                    await _do_emit(s, org_id, ins, activation)
+                    await _append(s, org_id, run_id, "step_completed", step_id=sid,
+                                  data={"op": "emit", "event": ins["event"]})
+                    await _set_cursor(s, org_id, run_id, pc + 1)
+                    await s.commit()
+                    continue
+                if op == "BRANCH":
+                    target = next((c["target"] for c in ins["cases"]
+                                   if _truthy(c["when"], activation)), ins["default"])
+                    await _append(s, org_id, run_id, "branch_taken", step_id=sid,
+                                  data={"target": target})
+                    await _set_cursor(s, org_id, run_id, target)
+                    await s.commit()
+                    continue
+                if op in ("JUMP", "NOOP"):
+                    await _set_cursor(s, org_id, run_id, ins.get("target", pc + 1))
+                    await s.commit()
+                    continue
+                if op in ("WAIT", "HUMAN"):
+                    await _set_cursor(s, org_id, run_id, pc, status="waiting")
+                    await _append(s, org_id, run_id, "step_parked", step_id=sid,
+                                  data={"op": op.lower(), "for": ins.get("for")})
+                    if op == "WAIT":
+                        from core.workflows import waits
+                        await waits.register_wait(s, org_id, run_id, sid, ins, run["subject"])
+                    await s.commit()
+                    return
+                if op == "AGENT":
+                    if await _step_done(s, run_id, sid):
+                        await _set_cursor(s, org_id, run_id, pc + 1)
+                        await s.commit()
+                        continue
+                    await _append(s, org_id, run_id, "step_started", step_id=sid,
+                                  data={"task": ins["task"]})
+                    await s.commit()  # release the session before the runtime call (deadlock-safe)
+                    agent_ins, agent_pc = ins, pc
+
+        # --- outside the run session ---
+        if promote is not None:
+            await _promote_next(org_id, promote[0], promote[1], agent_runner)
+            return
+        if agent_ins is not None:
+            output = await agent_runner(org_id, agent_ins)
+            async with org_scoped_session(org_id) as s:
+                await set_org_context(s, org_id)
+                await _append(s, org_id, run_id, "step_completed", step_id=agent_ins["sid"],
+                              data=output)
+                await _set_cursor(s, org_id, run_id, agent_pc + 1)
+                await s.commit()
+            continue
+        return
+
+
+async def _promote_next(
+    org_id: UUID, definition_id: UUID, key: str | None, agent_runner: AgentRunner
+) -> None:
+    """When a run for a `queue`-policy key finishes, promote the oldest queued run and drive it."""
+    if key is None:
+        return
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        promoted = (await s.execute(
+            text("UPDATE workflow_runs SET status = 'running', updated_at = now() "
+                 "WHERE id = (SELECT id FROM workflow_runs WHERE org_id = :o "
+                 "  AND definition_id = :d AND concurrency_key = :k AND status = 'queued' "
+                 "  ORDER BY created_at LIMIT 1) RETURNING id"),
+            {"o": str(org_id), "d": str(definition_id), "k": key})).scalar_one_or_none()
+        if promoted is not None:
+            await _append(s, org_id, promoted, "run_started", data={"promoted_from": "queue"})
+        await s.commit()
+    if promoted is not None:
+        await _advance(org_id, promoted, agent_runner)
 
 
 async def resume_run(
     org_id: UUID, run_id: UUID, *, agent_runner: AgentRunner | None = None
 ) -> None:
     """Resume a run left `running` by a crash — replays from the cursor (idempotent steps make it
-    safe). Waking a parked (`waiting`) run is MVP-073b."""
+    safe)."""
     await _advance(org_id, run_id, agent_runner or _default_agent_runner)
+
+
+async def wake_run(
+    org_id: UUID, run_id: UUID, result: str, *, agent_runner: AgentRunner | None = None
+) -> bool:
+    """Wake a parked (`waiting`) run past its wait: record `wait.result`, advance the cursor, and
+    drive it. Returns False if the run is not currently waiting (already resumed / terminal), so a
+    duplicate signal is a no-op. The wait subscription is marked by the caller (waits.py)."""
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        run = await _load(s, org_id, run_id)
+        if run is None or run["status"] != "waiting":
+            return False
+        pc = run["cursor"]
+        new_vars = {**run["vars"], "wait": {"result": result}}
+        await s.execute(
+            text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb), status = 'running', "
+                 "cursor = :c, updated_at = now() WHERE id = :r AND org_id = :o"),
+            {"v": json.dumps(new_vars), "c": pc + 1, "r": str(run_id), "o": str(org_id)})
+        await _append(s, org_id, run_id, "step_resumed", data={"result": result})
+        await s.commit()
+    await _advance(org_id, run_id, agent_runner or _default_agent_runner)
+    return True
 
 
 async def _do_emit(

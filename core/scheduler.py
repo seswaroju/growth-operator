@@ -40,6 +40,7 @@ def _install_jobs() -> None:
     from core.catalog import embed
     from core.ingestion import load as ingestion_load
     from core.insights import rollup
+    from core.workflows import waits as workflow_waits
 
     sched.clear()
     notify.register_jobs()  # approval_ladder — every minute
@@ -48,6 +49,7 @@ def _install_jobs() -> None:
     rollup.register_jobs()  # business_metrics_rollup — daily 00:15 UTC
     campaign_send.register_jobs()  # campaign_fanout — hourly (staggered broadcast resume)
     ingestion_load.register_jobs()  # import_batch_reaper — daily 03:45 UTC (free staging data)
+    workflow_waits.register_jobs()  # workflow_wait_sweep — every minute (duration fire + timeout)
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 
