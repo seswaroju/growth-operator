@@ -2745,7 +2745,7 @@ match consumers + `queue` policy). Acceptance target there: reply at 95h matches
 
 ## 2026-08-09 — MVP-073b: Workflow waits + queue policy (stage 2 of the workflow-executor initiative)
 
-**Branch:** `feature/mvp-073b-waits` (off main). **Merge:** `pending`. Long-running journeys survive
+**Branch:** `feature/mvp-073b-waits` (off main). **Merge:** `626b822`. Long-running journeys survive
 restarts and wait for replies / durations / events. Migration 037, no dependency.
 
 **Migration 037** (`96b3c722a891`): adds `queued` to the `workflow_runs` status CHECK (additive) for the
