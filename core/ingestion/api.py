@@ -81,6 +81,30 @@ async def get_import(
     return batch
 
 
+@router.post("/{batch_id}/extract", summary="Run CSV/XLSX extraction + column mapping (MVP-078)")
+async def extract_import(
+    batch_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no organization context")
+    from core.ingestion import extract_csv
+    from core.ingestion.state import IllegalTransition
+
+    try:
+        rows = await extract_csv.extract_batch(session, current.org_id, batch_id)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown import batch") from exc
+    except IllegalTransition as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "batch is not in an extractable state") from exc
+    except extract_csv.ExtractionFailed as exc:
+        # the batch is now 'failed' (resumable); return normally so get_db commits that state
+        return {"batch_id": str(batch_id), "state": "failed", "error": str(exc)}
+    return {"batch_id": str(batch_id), "state": "extracted", "rows": rows}
+
+
 @router.get("/{batch_id}/rows", summary="List a batch's extracted rows")
 async def list_import_rows(
     batch_id: UUID,

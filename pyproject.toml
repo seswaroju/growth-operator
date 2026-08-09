@@ -32,6 +32,8 @@ dependencies = [
     # Error/exception tracking client for a SELF-HOSTED GlitchTip (Sentry ingest protocol).
     # Inert unless GROWTH_OPERATOR_ERROR_TRACKING_DSN is set (security S2). MIT-licensed.
     "sentry-sdk>=2.0",
+    # Read .xlsx uploads for bulk catalog import (MVP-078). CSV uses the stdlib. MIT-licensed.
+    "openpyxl>=3.1",
 ]
 
 [dependency-groups]
@@ -91,6 +93,11 @@ ignore_missing_imports = true
 # Media adapter clients (clamd / boto3) ship no type stubs (BLOCKERS #12).
 [[tool.mypy.overrides]]
 module = ["clamd.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true
+
+# openpyxl (xlsx import, MVP-078) ships no type stubs.
+[[tool.mypy.overrides]]
+module = "openpyxl.*"
 ignore_missing_imports = true
 
 # jsonschema + celpy + asyncpg ship no (usable) type stubs.
