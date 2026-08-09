@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## Bulk import — **I1 merged; I2 (MVP-079) done; I3→I4 pending** (2026-08-09) — I2 awaiting founder merge approval
+## Bulk import — **I1–I2 merged; I3 (MVP-080) done; I4 pending** (2026-08-09) — I3 awaiting founder merge approval
+
+**I3 load + 30-day revert (MVP-080):** `core/ingestion/load.py` — `load_batch` (confirmed rows →
+`crud.create_item` [validate + identity dedup], stamped import_batch_id; DuplicateIdentity→skipped,
+ValidationProblems→load_failed per-row; →loaded); `revert_batch` (≤30d: archive UNMUTATED items, list
+edited-since as mutated_skipped; →reverted); `reap_old_batches` daily job. `POST /v1/imports/{id}/load
+|revert`. **No migration** (import_batch_id existed). **Verify:** ruff/mypy(149)/guards/**399 pytest**
+(3 new). **The CSV/XLSX bulk-import path (I1→I2→I3) is COMPLETE** — upload → review → load/revert.
+**Next:** I4 (MVP-077 photo/vision extract, gated-simulated) → workflow engine → Sales → marketing.
+
+---
+
+## Bulk import · I2 — **merged `b4bc5c2`, CI green** (2026-08-09)
 
 **I2 review queue (MVP-079):** `core/ingestion/review.py` — `validate` (advance extracted→validating→
 review; flag missing_title [blocking] + duplicate_sku); confirm/edit→re-flag→confirm/reject a row;

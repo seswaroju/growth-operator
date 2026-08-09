@@ -2573,3 +2573,40 @@ no-leaks. No migration.
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **I3 /
 MVP-080** — load (confirmed rows → catalog items, identity dedupe, import_batch_id stamp) + 30-day
 revert — the stage that actually creates the catalog items. Then I4 (MVP-077 photo, gated).
+
+---
+
+## 2026-08-09 — Bulk import I3 / MVP-080: load + 30-day revert
+
+**Branch:** `feature/ingest-i3-load` (off main). **Merge:** `pending`. The payoff stage — confirmed
+rows become catalog items, reversibly. **No migration** (`catalog_items.import_batch_id` already
+existed from mig 012; `crud.create_item` already accepts `import_batch_id`).
+
+**`core/ingestion/load.py`:**
+- `load_batch` — advance `review → loading`; for each **confirmed** row build an `ItemInput`
+  (title/sku/base_price_minor/description/attributes, `price_mode='static'`) and call
+  `crud.create_item` (which validates attributes + enforces the pack's identity keys), stamped with
+  `import_batch_id`. `DuplicateIdentity` → row `skipped_duplicate`; `ValidationProblems` → row
+  `load_failed` (both per-row, batch continues). Finish `loading → loaded`. Returns loaded/skipped/
+  failed counts.
+- `revert_batch` — within the **30-day** window (from the batch's last state-change), archive
+  (`status='archived'`) this batch's items that are **unmutated** (`updated_at = created_at`); an
+  edited-since item is left alone and listed in `mutated_skipped`. Finish `loaded → reverted`.
+- `reap_old_batches` — daily `import_batch_reaper` job frees staging data (rows + blob ref) for
+  terminal batches (loaded/reverted/cancelled/failed) older than the window; the loaded items stay.
+- Endpoints `POST /v1/imports/{id}/load` + `/revert` (`catalog:write`).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Confirmed rows → catalog items stamped import_batch_id; revert archives | `test_load_creates_stamped_items_then_revert_archives` (2 loaded, 2 archived) | PASS |
+| A row whose sku already exists is skipped (identity dedupe) | `test_load_skips_a_duplicate_sku` (1 loaded, 1 skipped) | PASS |
+| Revert leaves an edited-since item alone (mutated_skipped) | `test_revert_leaves_a_mutated_item_alone` | PASS |
+
+**Commands:** `ruff` clean · `mypy core` **149** · guards 0 · **`pytest` 399** (3 new; scheduler pin
+updated for `import_batch_reaper`) · gitleaks no-leaks. No migration.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. **This completes
+the CSV/XLSX bulk-import path (I1 extract → I2 review → I3 load/revert) — a jeweler can upload a
+spreadsheet and it becomes reviewable, loadable, revertable catalog items.** Then **I4 / MVP-077**
+(photo/vision extraction, gated-simulated), then the workflow engine.
