@@ -2452,7 +2452,7 @@ per-client billing model (unblocks P4.6), then bulk import / workflows / the mar
 
 ## 2026-08-08 — Per-client billing model B1 (unblocks P4.6 Financial)
 
-**Branch:** `feature/billing-b1` (off main). **Merge:** `pending`. Backend only (B2 = the web-ops
+**Branch:** `feature/billing-b1` (off main). **Merge:** `4e06f82`. Backend only (B2 = the web-ops
 Financial dashboard). Founder-approved model (DECISIONS 2026-08-08): service charges = **managed budget
 + margin**; subscription = **named tiers/plans**.
 
