@@ -2615,7 +2615,7 @@ spreadsheet and it becomes reviewable, loadable, revertable catalog items.** The
 
 ## 2026-08-09 — Bulk import I4 / MVP-077: photo extraction (gated-simulated)
 
-**Branch:** `feature/ingest-i4-photo` (off main). **Merge:** `pending`. Completes the bulk-import track.
+**Branch:** `feature/ingest-i4-photo` (off main). **Merge:** `743b786`. Completes the bulk-import track.
 No migration, no dependency.
 
 **`core/ingestion/extract_photo.py`** — gated-simulated vision extraction (same `_gate()` posture as
