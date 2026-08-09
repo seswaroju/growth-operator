@@ -2547,7 +2547,7 @@ MVP-079** — the review queue (confirm/edit/reject rows) — then **I3 / MVP-08
 
 ## 2026-08-09 — Bulk import I2 / MVP-079: review queue
 
-**Branch:** `feature/ingest-i2-review` (off main). **Merge:** `pending`. Second bulk-import sub-ticket.
+**Branch:** `feature/ingest-i2-review` (off main). **Merge:** `b4bc5c2`. Second bulk-import sub-ticket.
 No migration, no dependency (uses `import_rows.state`/`flags`).
 
 **`core/ingestion/review.py`:** `validate_batch` advances `extracted → validating → review`, flagging
