@@ -9,7 +9,28 @@ selects and approves the next ticket.
 
 ---
 
-## Bulk import — **I1–I3 merged; I4 (MVP-077) done → TRACK COMPLETE** (2026-08-09) — I4 awaiting founder merge approval
+## MVP-072 — Workflow DSL parser + guard library — **Completed — awaiting founder review** (2026-08-09)
+
+**Branch `feature/mvp-072-workflow-dsl`.** The workflow-engine **foundation** (last empty original-MVP
+module). Migration **036** (`workflow_definitions`/`runs`/`run_events`/`wait_subscriptions`, all RLS;
+up/down/up verified). `core/workflows/` = **schema** (frozen DSL v1 jsonschema, 7 generic verbs) +
+**parser** (CEL trigger compile incl. `… FOR '72h'` → check spec; branch/concurrency CEL checked) +
+**guards** (7 core guards over real L2/L3 state, fail-closed; mandated-guard injection) + **store**
+(seed + internal activate + routing). Installer `_seed_workflows` now seeds pack workflows (closes
+BLOCKERS #14 workflows-half; `DEFERRED_STEPS=()`). **Option A approved** — `silent_lead_reactivation`
+v3 stays in the repo and is correctly rejected (its verbs are outside the frozen grammar), to be
+delivered as the diagnosis extension. **Verify:** ruff/mypy(154)/**guards 0**/**415** unit+isolation/
+**432** integration+e2e+contract; **+36** new workflow tests. No new dep. **Next (per DECISIONS
+2026-08-09):** MVP-073 executor + waits → Option-A diagnosis extension + jewelry ghost-recovery pack +
+eval (offline/synthetic, real-ready via gate) → CAPTURE-GAP migrations for live.
+
+**Founder note captured (VISION_INTAKE addendum 2026-08-09):** alongside kirana, add **boutique shops +
+online boutique influencers** as future target verticals — vision-only, not MVP scope, no core change
+needed (the engine is generic).
+
+---
+
+## Bulk import — **I1–I4 merged → TRACK COMPLETE** (2026-08-09) — `743b786`
 
 **I4 photo extraction (MVP-077, gated-simulated):** `core/ingestion/extract_photo.py` — provider off →
 deterministic placeholder row per image (`simulated_vision`, conf 0.5) so a photo batch flows through

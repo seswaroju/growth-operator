@@ -113,7 +113,7 @@ async def test_install_seeds_paused_instances_and_candidate_layers(scene: dict) 
     org, slug, pack_dir = scene["org"], scene["slug"], scene["pack_dir"]
     result = await install(org, pack_dir)
     assert result.status == "active" and result.idempotent is False
-    assert result.deferred_steps == ("workflows",)  # policies now seeded (MVP-044)
+    assert result.deferred_steps == ()  # policies (MVP-044) + workflows (MVP-072) both seeded
 
     c = await _counts(org, slug)
     assert c["instances"] == 4 and c["bindings"] == 4  # support archetype not seeded → skipped

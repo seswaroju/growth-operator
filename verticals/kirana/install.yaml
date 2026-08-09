@@ -15,4 +15,4 @@ expected_plan:
   instances: 3
   workflows: 2
   integrations: 2
-  deferred_steps: [workflows]
+  deferred_steps: []       # workflows seeded (MVP-072); nothing deferred
