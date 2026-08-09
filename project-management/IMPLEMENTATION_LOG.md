@@ -2641,3 +2641,57 @@ gitleaks no-leaks. No migration.
 the bulk-import track (I1 CSV/XLSX extract → I2 review → I3 load/revert → I4 photo, gated).** Then the
 **workflow engine (MVP-071–73)** — the last original-MVP gap — then Sales dashboard + marketing-agent
 layer.
+
+---
+
+## 2026-08-09 — MVP-072: Workflow DSL parser + guard library (engine foundation)
+
+**Branch:** `feature/mvp-072-workflow-dsl` (off main). **Merge:** `pending`. **Option A approved**
+(readable sugar; grammar frozen). The last empty original-MVP module (`core/workflows`) now has its
+foundation; the executor is MVP-073.
+
+**Migration 036** (`5992a9cbb631`, revises `2d4b307a495a`): four org-scoped tables — `workflow_defini
+tions`, `workflow_runs`, `workflow_run_events`, `wait_subscriptions` — each `apply_rls()`. MVP-072
+writes only `workflow_definitions`; the run tables land now so MVP-073's executor has schema. Up →
+down (all 4 dropped) → up all verified against the live DB.
+
+**`core/workflows/`:**
+- **schema.py** — frozen DSL v1 jsonschema (7 generic step verbs; `additionalProperties:false` +
+  single-key step object rejects any non-grammar verb). `parse_duration_s`.
+- **parser.py** — `validate_dsl` → guard parse + mandated injection → **CEL trigger compile** (celpy,
+  same compile-cache posture as the approvals engine) incl. **`… FOR '72h'` duration predicate split
+  into a scheduler check spec**; branch `when` + concurrency `key` CEL syntax-checked at parse.
+- **guards.py** — the **7 core guards** (`consent_valid` · `not_suppressed` · `within_send_window` ·
+  `touch_cap` · `budget_ok` · `flag_on` · `tier_max`) as async predicates over real L2/L3 rows
+  (suppressions, contacts.consent_status, messages/conversations, feature_flags, billing_charges,
+  quiet_hours). **Fail-closed** without a subject. `inject_mandated_guards` (name-keyed, idempotent).
+- **store.py** — `seed_definition` (upsert), internal `activate`/`deactivate`, `active_definitions_
+  for_event` routing.
+
+**Installer:** `_seed_workflows` (was a deferred no-op) now parses + seeds each pack workflow active;
+a non-grammar file is logged + **skipped**, never fatal. `DEFERRED_STEPS = ()`. Closes the
+workflows-half of BLOCKERS #14. Reference-pack fixups: `verticals/{jewelry,kirana}/install.yaml`
+`deferred_steps → []`; `kirana/reorder_nudge.yaml` guards → block-style (YAML was splitting
+`touch_cap(1, 7d)` on the inner comma — zero-semantic formatting fix).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| All grammar-conformant jewelry files parse | `test_conformant_jewelry_workflows_parse[visit/rate/festival]` | PASS |
+| Kirana (modularity proof) parses | `test_kirana_workflows_parse` | PASS |
+| Non-grammar verbs rejected (grammar freeze) | `test_proposed_workflow_with_ungrammar_verbs_is_rejected`, `test_unknown_step_type_rejected` | PASS |
+| FOR-duration → check spec | `test_for_duration_trigger_compiles_to_check_spec` | PASS |
+| Crafted def gets mandated guard injected | `test_mandated_guard_injected_when_omitted` | PASS |
+| 7 guards over real state; fail-closed | `tests/integration/test_workflow_guards_db.py` (8 tests) | PASS |
+| Seed + activate + route + upsert | `tests/integration/test_workflow_definitions.py` | PASS |
+| Cross-tenant RLS + fail-closed | `tests/isolation/test_workflow_rls.py` | PASS |
+| Migration up/down | `alembic upgrade head` / `downgrade -1` / `upgrade head` | PASS |
+
+**Commands:** ruff clean · `mypy core` **154** · **guards 0** (Rule Zero) · **415** unit+isolation ·
+**432** integration+e2e+contract · migration up/down/up verified. **No new dependency.**
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **MVP-073
+executor + waits** (event-sourced runs, step idempotency, reply/duration waits, saga compensation,
+concurrency policies), then the **Option-A diagnosis extension + jewelry ghost-recovery pack + eval
+harness** (offline/synthetic, real-ready via the gate), then the **CAPTURE-GAP migrations** for live.
+See DECISIONS 2026-08-09 (grammar freeze + Option A + ghost-recovery as MVP thesis).

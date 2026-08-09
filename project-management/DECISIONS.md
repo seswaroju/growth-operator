@@ -902,3 +902,36 @@ uploads a spreadsheet) is the CSV/XLSX path, which is fully buildable now.
 **Dependency: `openpyxl` (MIT)** added for reading `.xlsx` (CSV uses the stdlib) — founder-approved
 2026-08-08. mypy override added (ships no type stubs). Anticipated by MVP-076 ("Excel via openpyxl at
 078"). **Decided by:** Founder (2026-08-08).
+
+---
+
+## 2026-08-09 — Workflow engine: DSL grammar freeze + Option A (readable sugar) + ghost-recovery as MVP thesis
+
+**MVP-072 (workflow DSL parser + guard library) landed the engine foundation.** Three decisions:
+
+**1. DSL grammar frozen (v1).** The workflow DSL is the seven generic step verbs from
+`docs/21-platform/workflow-engine.md` — `agent_task · human_task · wait · branch · emit · set · loop`
+— and nothing else. `core/workflows/schema.py` enforces this with `additionalProperties: false`; any
+other verb is rejected at parse. Per the MVP-072 rollout note ("grammar freeze after review — recorded
+in the decision log"), the grammar does not grow a new core step type; specialised behaviour is a pack
+capability invoked through `agent_task`. **Decided by:** Founder (2026-08-09).
+
+**2. Ghost-diagnosis recovery is a PRIMARY MVP thesis, not a deferred feature.** The founder confirmed
+the core product bet is diagnosing *why* a lead ghosted (price-check / comparison / sticker-shock /
+consult-family / financing / design / trust / rate-timing — the 8-reason taxonomy) and recovering the
+sale. `verticals/jewelry/workflows/silent_lead_reactivation.yaml` v3 (PROPOSED) is the target, not a
+fence. It stays in the repo **as-is** and the MVP-072 parser correctly **rejects** it today (it uses
+verbs outside the frozen grammar and reads data we don't capture yet — CAPTURE-GAPs 01–06). Its
+"all 4 files parse" acceptance line was written against the older v2; the current criterion is "the
+3 grammar-conformant files parse; v3 is rejected pending its own ticket." **Decided by:** Founder.
+
+**3. Realising the four diagnosis verbs — Option A (readable sugar).** `classify_ghost / diagnose /
+approval_gate / compose` will be delivered as **readable aliases that desugar to the generic grammar**
+(`agent_task` at a routed tier with structured output-binding; a ranked-options `human_task`), keeping
+`core/` industry-neutral (Rule Zero) AND the pack YAML readable. The jewelry brains (taxonomy, frontier
+diagnosis prompt, reason-conditioned templates) live entirely in `verticals/jewelry/` (prompt layers +
+templates), exactly as specced. **Proof bar:** offline/synthetic + eval harness now, **real-ready**
+via the `llm_provider_enabled` gate — the same workflow runs on real leads once the Meta WhatsApp API +
+a real LLM API are wired, by config, no rewrite. **Sequence:** MVP-072 (done) → MVP-073 executor →
+diagnosis extension (Option A) + jewelry pack + eval → CAPTURE-GAP migrations for live. **Decided by:**
+Founder (2026-08-09).

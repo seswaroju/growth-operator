@@ -9,11 +9,11 @@ pauses the org's instances and marks the install `uninstalled`, leaving L3 runti
 catalog schema untouched.
 
 The **policies** step (`approval_policies`, migration 014 / MVP-065) is seeded from each binding's
-`tier_defaults` (MVP-044). The **workflows** step (`workflow_definitions`, migration 016 / MVP-072)
-still targets a table that does not exist yet, so it remains an explicit **deferred** no-op
-(BLOCKERS #14) until MVP-072 lands. The `support` archetype is not seeded (MVP-020), so a binding
-for an unseeded archetype is skipped for instances — but its pack-level policy rows are still seeded
-(policies are keyed by pack + action, not by archetype).
+`tier_defaults` (MVP-044). The **workflows** step (`workflow_definitions`, migration 036 / MVP-072)
+now parses + seeds each pack workflow as an active definition; a file that doesn't fit the frozen
+grammar is logged and skipped, never fatal. The `support` archetype is not seeded (MVP-020), so a
+binding for an unseeded archetype is skipped for instances — but its pack-level policy rows are
+still seeded (policies are keyed by pack + action, not by archetype).
 """
 
 from __future__ import annotations
@@ -38,7 +38,8 @@ from core.tenancy.middleware import org_scoped_session
 logger = logging.getLogger("core.packs.installer")
 
 # Steps whose target tables are not built yet — recorded, not executed (BLOCKERS #14).
-DEFERRED_STEPS = ("workflows",)
+# `workflows` landed with MVP-072 (migration 036); no install step remains deferred.
+DEFERRED_STEPS: tuple[str, ...] = ()
 
 _VERTICALS = Path(__file__).resolve().parents[2] / "verticals"
 
@@ -233,8 +234,24 @@ async def _seed_policies(session: AsyncSession, ctx: _Ctx) -> None:
 
 
 async def _seed_workflows(session: AsyncSession, ctx: _Ctx) -> None:
-    # DEFERRED: workflow_definitions (migration 016 / MVP-072) not built — BLOCKERS #14, MVP-044.
-    return None
+    """Parse + seed each pack workflow into `workflow_definitions` (active). A workflow that doesn't
+    fit the frozen grammar — e.g. a PROPOSED file using verbs not yet desugared — is logged and
+    SKIPPED, not fatal: it must not block the pack's supported workflows from installing."""
+    from core.workflows import parser as wf_parser
+    from core.workflows import store as wf_store
+    from core.workflows.guards import UnknownGuard
+    from core.workflows.parser import WorkflowParseError
+    from core.workflows.schema import WorkflowSchemaError
+
+    for wf in ctx.parsed.workflows:
+        dsl = wf.model_dump(exclude_none=True)
+        try:
+            parsed = wf_parser.parse(dsl)
+        except (WorkflowSchemaError, WorkflowParseError, UnknownGuard) as exc:
+            logger.warning("skipping workflow %r (not installable): %s", wf.workflow, exc)
+            continue
+        await wf_store.seed_definition(
+            session, org_id=ctx.org_id, pack_id=ctx.pack_id, parsed=parsed)
 
 
 async def _create_bindings_and_instances(session: AsyncSession, ctx: _Ctx) -> None:

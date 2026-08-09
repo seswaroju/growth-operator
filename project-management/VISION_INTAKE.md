@@ -392,3 +392,30 @@ caching + multi-provider routing + spend caps. **Where:** `architecture/agent-me
 Nothing in items 2–15/17–18 gets built until it has its own approved ticket. External-action tools
 (5, 7, 12, 13) and fingerprinting (2) stay **simulated/gated** until explicit founder + ToS/privacy
 sign-off.
+
+---
+
+## Addendum 2026-08-09 — Target verticals beyond kirana: boutique shops + online boutique influencers
+
+**Founder note (verbatim intent):** *"Also include alongside with Kirana the individual boutique
+shops or online boutique influencers."*
+
+**Capture:** kirana is the platform's declarative **modularity-proof** pack (proves `core/` is generic
+— Rule Zero). The founder wants the same treatment extended to two more segments as first-class
+target verticals/examples:
+
+- **Individual boutique shops** — small independent apparel/fashion retailers (a jewelry-adjacent
+  local-retail vertical: catalog + inquiries + recovery + campaigns, same platform shape).
+- **Online boutique influencers** — creator-led storefronts / social sellers. This leans hard into
+  the **marketing-agent layer** (vision item 1) and **SEO/social** (items 9/14): the "shop" is a
+  social presence, not a storefront, so the growth surface is content + DMs + campaigns.
+
+**Why it fits without core changes:** the workflow engine shipped in MVP-072 is industry-neutral by
+construction (7 generic step verbs; jewelry/kirana smarts live entirely in `verticals/<pack>/`). A
+boutique or influencer pack is *new declarative config* (catalog schema, prompts, workflows,
+templates) — **no `core/` change**, which is exactly the modularity kirana was meant to prove. See
+[[go-revenue-model]] (per-client GO revenue): influencer/boutique clients map cleanly onto the same
+subscription + social/SEO/campaign billing.
+
+**Status:** VISION CAPTURE ONLY — **not** MVP scope. No boutique/influencer pack is built until it has
+its own approved ticket. Does **not** change MVP-072 (current active ticket) scope.
