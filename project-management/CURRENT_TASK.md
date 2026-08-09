@@ -9,7 +9,20 @@ selects and approves the next ticket.
 
 ---
 
-## Per-client billing model — **B1 done; B2 (P4.6 Financial) next** (2026-08-08) — B1 awaiting founder merge approval
+## Billing / P4.6 Financial — **B1 merged; B2 done → Financial COMPLETE** (2026-08-08) — B2 awaiting founder merge approval
+
+**B2 P4.6 Financial dashboard (web-ops):** `FinancialSection` at `/financial` — rollup cards (MRR /
+service revenue / cost / **margin** / active clients from `platform_billing_rollup`) + plans manager
+(list/create) + per-client billing (store picker → assign plan + record charge [amount + cost] + view
+charges). Dashboard on `tenants:read`; writes gated `tenants:manage` (client + server). Cashflow/burn/
+runway deferred (need expense/cash inputs). **Verify:** web-ops oxlint/tsc/**vitest 6**/build + guards +
+gitleaks. **Completes P4.6 Financial** (billing B1 `4e06f82` + B2). **Sales dashboard = separate later
+ticket** (GO-sales-pipeline model). **Next (founder sequence):** bulk import (MVP-077–080) / workflows
+(MVP-071–73) / marketing-agent layer.
+
+---
+
+## Billing · B1 — **merged `4e06f82`, CI green** (2026-08-08)
 
 **B1 billing model + operator CRUD:** migration 035 `billing_plans` (global tiers) + `billing_subscriptions`
 (RLS, 1 active/client) + `billing_charges` (RLS: **amount + cost** → margin) + `platform_billing_rollup()`

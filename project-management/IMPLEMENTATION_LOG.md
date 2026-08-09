@@ -2484,3 +2484,27 @@ up/down round-trip · restore drill PASS · gitleaks no-leaks.
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **B2** — the
 **P4.6 Financial** dashboard in `web-ops` (MRR / revenue / margin / active clients from the rollup).
 The **Sales** dashboard remains a separate later ticket (needs its own GO-sales-pipeline model).
+
+---
+
+## 2026-08-08 — P4.6 Financial dashboard B2 (web-ops) — makes billing visible
+
+**Branch:** `feature/billing-b2-financial` (off main). **Merge:** `pending`. Frontend-only (`web-ops`)
+— consumes the B1 billing endpoints; no backend change.
+
+`FinancialSection` at `/financial` (nav gated `platform.tenants:read`): **rollup cards** — MRR,
+this-month service revenue, cost, **margin**, active clients (from `platform_billing_rollup`); a
+**plans** manager (list + create); and **per-client billing** — a store picker → its active plan +
+assign a plan + record a charge (₹ client pays + ₹ our cost) + list its charges. Write actions
+(create plan / assign / record charge) are gated on `platform.tenants:manage` in the UI (dev/admin
+operators) and enforced server-side (B1). web-ops nav pins updated (Financial visible to all operator
+roles that hold `tenants:read`). Honest note in-UI: cashflow / burn / runway need expense + cash
+inputs we don't capture yet — deferred; this shows revenue (MRR + service margin).
+
+**Commands:** web-ops — oxlint clean · `tsc` OK · **`vitest` 6** (nav pins) · build OK. guards 0.
+gitleaks: no leaks. Backend unchanged.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. **This completes
+the P4.6 Financial dashboard (billing B1 + B2).** The **Sales** dashboard remains a separate later
+ticket (a GO-sales-pipeline model — prospect→onboarded — distinct from billing). Then, per the founder
+sequence: bulk catalog import (MVP-077–080) / workflow engine (MVP-071–73) / marketing-agent layer.

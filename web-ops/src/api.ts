@@ -253,3 +253,96 @@ export function adminStoreReport(
 ): Promise<StoreReportDetail> {
   return authed<StoreReportDetail>(`/v1/admin/tenants/${orgId}/reports/${reportId}`, token);
 }
+
+// ---- Billing (/v1/admin/billing/*, platform.tenants:read / :manage) ---------
+// Operator-owned per-client revenue. Rollup feeds the Financial dashboard; plans + per-client
+// subscription/charges are the management surface (writes need tenants:manage; audited server-side).
+
+export interface BillingRollup {
+  mrr_minor: number;
+  charges_revenue_minor: number;
+  charges_cost_minor: number;
+  margin_minor: number;
+  active_clients: number;
+}
+
+export interface BillingPlan {
+  id: string;
+  name: string;
+  price_minor: number;
+  active: boolean;
+  created_at: string;
+}
+
+export interface Subscription {
+  id: string;
+  plan_id: string;
+  plan_name: string;
+  price_minor: number;
+  status: string;
+  started_at: string;
+}
+
+export type ChargeType = "subscription" | "social" | "seo" | "campaign" | "other";
+
+export interface BillingCharge {
+  id: string;
+  org_id: string;
+  period_month: string;
+  charge_type: string;
+  amount_minor: number;
+  cost_minor: number;
+  note: string | null;
+  created_at: string;
+}
+
+export interface ChargeInput {
+  period_month: string;
+  charge_type: ChargeType;
+  amount_minor: number;
+  cost_minor: number;
+  note?: string | null;
+}
+
+export function adminBillingRollup(token: string): Promise<BillingRollup> {
+  return authed<BillingRollup>("/v1/admin/billing/rollup", token);
+}
+
+export function adminListPlans(token: string): Promise<BillingPlan[]> {
+  return authed<BillingPlan[]>("/v1/admin/billing/plans", token);
+}
+
+export function adminCreatePlan(
+  token: string, name: string, priceMinor: number,
+): Promise<BillingPlan> {
+  return authed<BillingPlan>("/v1/admin/billing/plans", token, {
+    method: "POST",
+    body: JSON.stringify({ name, price_minor: priceMinor }),
+  });
+}
+
+export function adminGetSubscription(token: string, orgId: string): Promise<Subscription | null> {
+  return authed<Subscription | null>(`/v1/admin/billing/tenants/${orgId}/subscription`, token);
+}
+
+export function adminAssignSubscription(
+  token: string, orgId: string, planId: string,
+): Promise<void> {
+  return authed<void>(`/v1/admin/billing/tenants/${orgId}/subscription`, token, {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
+export function adminListCharges(token: string, orgId: string): Promise<BillingCharge[]> {
+  return authed<BillingCharge[]>(`/v1/admin/billing/tenants/${orgId}/charges`, token);
+}
+
+export function adminRecordCharge(
+  token: string, orgId: string, input: ChargeInput,
+): Promise<BillingCharge> {
+  return authed<BillingCharge>(`/v1/admin/billing/tenants/${orgId}/charges`, token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
