@@ -2700,7 +2700,7 @@ See DECISIONS 2026-08-09 (grammar freeze + Option A + ghost-recovery as MVP thes
 
 ## 2026-08-09 — MVP-073a: Workflow executor spine (stage 1 of the workflow-executor initiative)
 
-**Branch:** `feature/mvp-073a-executor-spine` (off main). **Merge:** `pending`. First rigorously-tested
+**Branch:** `feature/mvp-073a-executor-spine` (off main). **Merge:** `8f393a7`. First rigorously-tested
 stage of MVP-073, which the founder split into staged deliveries (DECISIONS 2026-08-09; the previously
 fenced simulation / builder / owner-built parts are now in scope as later stages). No migration, no dep.
 
