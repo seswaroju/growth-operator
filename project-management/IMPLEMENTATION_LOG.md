@@ -2508,3 +2508,37 @@ gitleaks: no leaks. Backend unchanged.
 the P4.6 Financial dashboard (billing B1 + B2).** The **Sales** dashboard remains a separate later
 ticket (a GO-sales-pipeline model — prospect→onboarded — distinct from billing). Then, per the founder
 sequence: bulk catalog import (MVP-077–080) / workflow engine (MVP-071–73) / marketing-agent layer.
+
+---
+
+## 2026-08-08 — Bulk import I1 / MVP-078: CSV/XLSX extraction + column mapping
+
+**Branch:** `feature/ingest-i1-extract-csv` (off main). **Merge:** `pending`. First sub-ticket of the
+bulk-import track (MVP audit gap "catalog is imported"). The batch upload + state machine (MVP-076)
+existed; this fills the **extract** stage for structured sheets. Photo/vision extraction (MVP-077)
+stays gated-simulated (needs a real vision LLM). No migration (uses `import_rows`/`import_batches`).
+
+**`core/ingestion/extract_csv.py`:** loads the batch's uploaded bytes → parses **CSV** (stdlib) or
+**XLSX** (openpyxl) → writes one `import_rows` per data row: `raw` (original) + `normalized` (mapped
+to catalog fields — name/sku/price/desc → title/sku/base_price_minor/description, price ₹→minor,
+unmapped columns → `attributes`) + `flags` (`missing_title`, `unparsed_price:*`) + a coarse
+`confidence`. **Header→field map is remembered per source signature** (header-tuple hash) directly in
+`tenant_settings` (the settings service only knows registered keys, so mapping is stored/loaded via
+small helpers) — the same sheet maps automatically next time. State advances `extracting→extracted`;
+any failure → `failed` (resumable) with the reason, surfaced as `ExtractionFailed`.
+`POST /v1/imports/{id}/extract` (`catalog:write`) triggers it (409 if not extractable, 404 unknown).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| CSV → mapped rows; price→minor; unmapped→attr; title-less flagged | `test_csv_extraction_maps_fields_and_flags_missing_title` | PASS |
+| XLSX parses via openpyxl | `test_xlsx_extraction_via_openpyxl` | PASS |
+| Saved per-signature mapping overrides the auto-map | `test_saved_mapping_overrides_the_auto_map` | PASS |
+| Extraction failure → batch `failed` (resumable) | `test_extraction_failure_marks_batch_failed` | PASS |
+
+**Dependency (founder-approved, §9):** `openpyxl` (MIT) for `.xlsx`; CSV uses the stdlib. mypy override
+added (no stubs). **Commands:** `ruff` clean · `mypy core` **147** · guards 0 · `uv sync --frozen` in
+sync · **`pytest` 393** (4 new) · gitleaks no-leaks. No migration.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **I2 /
+MVP-079** — the review queue (confirm/edit/reject rows) — then **I3 / MVP-080** (load + 30-day revert).

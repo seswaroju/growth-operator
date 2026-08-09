@@ -886,3 +886,19 @@ by store owners. A client-facing invoice view is a later follow-up. The **Financ
 **Scope:** B1 = billing model + operator CRUD (this ticket); B2 = Financial dashboard (P4.6). The
 **Sales** dashboard needs a SEPARATE GO-sales-pipeline model (prospect→onboarded) — its own later
 ticket. **Decided by:** Founder (2026-08-08).
+
+---
+
+## 2026-08-08 — Bulk import build order + openpyxl dependency
+
+MVP audit found "catalog data is imported" incomplete: the batch upload API (MVP-076) exists but the
+extract→review→load pipeline (MVP-077–080) doesn't. **Build order (dependency-driven):** I1 = MVP-078
+(CSV/XLSX extract + column mapping) → I2 = MVP-079 (review queue) → I3 = MVP-080 (load + revert). The
+**photo/vision extraction (MVP-077)** stays **gated-simulated** — it needs a real vision LLM, and our
+`llm_provider_enabled` gate keeps external model calls off; it will be the `provider_unavailable` stub
+like our other agent capabilities until a provider is wired. The realistic pilot path (a jeweler
+uploads a spreadsheet) is the CSV/XLSX path, which is fully buildable now.
+
+**Dependency: `openpyxl` (MIT)** added for reading `.xlsx` (CSV uses the stdlib) — founder-approved
+2026-08-08. mypy override added (ships no type stubs). Anticipated by MVP-076 ("Excel via openpyxl at
+078"). **Decided by:** Founder (2026-08-08).

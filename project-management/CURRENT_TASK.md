@@ -9,7 +9,20 @@ selects and approves the next ticket.
 
 ---
 
-## Billing / P4.6 Financial — **B1 merged; B2 done → Financial COMPLETE** (2026-08-08) — B2 awaiting founder merge approval
+## Bulk import — **I1 (MVP-078) done; I2→I4 pending** (2026-08-08) — I1 awaiting founder merge approval
+
+**I1 CSV/XLSX extract + mapping (MVP-078):** `core/ingestion/extract_csv.py` — parse CSV (stdlib) +
+XLSX (openpyxl) → `import_rows` (raw + normalized mapped to catalog fields; price ₹→minor; unmapped→
+attributes; title-less flagged); **column-map remembered per source signature** (tenant_settings);
+advance `extracting→extracted`/`failed`. `POST /v1/imports/{id}/extract` (catalog:write). Dep openpyxl
+(MIT, approved). **Verify:** ruff/mypy(147)/guards/**393 pytest** (4 new: CSV map+flag; XLSX; saved-
+mapping precedence; failure→failed); lock synced; gitleaks. No migration. **Build order:** I1 (078) →
+**I2 (079 review queue)** → I3 (080 load+revert) → I4 (077 photo, gated). **Then:** workflow engine →
+Sales dashboard → marketing-agent layer.
+
+---
+
+## Billing / P4.6 Financial — **COMPLETE: B1 `4e06f82` + B2 `01e2646` merged, CI green** (2026-08-08)
 
 **B2 P4.6 Financial dashboard (web-ops):** `FinancialSection` at `/financial` — rollup cards (MRR /
 service revenue / cost / **margin** / active clients from `platform_billing_rollup`) + plans manager
