@@ -935,3 +935,30 @@ via the `llm_provider_enabled` gate — the same workflow runs on real leads onc
 a real LLM API are wired, by config, no rewrite. **Sequence:** MVP-072 (done) → MVP-073 executor →
 diagnosis extension (Option A) + jewelry pack + eval → CAPTURE-GAP migrations for live. **Decided by:**
 Founder (2026-08-09).
+
+---
+
+## 2026-08-09 — Workflow initiative: un-fence simulation + builder + owner-built/trust (full scope, staged)
+
+**Founder expanded scope (2026-08-09):** the three items the original MVP-072/073 tickets fenced —
+**simulation mode**, the **builder UI (H2)**, and the **owner-built / trust-ledger path** — are **no
+longer fenced**. They are absorbed into the workflow-engine initiative and will be built. Rationale:
+simulation mode directly serves the "prove it works" goal (replay historical events → would-have-fired
+/ guard-block / sample messages / cost — ideal for validating ghost-recovery before go-live); the
+builder + owner-built/trust path give store owners self-service workflow authoring with earned-autonomy
+governance. This overrides the tickets' "(fence)" lines. **Decided by:** Founder.
+
+**Delivery method (founder):** implement in **small, dependency-ordered stages**, each with rigorous
+testing, merged + pushed to main before the next. Absorbed staged roadmap (labels provisional):
+1. **Executor spine** — trigger routing → run → synchronous verbs → concurrency (drop/queue/replace)
+   → event-sourced run_events + cursor → crash-resume.
+2. **Waits** — reply / duration / event + scheduler duration sweep + match consumers.
+3. **Saga compensation + human_task + ops run-timeline.**
+4. **Simulation mode** — `POST /v1/workflows/{id}/simulate` historical replay in shadow/dry-run.
+5. **Builder UI (H2)** — React flow-graph editor emitting DSL; server-side validation.
+6. **Owner-built / trust-ledger path** — owner_built origin, tier-2 until ~50 clean runs, max 10 active.
+
+Nothing external goes live: agent/send effects stay behind mediation + approval + the gated-simulated
+provider throughout. **Never-drop-a-lead** principle (founder, 2026-08-09) holds: a guard block is a
+logged `workflow.skipped`, never a silent discard; diagnosis abstain → owner-pick lands in the
+ghost-recovery extension. **Decided by:** Founder (2026-08-09).
