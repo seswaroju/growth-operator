@@ -2695,3 +2695,48 @@ executor + waits** (event-sourced runs, step idempotency, reply/duration waits, 
 concurrency policies), then the **Option-A diagnosis extension + jewelry ghost-recovery pack + eval
 harness** (offline/synthetic, real-ready via the gate), then the **CAPTURE-GAP migrations** for live.
 See DECISIONS 2026-08-09 (grammar freeze + Option A + ghost-recovery as MVP thesis).
+
+---
+
+## 2026-08-09 — MVP-073a: Workflow executor spine (stage 1 of the workflow-executor initiative)
+
+**Branch:** `feature/mvp-073a-executor-spine` (off main). **Merge:** `pending`. First rigorously-tested
+stage of MVP-073, which the founder split into staged deliveries (DECISIONS 2026-08-09; the previously
+fenced simulation / builder / owner-built parts are now in scope as later stages). No migration, no dep.
+
+**`core/workflows/program.py`** — compiles a validated DSL into a **flat instruction list with jump
+semantics** (SET/EMIT/AGENT/WAIT/HUMAN/BRANCH/JUMP/NOOP/END). `branch` → conditional jump, so a nested
+`agent_task`/`wait` inside a branch is just another instruction at its own `pc`; the run cursor is a
+single integer → crash-resume = "reload `pc`, continue". Each instruction carries a stable `sid`
+(idempotency key). Verified against all three conformant jewelry workflows.
+
+**`core/workflows/executor.py`** — runs the program as a program counter over the event-sourced tables
+(`workflow_run_events` append + `cursor` advance in one tx). Two replay-safety invariants:
+`agent_task` **releases the org session** before calling `runtime.executor.start_run` (which opens its
+own per-org advisory-locked session — nesting would deadlock), then reopens to record the result;
+**idempotency by `sid`** (a `step_completed` step is skipped on replay). Concurrency `drop` (block +
+`workflow.skipped`) and `replace` (supersede live runs) implemented; `queue` deferred to stage 2.
+`wait`/`human_task` **park** the run (`waiting`) — the wake wiring is stage 2/3. `agent_runner` is
+injectable so tests stay hermetic (no runtime).
+
+**`core/workflows/triggers.py`** — `match_and_start(org, event_type, payload)`: active defs for the
+event → trigger-condition CEL → guards → start per policy. A guard block is a logged `workflow.skipped`
+(never a silent lead-drop). Session released before `start_run` (deadlock-safe).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Compiler flattens branches, correct jump targets | `test_workflow_program.py` (4) | PASS |
+| Synchronous workflow runs to completion (+ emit to outbox) | `test_synchronous_workflow_runs_to_completion` | PASS |
+| agent_task runs via injected runner | `test_agent_task_runs_via_injected_runner` | PASS |
+| **Crash resumes at cursor; completed step skipped (idempotent)** | `test_crash_resume_reruns_incomplete_and_skips_completed` | PASS |
+| **Concurrency replace supersedes live run** | `test_concurrency_replace_supersedes_live_run` | PASS |
+| Concurrency drop blocks new run | `test_concurrency_drop_blocks_new_run` | PASS |
+| Trigger guard-block / false-condition → skip, no run | `test_workflow_triggers.py` (3) | PASS |
+
+**Commands:** ruff clean · `mypy core` **157** · **guards 0** (Rule Zero) · **419** unit+isolation ·
+**440** integration+e2e+contract. **+16 workflow tests.** No migration, no dependency.
+
+**Next recommended action:** per founder ("rigorous testing + push each stage"), merge + push + record
+hash + verify CI, then **stage 2 (073b): waits** (reply/duration/event + scheduler duration sweep +
+match consumers + `queue` policy). Acceptance target there: reply at 95h matches, 97h times out.

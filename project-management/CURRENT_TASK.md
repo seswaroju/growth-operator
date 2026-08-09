@@ -9,7 +9,25 @@ selects and approves the next ticket.
 
 ---
 
-## MVP-072 — Workflow DSL parser + guard library — **Completed — awaiting founder review** (2026-08-09)
+## MVP-073 initiative — Workflow executor (staged, full scope) — **Stage 1 done** (2026-08-09)
+
+**Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
+**simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
+as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → 2 waits → 3 saga +
+human_task + ops timeline → 4 simulation → 5 builder → 6 owner-built/trust → then the Option-A
+diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+
+**Stage 1 (MVP-073a) `feature/mvp-073a-executor-spine`:** `program.py` (DSL → flat instruction list +
+jump semantics; single-int cursor) + `executor.py` (event-sourced run loop; deadlock-safe agent_task;
+idempotent-by-`sid` crash-resume; concurrency drop/replace; wait/human_task park) + `triggers.py`
+(`match_and_start`: event → guards → start; guard block = logged skip, never a silent lead-drop). No
+migration/dep. **Verify:** ruff/mypy(157)/**guards 0**/**419** unit+isolation/**440** integ+e2e+contract;
+**+16** new tests (crash-resume, concurrency replace, trigger guard-skip). **Never-drop-a-lead** honored
+(guard block → `workflow.skipped`, logged). **Next:** stage 2 waits (reply 95h matches/97h times out).
+
+---
+
+## MVP-072 — Workflow DSL parser + guard library — **Merged `78aa0ae`, CI green** (2026-08-09)
 
 **Branch `feature/mvp-072-workflow-dsl`.** The workflow-engine **foundation** (last empty original-MVP
 module). Migration **036** (`workflow_definitions`/`runs`/`run_events`/`wait_subscriptions`, all RLS;
