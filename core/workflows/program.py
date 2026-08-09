@@ -38,7 +38,8 @@ def compile_program(dsl: dict[str, Any]) -> list[dict[str, Any]]:
                                 "task": body["task"], "input_map": body.get("input_map", {}),
                                 "timeout": body.get("timeout")})
             elif verb == "wait":
-                program.append({"op": "WAIT", "for": body["for"], "timeout": body.get("timeout")})
+                program.append({"op": "WAIT", "for": body["for"], "timeout": body.get("timeout"),
+                                "event": body.get("event")})
             elif verb == "human_task":
                 program.append({"op": "HUMAN", "kind": body["kind"],
                                 "assignee": body.get("assignee"), "timeout": body.get("timeout"),

@@ -2740,3 +2740,46 @@ event → trigger-condition CEL → guards → start per policy. A guard block i
 **Next recommended action:** per founder ("rigorous testing + push each stage"), merge + push + record
 hash + verify CI, then **stage 2 (073b): waits** (reply/duration/event + scheduler duration sweep +
 match consumers + `queue` policy). Acceptance target there: reply at 95h matches, 97h times out.
+
+---
+
+## 2026-08-09 — MVP-073b: Workflow waits + queue policy (stage 2 of the workflow-executor initiative)
+
+**Branch:** `feature/mvp-073b-waits` (off main). **Merge:** `pending`. Long-running journeys survive
+restarts and wait for replies / durations / events. Migration 037, no dependency.
+
+**Migration 037** (`96b3c722a891`): adds `queued` to the `workflow_runs` status CHECK (additive) for the
+queue concurrency policy. Up/down verified.
+
+**`core/workflows/waits.py`** — on a WAIT park the executor now **registers a `wait_subscription`**:
+reply → correlate on the subject's `conversation_id`; event → correlate on the wait's `event:` type;
+duration → carry `fire_at`. `match_reply(org, conversation_id)` (inbound message wakes reply-waits) and
+`match_event(org, event_type)` **atomically claim** the subscription (`UPDATE … WHERE status='pending'
+RETURNING`) so a run wakes exactly once. **`sweep_waits`** (scheduler job `workflow_wait_sweep`, every
+minute, cross-org via the `organizations` registry) **fires due duration waits** and **times out**
+reply/event waits past `timeout_at`, waking the run with `wait.result='timeout'`.
+
+**`core/workflows/executor.py`** — `wake_run(org, run, result)` resumes a parked run: set
+`wait.result`, advance the cursor past the WAIT, drive. `queue` concurrency implemented (park behind a
+live run as `queued`; `_promote_next` promotes the oldest queued run when the live one completes). The
+CEL activation now promotes vars to top level so both `wait.result` and `vars.refresh_ok` DSL styles
+resolve. **`core/workflows/consumer.py`** — a `msg.received` consumer group wakes reply-waits.
+`wait` schema gains an optional `event:` field (event-waits can name their type).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **Reply within window matches → reply path** | `test_reply_within_timeout_matches_and_takes_reply_path` | PASS |
+| **Reply after timeout → timeout path (95h/97h boundary)** | `test_reply_after_timeout_takes_timeout_path` | PASS |
+| Duration wait fires on the sweep | `test_duration_wait_fires_on_sweep` | PASS |
+| Queue policy promotes on completion | `test_queue_policy_promotes_on_completion` | PASS |
+| Duplicate wake is a no-op (wake-once) | `test_duplicate_wake_is_noop` | PASS |
+| Sweep job registered | `test_scheduler_entrypoint` (`workflow_wait_sweep`) | PASS |
+
+**Commands:** ruff clean · `mypy core` **159** · **guards 0** · **419** unit+isolation · **445**
+integ+e2e+contract (+5) · migration 037 up/down. No dependency.
+
+**Next recommended action:** merge + push + record hash + verify CI, then **stage 3 (073c): saga
+compensation + human_task (approval) + ops run-timeline view**. Event-wait live fan-in (a generic event
+consumer, shared with `triggers.match_and_start`) is a small follow-on when a workflow needs a live
+event trigger — the matching logic is built + tested; only the Redis-stream wiring is deferred.

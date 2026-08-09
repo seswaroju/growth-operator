@@ -13,9 +13,17 @@ selects and approves the next ticket.
 
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
-as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → 2 waits → 3 saga +
-human_task + ops timeline → 4 simulation → 5 builder → 6 owner-built/trust → then the Option-A
+as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** → 3
+saga + human_task + ops timeline → 4 simulation → 5 builder → 6 owner-built/trust → then the Option-A
 diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+
+**Stage 2 (MVP-073b) `feature/mvp-073b-waits`:** migration 037 (`queued` status) + `waits.py`
+(register reply/duration/event subscriptions; `match_reply`/`match_event` atomic-claim wake-once;
+`sweep_waits` scheduler job fires durations + times out reply/event) + `executor.wake_run` (resume past
+wait, set `wait.result`) + `queue` concurrency (promote-on-completion) + `consumer.py` (msg.received →
+wake reply-waits). **Acceptance: reply 95h matches / 97h times out.** **Verify:** ruff/mypy(159)/
+**guards 0**/**419** unit+isolation/**445** integ+e2e+contract; **+5** tests. **Next:** stage 3 (073c)
+saga compensation + human_task + ops run-timeline.
 
 **Stage 1 (MVP-073a) `feature/mvp-073a-executor-spine`:** `program.py` (DSL → flat instruction list +
 jump semantics; single-int cursor) + `executor.py` (event-sourced run loop; deadlock-safe agent_task;
