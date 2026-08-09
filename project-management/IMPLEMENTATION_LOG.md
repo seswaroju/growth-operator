@@ -2542,3 +2542,34 @@ sync · **`pytest` 393** (4 new) · gitleaks no-leaks. No migration.
 
 **Next recommended action:** founder review → merge + push + record hash + verify CI. Then **I2 /
 MVP-079** — the review queue (confirm/edit/reject rows) — then **I3 / MVP-080** (load + 30-day revert).
+
+---
+
+## 2026-08-09 — Bulk import I2 / MVP-079: review queue
+
+**Branch:** `feature/ingest-i2-review` (off main). **Merge:** `pending`. Second bulk-import sub-ticket.
+No migration, no dependency (uses `import_rows.state`/`flags`).
+
+**`core/ingestion/review.py`:** `validate_batch` advances `extracted → validating → review`, flagging
+each row — `missing_title` (blocking: can't confirm/load until edited) and `duplicate_sku` (a sku that
+already exists in the active catalog OR repeats within the batch; non-blocking — the owner decides).
+Then per-row `confirm_row` (refuses a blocking row), `edit_row` (correct fields → re-flag → confirm if
+clean), `reject_row`, and `confirm_all` (bulk — skips rejected + blocking). An **auto-approve** gate
+confirms the whole batch only when every row is ≥0.95 confidence with no flags AND a ≥5% sample was
+human-confirmed first. Endpoints on `/v1/imports/{id}` (`catalog:write`): `POST /validate`,
+`POST /rows/{seq}/confirm`, `POST /rows/{seq}/reject`, `PATCH /rows/{seq}`, `POST /rows/confirm-all?auto=`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| validate flags missing-title + duplicate-sku, moves to review | `test_validate_flags_and_review_lifecycle` | PASS |
+| blocking row can't confirm until edited; reject works | same test (confirm raises, edit→confirmed, reject) | PASS |
+| bulk confirm-all skips rejected + blocking | `test_bulk_confirm_skips_rejected_and_blocking` | PASS |
+| auto-approve needs high confidence + a confirmed sample | `test_auto_approve_needs_high_confidence_and_a_sample` | PASS |
+
+**Commands:** `ruff` clean · `mypy core` **148** · guards 0 · **`pytest` 396** (3 new) · gitleaks
+no-leaks. No migration.
+
+**Next recommended action:** founder review → merge + push + record hash + verify CI. Then **I3 /
+MVP-080** — load (confirmed rows → catalog items, identity dedupe, import_batch_id stamp) + 30-day
+revert — the stage that actually creates the catalog items. Then I4 (MVP-077 photo, gated).
