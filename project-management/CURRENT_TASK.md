@@ -9,6 +9,16 @@ selects and approves the next ticket.
 
 ---
 
+## UX pass — bolder/premium redesign (direction v2 "Atelier") — **COMPLETE** (2026-08-10)
+
+All stages merged to main: **U1** shell/login/bell `24952d7` → **U2** dashboard + primitives `42aa159`
+→ **U3a** approvals/conversations `dd71387` → **U3b** campaigns/customers/catalog `2394727` → **U3c**
+insights/automations `f264d3a` → **U3d** support/team/settings + shells `66aedae` → **U4** web-ops
+operator console (dark control-plane) `895b293`. Both apps fully on the design-token system; zero legacy
+palette classes remain in either `web/src` or `web-ops/src`. Web gate + guards green at every stage.
+Skills UX-00 `edc760c`+`0455e7a`. **Next track (founder order):** multi-channel/advertising → then one
+channel end-to-end. Historical stage notes below.
+
 ## UX pass — bolder/premium redesign (direction v2 "Atelier") — **U1 done** (2026-08-10)
 
 **Founder approved** (mockup) the bolder/premium direction: committed **emerald** accent on a cool
