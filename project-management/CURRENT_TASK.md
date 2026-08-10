@@ -15,8 +15,16 @@ selects and approves the next ticket.
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
 **3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅ / 5b builder UI
-✅** → **6 owner-built/trust ✅ → WORKFLOW ENGINE COMPLETE.** Then the Option-A diagnosis extension +
-jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+✅** → **6 owner-built/trust ✅ → WORKFLOW ENGINE COMPLETE.** Ghost-recovery diagnosis track: **1 Option-A
+extension ✅** → 2 jewelry pack → 3 eval + CAPTURE-GAPs → then a synthetic-data demo.
+
+**Diagnosis item 1 (MVP-073h) `feature/mvp-073h-diagnosis-sugar`:** Option-A sugar — parser
+**desugars** `diagnose`/`classify_ghost`/`compose` → `agent_task` + `approval_gate` → ranked
+`human_task` (engine stays 7 generic verbs, `core/` neutral). `agent_task` gains `tier` + structured
+**`output` binding** (later branch routes on `diagnose.top_reason`); `human_task` gains a **`ranked`
+mode** (approval payload = options + recommended + label_sink). **Verify:** ruff/mypy(164)/**guards 0**/
+**424** unit+isolation/**467** integ+e2e+contract; **+7** tests. **Next:** item 2 jewelry ghost-recovery
+pack (taxonomy + diagnosis prompt + reason-conditioned templates + clean silent_lead_reactivation).
 
 **Stage 6 (MVP-073g) `feature/mvp-073g-owner-trust`:** `activation.py` — owner-built drafts can't
 self-activate; `request_activation` simulates + raises a tier-2 `workflow.activate` approval (report

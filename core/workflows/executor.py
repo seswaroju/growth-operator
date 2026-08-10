@@ -70,6 +70,21 @@ def _truthy(expr: str, activation: dict[str, Any]) -> bool:
         return False
 
 
+def _resolve_ref(ref: str | None, activation: dict[str, Any]) -> Any:
+    """Resolve a dotted var reference (e.g. `diagnose.ranked`) against the run's vars — a plain path
+    walk over the (JSON) activation. Unresolved → the raw string, so a ranked-approval payload
+    degrades gracefully for the reviewer rather than failing."""
+    if not ref:
+        return None
+    node: Any = activation
+    for part in ref.split("."):
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            return ref
+    return node
+
+
 # ---- run-event log helpers ------------------------------------------------------------
 
 
@@ -279,10 +294,19 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                         await waits.register_wait(s, org_id, run_id, sid, ins, run["subject"])
                     else:  # HUMAN — raise an approval linked to this run via its payload
                         from core.approvals.service import create_approval
+                        hp: dict[str, Any] = {
+                            "workflow_run_id": str(run_id), "step_id": sid,
+                            "kind": ins.get("kind"), "assignee": ins.get("assignee")}
+                        if ins.get("mode") == "ranked":
+                            # Resolve the ranked options + recommendation from run vars (Option-A
+                            # approval_gate); the owner's pick is later written to `label_sink`.
+                            hp["mode"] = "ranked"
+                            hp["options"] = _resolve_ref(ins.get("options_from"), activation)
+                            hp["recommended"] = _resolve_ref(ins.get("recommended"), activation)
+                            hp["label_sink"] = ins.get("label_sink")
                         await create_approval(
                             s, org_id, action_type=WORKFLOW_HUMAN_ACTION, tier=HUMAN_TASK_TIER,
-                            payload={"workflow_run_id": str(run_id), "step_id": sid,
-                                     "kind": ins.get("kind"), "assignee": ins.get("assignee")})
+                            payload=hp)
                     await s.commit()
                     return
                 if op == "AGENT":
@@ -314,6 +338,17 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                 await set_org_context(s, org_id)
                 await _append(s, org_id, run_id, "step_completed", step_id=agent_ins["sid"],
                               data=output)
+                # Option-A: bind the agent's structured output under `output_as` so a later step can
+                # read e.g. `diagnose.top_reason` (narrowed to the declared `output` keys if given).
+                output_as = agent_ins.get("output_as")
+                if output_as:
+                    run = await _load(s, org_id, run_id)
+                    keys = agent_ins.get("output")
+                    bound = {k: output.get(k) for k in keys} if keys else output
+                    merged = {**(run["vars"] if run else {}), output_as: bound}
+                    await s.execute(
+                        text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb) WHERE id = :r"),
+                        {"v": json.dumps(merged), "r": str(run_id)})
                 await _set_cursor(s, org_id, run_id, agent_pc + 1)
                 await s.commit()
             continue
