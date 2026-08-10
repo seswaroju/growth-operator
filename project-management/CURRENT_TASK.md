@@ -9,6 +9,20 @@ selects and approves the next ticket.
 
 ---
 
+## MVP-076 — WABA send adapter real-ready — **Completed — awaiting founder review** (2026-08-10)
+
+**Priority item 3** (after item 1 LLM adapter / MVP-074, item 2 notification bell / MVP-075). Branch
+`feature/mvp-076-waba-adapter`. **Tests only — no `core/` change.** Honest finding: the real Meta
+Graph-API send path was **already built** (MVP-031/034) and gated by `whatsapp_live_enabled`; the only
+gap for "real-ready" was that every test ran the **simulated** branch, so the live request shape/parse
+was unverified. Closed with `tests/unit/test_meta_client_live.py` (**+6**, `httpx` mocked, no network,
+no real send): send_text/send_template real request shape + wamid parse, 429→Retry-After, 5xx→fail,
+verify-credentials bearer, and default-off = simulated/no-network. **Verify:** ruff clean · mypy(168) ·
+guards 0 · **441** unit · whatsapp integ **31 passed/4 skipped** (DB-gated). **Go-live** (later, needs
+founder + Meta): flip `GROWTH_OPERATOR_WHATSAPP_LIVE_ENABLED=true` + connect a real number; sends still
+require approval + execution token; external blocker = Meta WABA verification (BLOCKERS #3). **Next:**
+bigger multi-channel/advertising tracks (email, Instagram, Google Ads) + UX pass (VISION_INTAKE).
+
 ## MVP-073 initiative — Workflow executor (staged, full scope) — **Stage 1 done** (2026-08-09)
 
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
