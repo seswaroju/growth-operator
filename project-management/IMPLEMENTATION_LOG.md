@@ -3597,3 +3597,15 @@ auto-confirming provider (a PSP); free bare-QR = manual "mark paid".
 **Commands:** ruff clean · `mypy core` 174 · guards 0 · **unit 455** (+6) · scaffold imports clean · no
 external call, no new dep, no secrets. Decision in `DECISIONS.md`. **Next:** PAY3 — deliver the receipt
 to WhatsApp + email when the (verified) payment confirms.
+
+## 2026-08-10 — PAY2b: branded receipt redesign (cream/gold, email-safe)
+
+**Branch:** `feature/pay2b-receipt-design`. Founder wanted the receipt *designed*, not generic.
+`render_receipt_html` rebuilt in the cream/gold "Atelier" brand — email-client-safe (inline styles +
+tables, Georgia serif for wordmark/total, no external fonts): gold top-rule, serif wordmark + "PAYMENT
+RECEIPT" eyebrow, a green **PAID** pill, tidy line-item table, emphasized serif **Total paid** in gold,
+a payment-reference chip, and a warm footer. All dynamic values still HTML-escaped (no injection). Text
+receipt (WhatsApp) unchanged. Preview published for founder review (sample/demo data).
+
+**Verify:** ruff clean · `mypy core` 174 · **receipt tests 5** (math, formatting, **escaping**, tax-row
+logic still pass against the new markup) · guards 0. **Next:** PAY3 — deliver it on verified payment.

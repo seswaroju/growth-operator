@@ -71,46 +71,88 @@ def render_receipt_text(r: Receipt) -> str:
 
 
 def render_receipt_html(r: Receipt) -> str:
+    """A branded, email-safe (inline styles + tables) cream/gold receipt. All values escaped."""
+    _SERIF = "Georgia,'Times New Roman',serif"
+    _SANS = "Helvetica,Arial,sans-serif"
+
     def cur(minor: int) -> str:
         return escape(money(minor, r.currency))
 
     rows = "".join(
-        f'<tr><td style="padding:6px 0;color:#3c4a44">{escape(li.description)}</td>'
-        f'<td style="padding:6px 0;text-align:right;font-variant-numeric:tabular-nums">'
-        f'{cur(li.amount_minor)}</td></tr>'
+        f'<tr>'
+        f'<td style="padding:8px 0;color:#3c4a44;border-bottom:1px solid #f0e9d7">'
+        f'{escape(li.description)}</td>'
+        f'<td style="padding:8px 0;text-align:right;color:#2a2318;border-bottom:1px solid #f0e9d7">'
+        f'{cur(li.amount_minor)}</td>'
+        f'</tr>'
         for li in r.line_items
     )
     tax_row = (
-        f'<tr><td style="padding:4px 0;color:#6e7a73">{escape(r.tax_label)}</td>'
-        f'<td style="padding:4px 0;text-align:right">{cur(r.tax_minor)}</td></tr>'
+        f'<tr><td style="padding:3px 0;color:#6e7a73;font-size:13px">{escape(r.tax_label)}</td>'
+        f'<td style="padding:3px 0;text-align:right;color:#2a2318;font-size:13px">'
+        f'{cur(r.tax_minor)}</td></tr>'
         if r.tax_minor else ""
     )
     ref = (
-        f'<p style="margin:14px 0 0;font-size:12px;color:#6e7a73">Payment ref: '
-        f'{escape(r.payment_ref)}</p>' if r.payment_ref else ""
+        '<div style="margin-top:20px;padding:12px 14px;background:#f7f2e8;border-radius:10px;'
+        'font-size:12px;color:#6e7a73">Payment reference '
+        f'<span style="color:#2a2318;font-family:monospace">{escape(r.payment_ref)}</span></div>'
+        if r.payment_ref else ""
     )
     note = (
-        f'<p style="margin:14px 0 0;font-size:13px;color:#3c4a44">{escape(r.note)}</p>'
+        f'<p style="margin:16px 0 0;font-size:13px;color:#3c4a44">{escape(r.note)}</p>'
         if r.note else ""
     )
     return (
-        '<div style="max-width:520px;margin:0 auto;'
-        'font-family:ui-sans-serif,system-ui,Arial,sans-serif;'
-        'color:#14201b;border:1px solid #e8dfc9;border-radius:14px;padding:24px">'
-        f'<div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#8f6e24;'
-        f'font-weight:700">{escape(r.seller_name)}</div>'
-        f'<h1 style="margin:4px 0 2px;font-size:20px">Receipt {escape(r.receipt_no)}</h1>'
-        f'<div style="font-size:13px;color:#6e7a73">{escape(r.date)} · Billed to '
-        f'{escape(r.buyer_name)}</div>'
-        '<table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px">'
+        f'<div style="margin:0;padding:28px 12px;background:#f7f2e8;font-family:{_SANS}">'
+        '<div style="max-width:560px;margin:0 auto;background:#fffdf8;border:1px solid #e8dfc9;'
+        'border-radius:16px;overflow:hidden">'
+        # gold top rule
+        '<div style="height:4px;background:#b08d3e;font-size:0;line-height:0">&nbsp;</div>'
+        '<div style="padding:28px 30px">'
+        # header: wordmark + eyebrow, PAID pill
+        '<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>'
+        '<td style="vertical-align:top">'
+        f'<div style="font-family:{_SERIF};font-size:19px;font-weight:bold;color:#2a2318">'
+        f'{escape(r.seller_name)}</div>'
+        '<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8c5f2a;'
+        'font-weight:bold;margin-top:3px">Payment receipt</div>'
+        '</td>'
+        '<td style="vertical-align:top;text-align:right">'
+        '<span style="background:#ebf0de;color:#3f5e2a;font-size:11px;font-weight:bold;'
+        'padding:5px 11px;border-radius:20px;letter-spacing:.5px">PAID</span>'
+        '</td></tr></table>'
+        # meta
+        '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" '
+        'style="margin-top:22px;font-size:13px;color:#6e7a73">'
+        f'<tr><td>Receipt no.</td><td style="text-align:right;color:#2a2318;font-weight:bold">'
+        f'{escape(r.receipt_no)}</td></tr>'
+        f'<tr><td style="padding-top:5px">Date</td>'
+        f'<td style="padding-top:5px;text-align:right;color:#2a2318">{escape(r.date)}</td></tr>'
+        f'<tr><td style="padding-top:5px">Billed to</td>'
+        f'<td style="padding-top:5px;text-align:right;color:#2a2318">'
+        f'{escape(r.buyer_name)}</td></tr>'
+        '</table>'
+        # line items
+        '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" '
+        'style="margin-top:20px;border-collapse:collapse;font-size:14px">'
+        '<tr><td colspan="2" style="border-top:1px solid #e8dfc9;padding-top:6px;font-size:0">'
+        '&nbsp;</td></tr>'
         f'{rows}'
-        '<tr><td colspan="2" style="border-top:1px solid #e8dfc9;padding-top:8px"></td></tr>'
-        f'<tr><td style="padding:4px 0;color:#6e7a73">Subtotal</td>'
-        f'<td style="padding:4px 0;text-align:right">{cur(r.subtotal_minor)}</td></tr>'
+        '<tr><td style="padding-top:12px;color:#6e7a73;font-size:13px">Subtotal</td>'
+        f'<td style="padding-top:12px;text-align:right;color:#2a2318;font-size:13px">'
+        f'{cur(r.subtotal_minor)}</td></tr>'
         f'{tax_row}'
-        f'<tr><td style="padding:8px 0;font-weight:700">Total</td>'
-        f'<td style="padding:8px 0;text-align:right;font-weight:700">{cur(r.total_minor)}</td></tr>'
+        f'<tr><td style="padding-top:12px;font-family:{_SERIF};font-size:16px;color:#2a2318">'
+        'Total paid</td>'
+        f'<td style="padding-top:12px;text-align:right;font-family:{_SERIF};font-size:20px;'
+        f'font-weight:bold;color:#8c5f2a">{cur(r.total_minor)}</td></tr>'
         '</table>'
         f'{ref}{note}'
-        '</div>'
+        # footer
+        '<div style="margin-top:26px;border-top:1px solid #e8dfc9;padding-top:16px;font-size:12px;'
+        'color:#988b72;line-height:1.6">'
+        f'Thank you for growing with {escape(r.seller_name)}. This is your receipt for a payment '
+        'already made — no action is needed.</div>'
+        '</div></div></div>'
     )
