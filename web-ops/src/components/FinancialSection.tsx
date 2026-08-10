@@ -8,6 +8,8 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { buttonClasses, fieldClasses } from "../lib/ui";
+import { Card } from "./ui";
 
 const CHARGE_TYPES: ChargeType[] = ["subscription", "social", "seo", "campaign", "other"];
 
@@ -20,25 +22,25 @@ function thisMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
-function Card({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function StatCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
-      <div className={`text-2xl font-semibold tabular-nums ${accent ? "text-emerald-300" : "text-slate-100"}`}>
+    <Card className="p-5">
+      <div className={`font-serif text-2xl font-medium tnum ${accent ? "text-good" : "text-ink"}`}>
         {value}
       </div>
-      <div className="mt-1 text-sm font-medium text-slate-300">{label}</div>
-    </div>
+      <div className="mt-1 text-sm font-medium text-ink-2">{label}</div>
+    </Card>
   );
 }
 
 function RollupCards({ r }: { r: BillingRollup }) {
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-      <Card label="MRR" value={rupees(r.mrr_minor)} />
-      <Card label="Service revenue (mo)" value={rupees(r.charges_revenue_minor)} />
-      <Card label="Service cost (mo)" value={rupees(r.charges_cost_minor)} />
-      <Card label="Margin (mo)" value={rupees(r.margin_minor)} accent />
-      <Card label="Active clients" value={String(r.active_clients)} />
+      <StatCell label="MRR" value={rupees(r.mrr_minor)} />
+      <StatCell label="Service revenue (mo)" value={rupees(r.charges_revenue_minor)} />
+      <StatCell label="Service cost (mo)" value={rupees(r.charges_cost_minor)} />
+      <StatCell label="Margin (mo)" value={rupees(r.margin_minor)} accent />
+      <StatCell label="Active clients" value={String(r.active_clients)} />
     </div>
   );
 }
@@ -54,39 +56,39 @@ function PlansPanel({ token, canManage }: { token: string; canManage: boolean })
   });
 
   return (
-    <section className="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
-      <h2 className="text-sm font-semibold">Plans</h2>
+    <Card className="p-5">
+      <h2 className="text-sm font-semibold text-ink">Plans</h2>
       <ul className="mt-2 space-y-1">
         {(plans.data ?? []).map((p) => (
-          <li key={p.id} className="flex justify-between text-sm text-slate-200">
-            <span>{p.name}</span><span className="tabular-nums">{rupees(p.price_minor)}/mo</span>
+          <li key={p.id} className="flex justify-between text-sm text-ink-2">
+            <span>{p.name}</span><span className="tnum">{rupees(p.price_minor)}/mo</span>
           </li>
         ))}
-        {(plans.data ?? []).length === 0 && <li className="text-xs text-slate-500">No plans yet.</li>}
+        {(plans.data ?? []).length === 0 && <li className="text-xs text-muted">No plans yet.</li>}
       </ul>
       {canManage && (
         <form
-          className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-700 pt-3"
+          className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3"
           onSubmit={(e) => { e.preventDefault(); if (name && price) create.mutate(); }}
         >
           <input
             value={name} onChange={(e) => setName(e.target.value)} placeholder="Plan name"
-            className="w-40 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+            className={fieldClasses("w-40 py-1.5 text-xs")}
           />
           <input
             value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))}
             placeholder="₹ / month" inputMode="decimal"
-            className="w-28 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+            className={fieldClasses("w-28 py-1.5 text-xs")}
           />
           <button
             type="submit" disabled={!name || !price || create.isPending}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            className={buttonClasses("primary", "sm")}
           >
             Add plan
           </button>
         </form>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -127,26 +129,26 @@ function ClientBilling({ token, canManage }: { token: string; canManage: boolean
   });
 
   return (
-    <section className="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
-      <h2 className="text-sm font-semibold">Per-client billing</h2>
+    <Card className="p-5">
+      <h2 className="text-sm font-semibold text-ink">Per-client billing</h2>
       <select
         value={org} onChange={(e) => setOrg(e.target.value)}
-        className="mt-2 w-64 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+        className={fieldClasses("mt-2 w-64 py-1.5 text-xs")}
       >
         <option value="">Select a store…</option>
         {(tenants.data ?? []).map((t) => <option key={t.org_id} value={t.org_id}>{t.name}</option>)}
       </select>
 
       {org && (
-        <div className="mt-3 space-y-3 border-t border-slate-700 pt-3">
-          <div className="text-sm text-slate-200">
+        <div className="mt-3 space-y-3 border-t border-line pt-3">
+          <div className="text-sm text-ink-2">
             Plan: {sub.data ? `${sub.data.plan_name} (${rupees(sub.data.price_minor)}/mo)` : "none"}
           </div>
           {canManage && (
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={planId} onChange={(e) => setPlanId(e.target.value)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                className={fieldClasses("py-1.5 text-xs")}
               >
                 <option value="">Assign a plan…</option>
                 {(plans.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -154,7 +156,7 @@ function ClientBilling({ token, canManage }: { token: string; canManage: boolean
               <button
                 onClick={() => planId && assign.mutate()}
                 disabled={!planId || assign.isPending}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                className={buttonClasses("primary", "sm")}
               >
                 Assign
               </button>
@@ -162,49 +164,47 @@ function ClientBilling({ token, canManage }: { token: string; canManage: boolean
           )}
 
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              This month's charges
-            </div>
+            <div className="text-[11px] font-semibold text-muted">This month's charges</div>
             <ul className="mt-1 space-y-1">
               {(charges.data ?? []).map((c) => (
-                <li key={c.id} className="flex justify-between text-sm text-slate-300">
+                <li key={c.id} className="flex justify-between text-sm text-ink-2">
                   <span>{c.charge_type}</span>
-                  <span className="tabular-nums">
+                  <span className="tnum">
                     {rupees(c.amount_minor)}
-                    {c.cost_minor > 0 && <span className="text-slate-500"> − {rupees(c.cost_minor)} cost</span>}
+                    {c.cost_minor > 0 && <span className="text-muted"> − {rupees(c.cost_minor)} cost</span>}
                   </span>
                 </li>
               ))}
               {(charges.data ?? []).length === 0 && (
-                <li className="text-xs text-slate-500">No charges recorded.</li>
+                <li className="text-xs text-muted">No charges recorded.</li>
               )}
             </ul>
           </div>
 
           {canManage && (
             <form
-              className="flex flex-wrap items-center gap-2 border-t border-slate-700 pt-3"
+              className="flex flex-wrap items-center gap-2 border-t border-line pt-3"
               onSubmit={(e) => { e.preventDefault(); if (amount) charge.mutate(); }}
             >
               <select
                 value={ctype} onChange={(e) => setCtype(e.target.value as ChargeType)}
-                className="rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                className={fieldClasses("py-1.5 text-xs")}
               >
                 {CHARGE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
               <input
                 value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
                 placeholder="₹ client pays" inputMode="decimal"
-                className="w-28 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                className={fieldClasses("w-28 py-1.5 text-xs")}
               />
               <input
                 value={cost} onChange={(e) => setCost(e.target.value.replace(/[^\d.]/g, ""))}
                 placeholder="₹ our cost" inputMode="decimal"
-                className="w-28 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-slate-200"
+                className={fieldClasses("w-28 py-1.5 text-xs")}
               />
               <button
                 type="submit" disabled={!amount || charge.isPending}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                className={buttonClasses("primary", "sm")}
               >
                 Record charge
               </button>
@@ -212,7 +212,7 @@ function ClientBilling({ token, canManage }: { token: string; canManage: boolean
           )}
         </div>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -231,28 +231,28 @@ export default function FinancialSection() {
 
   if (!canRead) {
     return (
-      <section className="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
-        <p className="text-sm text-slate-400">You don't have access to financials.</p>
-      </section>
+      <Card className="p-5">
+        <p className="text-sm text-muted">You don't have access to financials.</p>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-sm font-semibold">Financial · Growth Operator</h1>
-        <span className="text-xs text-slate-500">MRR + this month's service margin</span>
+        <h1 className="text-sm font-semibold text-ink">Financial · Growth Operator</h1>
+        <span className="text-xs text-muted">MRR + this month's service margin</span>
       </div>
       {rollup.isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : rollup.isError ? (
-        <p className="text-sm text-red-400">Couldn't load — {(rollup.error as Error).message}</p>
+        <p className="text-sm text-danger">Couldn't load — {(rollup.error as Error).message}</p>
       ) : rollup.data ? (
         <RollupCards r={rollup.data} />
       ) : null}
       {token && <PlansPanel token={token} canManage={canManage} />}
       {token && <ClientBilling token={token} canManage={canManage} />}
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-muted">
         Cashflow / burn / runway need expense + cash inputs we don't capture yet — this shows revenue
         (MRR + service margin) from the billing model.
       </p>

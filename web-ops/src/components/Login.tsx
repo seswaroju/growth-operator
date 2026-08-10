@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { requestOtp, verifyOtp } from "../api";
 import { useAuth } from "../auth";
+import { ArrowRight, Mark } from "./icons";
 
 export default function Login() {
   const { login } = useAuth();
@@ -36,24 +37,27 @@ export default function Login() {
   }
 
   const input =
-    "w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 " +
-    "outline-none placeholder:text-slate-500 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400";
+    "w-full rounded-xl border border-line bg-raised px-3.5 py-3 text-sm text-ink caret-accent " +
+    "outline-none placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent-soft";
   const primary =
-    "w-full rounded-lg bg-indigo-500 px-3 py-2 text-sm font-medium text-white " +
-    "transition hover:bg-indigo-400 disabled:opacity-50";
+    "flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm " +
+    "font-semibold text-porcelain shadow-card transition hover:bg-accent-2 disabled:opacity-50";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-900 p-4 text-slate-100">
+    <div className="flex min-h-screen items-center justify-center bg-porcelain p-4 text-ink">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">Growth Operator</h1>
-          <p className="text-sm text-indigo-300">Operator console · staff sign-in</p>
-        </div>
+        <div className="rounded-2xl border border-line bg-surface p-7 shadow-pop">
+          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl bg-accent text-porcelain">
+            <Mark className="h-6 w-6" />
+          </div>
+          <h1 className="text-center font-serif text-[22px] font-medium tracking-tight">Operator console</h1>
+          <p className="mb-6 mt-1 text-center text-sm text-muted">
+            {step === "email" ? "Staff sign-in" : "Enter the code we sent"}
+          </p>
 
-        <div className="rounded-2xl border border-slate-700 bg-slate-800/60 p-6 shadow-sm">
           {step === "email" ? (
-            <form onSubmit={onSend} className="space-y-4">
-              <label className="block text-sm font-medium text-slate-300" htmlFor="email">
+            <form onSubmit={onSend} className="space-y-3.5">
+              <label className="block text-[12.5px] font-semibold text-ink-2" htmlFor="email">
                 Work email
               </label>
               <input
@@ -68,12 +72,13 @@ export default function Login() {
               />
               <button type="submit" disabled={busy} className={primary}>
                 {busy ? "Sending…" : "Send code"}
+                {!busy && <ArrowRight className="h-[15px] w-[15px]" />}
               </button>
             </form>
           ) : (
-            <form onSubmit={onVerify} className="space-y-4">
-              <p className="text-sm text-slate-300">
-                We sent a 6-digit code to <span className="font-medium">{email}</span>.
+            <form onSubmit={onVerify} className="space-y-3.5">
+              <p className="text-sm text-ink-2">
+                We sent a 6-digit code to <span className="font-semibold text-ink">{email}</span>.
               </p>
               <input
                 id="code"
@@ -83,7 +88,7 @@ export default function Login() {
                 value={code}
                 onChange={(ev) => setCode(ev.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="123456"
-                className={`${input} text-center font-mono text-lg tracking-[0.4em]`}
+                className={`${input} text-center font-serif text-2xl tracking-[0.4em] tnum`}
               />
               <button type="submit" disabled={busy || code.length < 6} className={primary}>
                 {busy ? "Verifying…" : "Verify & sign in"}
@@ -91,7 +96,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setStep("email")}
-                className="w-full text-center text-xs text-slate-400 hover:text-slate-200"
+                className="w-full text-center text-xs text-muted hover:text-ink"
               >
                 Use a different email
               </button>
@@ -99,10 +104,10 @@ export default function Login() {
           )}
 
           {error && (
-            <p className="mt-4 rounded-lg bg-red-950 px-3 py-2 text-xs text-red-300">{error}</p>
+            <p className="mt-4 rounded-xl bg-danger-soft px-3 py-2.5 text-xs text-danger">{error}</p>
           )}
         </div>
-        <p className="mt-3 text-center text-[11px] text-slate-500">
+        <p className="mt-4 text-center text-[11px] text-muted">
           Operators only. Access is granted with <span className="font-mono">make grant-admin</span>.
         </p>
       </div>

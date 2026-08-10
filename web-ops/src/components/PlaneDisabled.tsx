@@ -19,14 +19,14 @@ export default function PlaneDisabled({ reason }: { reason: string }) {
   const { logout } = useAuth();
   const msg = MESSAGES[reason] ?? MESSAGES.unreachable;
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-900 p-4 text-center text-slate-100">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-porcelain p-4 text-center text-ink">
       <div className="max-w-sm space-y-2">
-        <h1 className="text-lg font-semibold">{msg.title}</h1>
-        <p className="text-sm text-slate-400">{msg.body}</p>
+        <h1 className="font-serif text-xl font-medium">{msg.title}</h1>
+        <p className="text-sm text-muted">{msg.body}</p>
       </div>
       <button
         onClick={logout}
-        className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
+        className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 hover:border-muted hover:text-ink"
       >
         Sign out
       </button>
