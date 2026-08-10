@@ -1,6 +1,13 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip backup restore backup-drill
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip backup restore backup-drill hooks
+
+# Enable the local CI-guardrail git hooks (run once per clone). A HARD line: pre-commit blocks a
+# commit on ruff/guard failure; pre-push blocks a push unless the full CI mirror (ruff + guards +
+# mypy + tests/unit) passes — so main never goes red from a careless push (founder 2026-08-10).
+hooks:
+	git config core.hooksPath .githooks
+	@echo "hooks enabled (.githooks): pre-commit = ruff+guards; pre-push = full CI mirror"
 
 dev:
 	$(COMPOSE) up --build

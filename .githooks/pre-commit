@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# HARD guardrail (founder 2026-08-10): a commit is BLOCKED when the fast CI checks fail, so a lint /
+# guard violation can never reach `main` and break CI. Fast checks only (ruff + architecture guards);
+# the fuller suite runs in pre-push. Enable once per clone with `make hooks`.
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "[pre-commit] ruff + architecture guards …"
+if ! uv run ruff check . ; then
+  echo "❌ ruff failed — commit BLOCKED. Fix the lint above, then commit again." >&2
+  exit 1
+fi
+if ! uv run python scripts/guards.py ; then
+  echo "❌ architecture guards failed — commit BLOCKED (e.g. an industry noun in core/ or web/)." >&2
+  exit 1
+fi
+echo "[pre-commit] ✅ clean"

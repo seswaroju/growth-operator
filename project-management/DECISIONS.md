@@ -1037,3 +1037,19 @@ Confirmation is server-side — (1) a **signed webhook** from the PSP is the aut
 polling** as the backstop for missed webhooks. Auto-receipts (PAY3) therefore require an auto-confirming
 provider (a PSP); the free bare-QR path can only trigger a receipt after a manual "mark paid". Everything
 stays gated/simulated until the founder configures a provider + keys. **Decided by:** Founder (2026-08-10).
+
+---
+
+## 2026-08-10 — HARD guardrail: local git hooks must pass before commit/push (CI-clean)
+
+**Founder directive (2026-08-10):** "make sure a hard line constraint in our guardrails to have CI
+clean before committing." After two careless lint slips reached `main` (an industry noun, then a
+too-long line), CI-relevant checks are now enforced **locally, blocking**:
+
+- **`.githooks/pre-commit`** — blocks the commit if `ruff check .` or `scripts/guards.py` fail (fast).
+- **`.githooks/pre-push`** — blocks the push unless the full CI mirror passes: `ruff` + guards +
+  `mypy core` + `pytest tests/unit`.
+
+Enabled per clone with **`make hooks`** (`git config core.hooksPath .githooks`). This makes "CI clean
+before committing/pushing" a mechanical gate, not a discipline I can forget. **Decided by:** Founder
+(2026-08-10).
