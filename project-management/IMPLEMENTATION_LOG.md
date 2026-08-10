@@ -3060,7 +3060,7 @@ first_customer_response, last_outbound_msg_at/direction, `lead_diagnoses`) for l
 
 ## 2026-08-09 — MVP-073j: Ghost-diagnosis eval harness + CAPTURE-GAP migrations (diagnosis item 3)
 
-**Branch:** `feature/mvp-073j-eval-capture` (off main). **Merge:** `pending`. Closes the three-item
+**Branch:** `feature/mvp-073j-eval-capture` (off main). **Merge:** `e52cceb`. Closes the three-item
 ghost-recovery diagnosis track. Migration 038, no dependency.
 
 **Migration 038 (CAPTURE-GAPs, additive; up/down verified):** the schema LIVE diagnosis needs (the
