@@ -3017,7 +3017,7 @@ the sugar) — then item 3, the **eval harness** (offline/synthetic, real-ready 
 
 ## 2026-08-09 — MVP-073i: Jewelry ghost-recovery pack (diagnosis item 2)
 
-**Branch:** `feature/mvp-073i-ghost-pack` (off main). **Merge:** `pending`. The L1 declarative pack that
+**Branch:** `feature/mvp-073i-ghost-pack` (off main). **Merge:** `3cb8906`. The L1 declarative pack that
 turns the ghost-recovery thesis into a runnable workflow — no `core/` code (industry nouns live in
 `verticals/`, which the guard does not scan). No migration, no dependency.
 
