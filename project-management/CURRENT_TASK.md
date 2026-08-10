@@ -15,8 +15,16 @@ selects and approves the next ticket.
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
 **3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅ / 5b builder UI
-✅** → 6 owner-built/trust → then the Option-A diagnosis extension + jewelry ghost-recovery pack + eval +
-CAPTURE-GAP migrations.
+✅** → **6 owner-built/trust ✅ → WORKFLOW ENGINE COMPLETE.** Then the Option-A diagnosis extension +
+jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+
+**Stage 6 (MVP-073g) `feature/mvp-073g-owner-trust`:** `activation.py` — owner-built drafts can't
+self-activate; `request_activation` simulates + raises a tier-2 `workflow.activate` approval (report
+attached, stays draft); consumer activates on approve / leaves draft on reject. Trust ledger:
+`owner_trust_status` (completed-run count vs 50 → `earned` + `tier_floor`). Endpoints activate/trust
+(`catalog:write`). **Verify:** ruff/mypy(164)/**guards 0**/**419** unit+isolation/**465**
+integ+e2e+contract; **+6** tests. **The 6-stage workflow engine is COMPLETE.** **Next:** Option-A
+ghost-recovery diagnosis extension (sugar verbs → generic grammar) + jewelry pack + eval + CAPTURE-GAPs.
 
 **Stage 5b (MVP-073f) `feature/mvp-073f-builder-ui`:** the owner builder in `web/` — **structured form**
 (founder's choice; graph noted as a future view, DECISIONS 2026-08-09). `lib/workflows.ts` pure

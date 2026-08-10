@@ -17,7 +17,7 @@ from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CATALOG_WRITE, INSIGHTS_READ
 from core.tenancy.rbac import requires
-from core.workflows import authoring, timeline
+from core.workflows import activation, authoring, timeline
 from core.workflows import simulate as simulate_mod
 from core.workflows.guards import UnknownGuard
 from core.workflows.parser import WorkflowParseError
@@ -139,3 +139,33 @@ async def list_definitions(
     if current.org_id is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
     return {"definitions": await authoring.list_owner_definitions(session, current.org_id)}
+
+
+@router.post("/definitions/{definition_id}/activate",
+             summary="Request activation (simulate + raise a tier-2 approval)")
+async def activate_definition(
+    definition_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    try:
+        result = await activation.request_activation(session, current.org_id, definition_id)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "definition not found") from exc
+    except activation.ActivationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    await session.commit()
+    return result
+
+
+@router.get("/definitions/{definition_id}/trust", summary="Owner-built trust status")
+async def definition_trust(
+    definition_id: UUID,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    return await activation.owner_trust_status(session, current.org_id, definition_id)
