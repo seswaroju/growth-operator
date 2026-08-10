@@ -2831,3 +2831,34 @@ integ+e2e+contract (+6) · no migration/dep.
 (`POST /v1/workflows/{id}/simulate` — replay historical events in a dry-run shadow, report would-have-
 fired / guard-block / sample messages / cost) — the stage that directly serves the ghost-recovery proof.
 The engine is now fully runnable (trigger → steps → agents → waits → approvals → compensation).
+
+---
+
+## 2026-08-09 — MVP-073d: Workflow simulation mode (stage 4 of the executor initiative)
+
+**Branch:** `feature/mvp-073d-simulation` (off main). **Merge:** `pending`. The pre-activation dry-run —
+"prove it works before going live" — which directly serves the ghost-recovery thesis. No migration/dep.
+
+**`core/workflows/simulate.py`** — `simulate(session, org, definition_id, window_days=30)` replays the
+org's historical `event_outbox` rows of the definition's trigger type over the window against the
+definition, entirely **read-only** (no run, no send, no event — the shadow/dry-run the spec requires).
+Report: `candidates` → `condition_filtered`/`condition_passed` (trigger CEL) → `would_have_fired`
+(condition AND guards) → `guard_blocks` (`{guard: count}`) → `estimated_cost_minor` (`would_have_fired
+× agent_steps_per_fire × cost_per_message`, an upper bound; agents are gated-simulated) → synthetic
+`sample_messages`. Guards read current L2/L3 state (a point-in-time projection, noted in the report).
+`POST /v1/workflows/{id}/simulate {window_days}` (`insights:read`), 404 on unknown definition.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Report accuracy (fired / condition-filtered / guard-block / cost) | `test_simulate_reports_fired_blocked_and_cost` (5 candidates → 1 filtered → 3 fired, `{not_suppressed:1}`, cost 300) | PASS |
+| **Zero side effects** (no run, no event emitted) | `test_simulate_has_no_side_effects` | PASS |
+
+**Commands:** ruff clean · `mypy core` **162** · **guards 0** · **419** unit+isolation · **453**
+integ+e2e+contract (+2) · no migration/dep.
+
+**Next recommended action:** merge + push + record hash + verify CI, then **stage 5: builder UI (H2)** —
+the React flow-graph editor emitting DSL (server-side validation = the parser we already ship), then
+**stage 6: owner-built / trust-ledger path**. After the engine stages, the **Option-A ghost-recovery
+diagnosis extension** (readable sugar verbs → generic steps) + the jewelry pack (taxonomy, prompt,
+templates) + eval harness (offline/synthetic) + CAPTURE-GAP migrations for live.

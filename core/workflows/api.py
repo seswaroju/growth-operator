@@ -10,15 +10,21 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import INSIGHTS_READ
 from core.tenancy.rbac import requires
+from core.workflows import simulate as simulate_mod
 from core.workflows import timeline
 
 router = APIRouter(prefix="/v1/workflows", tags=["workflows"])
+
+
+class SimulateRequest(BaseModel):
+    window_days: int = Field(default=30, ge=1, le=180)
 
 
 @router.get("/runs", summary="List recent workflow runs")
@@ -43,3 +49,19 @@ async def get_run(
     if tl is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
     return tl
+
+
+@router.post("/{definition_id}/simulate", summary="Dry-run a definition against tenant history")
+async def simulate(
+    definition_id: UUID,
+    body: SimulateRequest,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    try:
+        return await simulate_mod.simulate(
+            session, current.org_id, definition_id, window_days=body.window_days)
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "definition not found") from exc
