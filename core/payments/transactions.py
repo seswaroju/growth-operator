@@ -29,9 +29,10 @@ _COLS = (
 
 
 def store_code(name: str) -> str:
-    """A short, stable code for the number, from the store name. e.g. 'Ratna Store' -> 'RATNA'."""
-    code = re.sub(r"[^A-Za-z0-9]", "", name).upper()[:5]
-    return code or "STORE"
+    """A short, FIXED-length code (4 chars) from the store name — so a long name never makes a longer
+    receipt number. 'Ratna Store' -> 'RATN', 'A Very Long Store Name' -> 'AVER'."""
+    code = re.sub(r"[^A-Za-z0-9]", "", name).upper()[:4]
+    return code or "STOR"
 
 
 def _period_ym(on: date) -> str:
