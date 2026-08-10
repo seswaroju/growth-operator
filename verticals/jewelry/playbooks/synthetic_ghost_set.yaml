@@ -1,0 +1,71 @@
+# Synthetic ghost set (jewelry pack, MVP-073j).
+# Offline eval fixtures for the ghost-diagnosis loop. Each case is a post-quote silence thread whose
+# in-thread signals point at ONE taxonomy reason. This set tests PLUMBING — that the
+# diagnose -> reason -> recovery-action mapping holds end to end — NOT real-world correctness (which
+# needs the D1/D2 loop: real exported WhatsApp logs + a wired frontier model). `abstain` cases carry
+# no diagnostic signal, so the diagnoser must abstain rather than guess.
+
+cases:
+  - id: rate_1
+    expected_reason: gold_rate_timing
+    thread: "customer: rate kitna hai today andi? rate down ayithe cheppandi, appudu chesta"
+  - id: rate_2
+    expected_reason: gold_rate_timing
+    thread: "customer: watching the rate andi, next week chuddam"
+
+  - id: sticker_1
+    expected_reason: sticker_shock
+    thread: "customer: anta ekkuva ah? budget lo ledu andi"
+  - id: sticker_2
+    expected_reason: sticker_shock
+    thread: "agent: total andi. customer: budget lo ledu andi, konchem ekkuva"
+
+  - id: making_1
+    expected_reason: making_charge_objection
+    thread: "customer: making charge enta andi? wastage entha padtundi?"
+  - id: making_2
+    expected_reason: making_charge_objection
+    thread: "customer: gold rate okay andi kaani making charge enta ekkuva"
+
+  - id: compare_1
+    expected_reason: comparison_shopping
+    thread: "customer: XYZ lo cheaper vachindi andi. waiting to compare"
+  - id: compare_2
+    expected_reason: comparison_shopping
+    thread: "customer: per-gram breakdown to compare pampandi andi"
+
+  - id: family_1
+    expected_reason: consult_family
+    thread: "customer: family tho matladali andi, appudu chepta"
+  - id: family_2
+    expected_reason: consult_family
+    thread: "customer: husband decide chestaru andi, will show at home"
+
+  - id: finance_1
+    expected_reason: financing_emi_gap
+    thread: "customer: EMI unda andi? scheme lo cheyyocha?"
+  - id: finance_2
+    expected_reason: financing_emi_gap
+    thread: "customer: next month salary tarvata andi, installments unte cheppandi"
+
+  - id: design_1
+    expected_reason: design_not_right
+    thread: "customer: design nachaledu andi, different pattern unda?"
+  - id: design_2
+    expected_reason: design_not_right
+    thread: "customer: something lighter kavali andi, stone baledu"
+
+  - id: trust_1
+    expected_reason: authenticity_buyback_trust
+    thread: "customer: hallmark unda andi? BIS certified na?"
+  - id: trust_2
+    expected_reason: authenticity_buyback_trust
+    thread: "customer: buyback ela untundi andi? meeru trusted na?"
+
+  # No diagnostic signal — the diagnoser must abstain, not guess.
+  - id: abstain_1
+    expected_reason: abstain
+    thread: "customer: ok andi"
+  - id: abstain_2
+    expected_reason: abstain
+    thread: "customer: hmm, chuddam andi"
