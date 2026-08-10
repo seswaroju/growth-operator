@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## Operator payments track · PAY3 — approval-gated receipt delivery — **Completed — awaiting founder review** (2026-08-10)
+## Operator payments track · Operator "Charge this store" UI — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/pay-ops-ui-charge-store`. On the operator store-360 page (`/stores/$orgId`), a new
+**Payments · charge this store** card: a **New charge** form (multi-line items in ₹, percent discount +
+reason, tax label + amount, notes, receipt email/WhatsApp, **live total preview** matching the server's
+rounding) records an auto-numbered transaction (PAY-TX); the **transactions table** lists each with a
+**Request receipt** action → drafts the PAY3 approval (status chip: Awaiting receipt → Receipt pending
+approval → Receipt sent). Writes gated on `platform.tenants:manage`; list on `:read`. New:
+`web-ops/src/lib/receipts.ts` (+ `.test.ts` 8), `web-ops/src/components/StorePaymentsSection.tsx`,
+`api.ts` (3 fns + types), mounted in `StoreReportsSection.tsx`. **Gate:** oxlint clean · tsc 0 ·
+vitest **28** · build ✓ · guards 0. **Next:** PAY3b (Razorpay webhook endpoint) → OC5–OC12 backlog.
+
+## Operator payments track · PAY3 — approval-gated receipt delivery — **Merged `022f88b`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/pay3-receipt-delivery`. Charge a store → **mark paid drafts a `receipt.send`
 approval** into the owner's queue (202 `pending_approval` — nothing sends yet). On **approve**, a

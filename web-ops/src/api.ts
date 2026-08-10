@@ -393,3 +393,73 @@ export function adminRecordCharge(
     body: JSON.stringify(input),
   });
 }
+
+// ---- Per-store transactions / receipts (PAY-TX + PAY3) ----------------------
+// Operator charges a store (auto-numbered {STORE}-{YYMM}-seq, percent discount, notes) and can
+// request a receipt — which DRAFTS a receipt.send approval; the branded receipt only goes out (email
+// + WhatsApp) once it's approved. Writes need platform.tenants:manage; audited server-side.
+
+export interface TxLineItem {
+  description: string;
+  amount_minor: number;
+}
+
+export interface Transaction {
+  id: string;
+  org_id: string;
+  receipt_no: string;
+  currency: string;
+  line_items: TxLineItem[];
+  subtotal_minor: number;
+  discount_percent: number;
+  discount_reason: string | null;
+  discount_minor: number;
+  tax_label: string;
+  tax_minor: number;
+  total_minor: number;
+  notes: string | null;
+  provider_ref: string | null;
+  status: string;
+  contact_email: string | null;
+  contact_phone: string | null;
+  created_at: string;
+}
+
+export interface NewTransactionInput {
+  store_name: string;
+  line_items: TxLineItem[];
+  discount_percent: number;
+  discount_reason?: string | null;
+  tax_label: string;
+  tax_minor: number;
+  notes?: string | null;
+  currency?: string;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+}
+
+export interface ReceiptRequestResult {
+  approval_id: string;
+  receipt_no: string;
+  status: string;
+}
+
+export function adminListTransactions(token: string, orgId: string): Promise<Transaction[]> {
+  return authed<Transaction[]>(`/v1/admin/tenants/${orgId}/transactions`, token);
+}
+
+export function adminCreateTransaction(
+  token: string, orgId: string, input: NewTransactionInput,
+): Promise<Transaction> {
+  return authed<Transaction>(`/v1/admin/tenants/${orgId}/transactions`, token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function adminRequestReceipt(
+  token: string, orgId: string, txId: string,
+): Promise<ReceiptRequestResult> {
+  return authed<ReceiptRequestResult>(
+    `/v1/admin/tenants/${orgId}/transactions/${txId}/request-receipt`, token, { method: "POST" });
+}
