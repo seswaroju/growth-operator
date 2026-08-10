@@ -114,7 +114,14 @@ behind real payment credentials (§10.4 — never charge without founder approva
   rail cost (see notes below). Gated/simulated like the rest.
 - **PAY2 Receipt generation** (M) — **DONE**; a Shopify-style receipt (HTML → PDF) from a charge: store + line
   items + amount + plan + date + tax fields; stored/retrievable; no secrets in the artifact.
-- **PAY3 Receipt delivery to WhatsApp + Email** (M) — send the generated receipt to the tenant's phone
+- **PAY-TX Transactions record** (M/L) — **NEW (founder 2026-08-10)**; a persisted, retrievable
+  transaction per charge: org_id, an **auto-generated meaningful receipt/transaction no.** (scheme TBD
+  with founder — must not invent §18), amount + line items, **discount_minor + discount_reason**,
+  **notes**, tax, provider + provider_ref, status (created→paid→receipted), contacts, timestamps; RLS;
+  create + **list/get retrieval** endpoints. Feeds the receipt (number, discounts, notes) and OC1/OC2.
+- **PAY3 Receipt delivery — via APPROVALS** (M) — **founder chose the approval queue over auto-send**
+  (2026-08-10): on verified payment, draft the receipt → it waits in Approvals → on approve, send to
+  the tenant's phone
   (WABA send — already real-ready, MVP-076) **and** email (PAY0) "on file", via the approval/mediation
   boundary; idempotent (no double-send on retry); audited.
 
