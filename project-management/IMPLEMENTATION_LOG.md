@@ -3334,3 +3334,22 @@ serif wordmark, single committed dark theme — reads as an internal instrument)
 **Verify:** oxlint clean · `tsc -b` 0 · **vitest 6** · `vite build` ✓ · guards 0 (web-ops not
 noun-scanned by the guard, but manually clean). **UX pass complete** — both apps fully on the design
 system. **Next track:** multi-channel/advertising, then one channel end-to-end (per founder order).
+
+## 2026-08-10 — UX-05: warm cream/gold re-theme, both apps (feedback B)
+
+**Branch:** `feature/ux-05-cream-gold`. Founder found the emerald/dark-green gloomy and asked for a
+**light cream + antique-champagne** look on **both** apps. Presentational only — token values only.
+
+- `web/src/index.css` re-themed to the cream/champagne token system (light default + `prefers-color-scheme`
+  dark + `data-theme` override); **`web-ops/src/index.css` set to the identical palette** (both apps unified
+  — no more dark control-plane; the operator app is distinguished by content + the "Operator console"
+  wordmark).
+- Added an **`--on-accent`** token (fixed dark tone) → gold is light in both themes, so
+  `buttonClasses.primary` and badges now use `text-on-accent` (dark on gold) to stay AA-legible instead of
+  white-on-gold. Fixed the same in NotificationBell badge, ErrorBoundary, both Login primaries, and both
+  Shell/Login marks (`bg-ink` mark for contrast).
+- Comments avoid the literal industry noun (accent described as "champagne"; token named `--accent`).
+
+**Verify:** web + web-ops each — oxlint clean · `tsc -b` 0 · vitest (web 57 / web-ops 6) · `vite build` ✓ ·
+**guards 0** · no forbidden nouns in either app (incl. `.css`). First ticket of the Operator-Console-v2
+backlog (`project-management/OPERATOR_V2_BACKLOG.md`). **Next:** OC1 — editable plans + "what's included".

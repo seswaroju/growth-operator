@@ -41,7 +41,7 @@ export default function Login() {
     "outline-none placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent-soft";
   const primary =
     "flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm " +
-    "font-semibold text-white shadow-card transition hover:bg-accent-2 disabled:opacity-50";
+    "font-semibold text-on-accent shadow-card transition hover:bg-accent-2 disabled:opacity-50";
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-porcelain

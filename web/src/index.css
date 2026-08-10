@@ -1,50 +1,52 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Growth Operator — design tokens (UX direction v2: "Atelier")
-   One committed emerald accent on a cool porcelain ground; ink with a green
-   undertone; a serif reserved for money/wordmark. Values live as CSS custom
-   properties so they flip with the theme; @theme inline maps them to Tailwind
-   utilities (bg-surface, text-ink, text-accent, border-line, …) that stay
-   theme-reactive automatically. Dark follows the OS, and a future data-theme
-   toggle overrides it in both directions.
+   Growth Operator — design tokens (UX direction v3: warm cream + antique champagne)
+   A warm ivory ground with a restrained antique-champagne accent, ink-brown text,
+   and a serif reserved for money/wordmark. Both apps share this palette.
+   Values are CSS custom properties (theme-reactive); @theme inline maps them to
+   utilities (bg-surface, text-ink, text-accent, border-line, text-on-accent…).
+   `--on-accent` is a fixed dark tone for text ON the accent fills — the accent is
+   light in both themes, so button/badge text stays AA-legible without flipping.
 --------------------------------------------------------------------------- */
 :root {
-  --porcelain:#F4F6F4; --surface:#FFFFFF; --raised:#FBFCFB;
-  --ink:#14201B; --ink-2:#3C4A44; --muted:#6E7A73; --line:#E2E7E3; --line-2:#EEF1EE;
-  --accent:#0B6B53; --accent-2:#0E7E62; --accent-ink:#084A3A; --accent-soft:#E4F0EB;
-  --good:#2F7D57; --good-soft:#E6F1EA; --warn:#9A6B15; --warn-soft:#F6ECD6;
-  --danger:#A4342F; --danger-soft:#F6E3E1;
-  --shadow-card:0 1px 1px rgba(20,32,27,.04), 0 2px 6px -2px rgba(20,32,27,.10);
-  --shadow-pop:0 1px 2px rgba(20,32,27,.05), 0 14px 34px -18px rgba(20,32,27,.30);
+  --porcelain:#F7F2E8; --surface:#FFFDF8; --raised:#FBF6EC;
+  --ink:#2A2318; --ink-2:#6B5F4C; --muted:#988B72; --line:#E8DFC9; --line-2:#F0E9D7;
+  --accent:#C39A3C; --accent-2:#D3AC4F; --accent-ink:#7A5E1F; --accent-soft:#F3E9CE;
+  --on-accent:#241B08;
+  --good:#5E7A3E; --good-soft:#EBF0DE; --warn:#B5842A; --warn-soft:#F7ECD2;
+  --danger:#B0492F; --danger-soft:#F6E1D9;
+  --shadow-card:0 1px 1px rgba(42,35,24,.04), 0 2px 6px -2px rgba(42,35,24,.10);
+  --shadow-pop:0 1px 2px rgba(42,35,24,.05), 0 14px 30px -18px rgba(42,35,24,.25);
   --serif:"Hoefler Text", ui-serif, Georgia, "Times New Roman", serif;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --porcelain:#0C110F; --surface:#141A17; --raised:#171E1A;
-    --ink:#EAF0EC; --ink-2:#B7C2BC; --muted:#8A968F; --line:#26302B; --line-2:#1E2622;
-    --accent:#37BF9A; --accent-2:#4CD1AC; --accent-ink:#A7E9D8; --accent-soft:#122720;
-    --good:#54B487; --good-soft:#132419; --warn:#D2A24A; --warn-soft:#241C0F;
-    --danger:#E08B84; --danger-soft:#271513;
+    --porcelain:#171310; --surface:#1F1A14; --raised:#241E17;
+    --ink:#F2ECDE; --ink-2:#C7BCA6; --muted:#9C8F78; --line:#332B20; --line-2:#282017;
+    --accent:#D8B25E; --accent-2:#E6C578; --accent-ink:#EBD9A9; --accent-soft:#2A2216;
+    --on-accent:#241B08;
+    --good:#93B36A; --good-soft:#1E2617; --warn:#D8AC58; --warn-soft:#2A2115;
+    --danger:#DE9078; --danger-soft:#2C1913;
     --shadow-card:0 1px 2px rgba(0,0,0,.4);
-    --shadow-pop:0 2px 4px rgba(0,0,0,.4), 0 22px 48px -22px rgba(0,0,0,.7);
+    --shadow-pop:0 2px 4px rgba(0,0,0,.4), 0 18px 40px -20px rgba(0,0,0,.7);
   }
 }
 :root[data-theme="light"] {
-  --porcelain:#F4F6F4; --surface:#FFFFFF; --raised:#FBFCFB; --ink:#14201B; --ink-2:#3C4A44;
-  --muted:#6E7A73; --line:#E2E7E3; --line-2:#EEF1EE; --accent:#0B6B53; --accent-2:#0E7E62;
-  --accent-ink:#084A3A; --accent-soft:#E4F0EB; --good:#2F7D57; --good-soft:#E6F1EA; --warn:#9A6B15;
-  --warn-soft:#F6ECD6; --danger:#A4342F; --danger-soft:#F6E3E1;
-  --shadow-card:0 1px 1px rgba(20,32,27,.04), 0 2px 6px -2px rgba(20,32,27,.10);
-  --shadow-pop:0 1px 2px rgba(20,32,27,.05), 0 14px 34px -18px rgba(20,32,27,.30);
+  --porcelain:#F7F2E8; --surface:#FFFDF8; --raised:#FBF6EC; --ink:#2A2318; --ink-2:#6B5F4C;
+  --muted:#988B72; --line:#E8DFC9; --line-2:#F0E9D7; --accent:#C39A3C; --accent-2:#D3AC4F;
+  --accent-ink:#7A5E1F; --accent-soft:#F3E9CE; --on-accent:#241B08; --good:#5E7A3E;
+  --good-soft:#EBF0DE; --warn:#B5842A; --warn-soft:#F7ECD2; --danger:#B0492F; --danger-soft:#F6E1D9;
+  --shadow-card:0 1px 1px rgba(42,35,24,.04), 0 2px 6px -2px rgba(42,35,24,.10);
+  --shadow-pop:0 1px 2px rgba(42,35,24,.05), 0 14px 30px -18px rgba(42,35,24,.25);
 }
 :root[data-theme="dark"] {
-  --porcelain:#0C110F; --surface:#141A17; --raised:#171E1A; --ink:#EAF0EC; --ink-2:#B7C2BC;
-  --muted:#8A968F; --line:#26302B; --line-2:#1E2622; --accent:#37BF9A; --accent-2:#4CD1AC;
-  --accent-ink:#A7E9D8; --accent-soft:#122720; --good:#54B487; --good-soft:#132419; --warn:#D2A24A;
-  --warn-soft:#241C0F; --danger:#E08B84; --danger-soft:#271513;
+  --porcelain:#171310; --surface:#1F1A14; --raised:#241E17; --ink:#F2ECDE; --ink-2:#C7BCA6;
+  --muted:#9C8F78; --line:#332B20; --line-2:#282017; --accent:#D8B25E; --accent-2:#E6C578;
+  --accent-ink:#EBD9A9; --accent-soft:#2A2216; --on-accent:#241B08; --good:#93B36A;
+  --good-soft:#1E2617; --warn:#D8AC58; --warn-soft:#2A2115; --danger:#DE9078; --danger-soft:#2C1913;
   --shadow-card:0 1px 2px rgba(0,0,0,.4);
-  --shadow-pop:0 2px 4px rgba(0,0,0,.4), 0 22px 48px -22px rgba(0,0,0,.7);
+  --shadow-pop:0 2px 4px rgba(0,0,0,.4), 0 18px 40px -20px rgba(0,0,0,.7);
 }
 
 @theme inline {
@@ -60,6 +62,7 @@
   --color-accent-2: var(--accent-2);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
   --color-good: var(--good);
   --color-good-soft: var(--good-soft);
   --color-warn: var(--warn);
@@ -80,7 +83,7 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  ::selection { background: var(--accent); color: #fff; }
+  ::selection { background: var(--accent); color: var(--on-accent); }
   ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-thumb {
     background: var(--line); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box;

@@ -23,7 +23,7 @@ export default function Shell() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2.5">
-              <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-porcelain shadow-card">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-porcelain shadow-card">
                 <Mark className="h-[18px] w-[18px]" />
               </div>
               <div className="leading-tight">

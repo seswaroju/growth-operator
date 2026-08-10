@@ -41,13 +41,13 @@ export default function Login() {
     "outline-none placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent-soft";
   const primary =
     "flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm " +
-    "font-semibold text-porcelain shadow-card transition hover:bg-accent-2 disabled:opacity-50";
+    "font-semibold text-on-accent shadow-card transition hover:bg-accent-2 disabled:opacity-50";
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-porcelain p-4 text-ink">
       <div className="w-full max-w-sm">
         <div className="rounded-2xl border border-line bg-surface p-7 shadow-pop">
-          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl bg-accent text-porcelain">
+          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl bg-ink text-porcelain">
             <Mark className="h-6 w-6" />
           </div>
           <h1 className="text-center font-serif text-[22px] font-medium tracking-tight">Operator console</h1>
