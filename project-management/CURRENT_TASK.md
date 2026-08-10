@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## Operator payments track · Operator "Charge this store" UI — **Completed — awaiting founder review** (2026-08-10)
+## Operator payments track · Operator "Charge this store" UI — **Merged `ec0828f`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/pay-ops-ui-charge-store`. On the operator store-360 page (`/stores/$orgId`), a new
 **Payments · charge this store** card: a **New charge** form (multi-line items in ₹, percent discount +
@@ -32,7 +32,13 @@ event never double-sends; a **rejected** approval sends nothing. WhatsApp is ski
 number is connected. New: `core/payments/delivery.py`, `core/payments/receipt_consumer.py` (registered
 in `core/worker.py`), `POST …/transactions/{id}/request-receipt`. **Gate:** ruff · guards · mypy 178 ·
 full tests/unit 459 · new integ `test_receipt_delivery.py` 10 · payments+approvals/events integ 77.
-**Next in track:** PAY3b (Razorpay webhook endpoint) + operator "Charge this store" UI, then OC5–OC12.
+
+**Receipt format (as delivered today):** **Email** gets the *branded HTML* receipt (`render_receipt_html`
+— cream/champagne, serif wordmark, PAID pill, discount row) + a plain-text alternative. **WhatsApp** gets
+a *formatted plain-text message* (`render_receipt_text`) — **not a PDF, not an image**. A PDF/document on
+WhatsApp is a separate future enhancement (**PAY4 · receipt PDF**): render receipt → PDF (needs a PDF
+library = new dependency → founder approval) → upload to Meta's media endpoint → send a `document`
+message. **Next in track:** PAY3b (Razorpay webhook endpoint), then PAY4 / OC5–OC12 (founder pick).
 
 ## UX pass — bolder/premium redesign (direction v2 "Atelier") — **COMPLETE** (2026-08-10)
 
