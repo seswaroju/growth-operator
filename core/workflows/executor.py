@@ -43,6 +43,14 @@ logger = logging.getLogger("core.workflows.executor")
 # (org_id, agent instruction) -> output dict. Overridable so tests stay hermetic (no runtime).
 AgentRunner = Callable[[UUID, dict[str, Any]], Awaitable[dict[str, Any]]]
 
+# Canonical approval action for a `human_task` step; the workflow run is linked via the approval
+# payload (approvals.run_id FKs agent_runs, not workflow_runs).
+WORKFLOW_HUMAN_ACTION = "workflow.human_task"
+HUMAN_TASK_TIER = 2  # needs-approval by default; the policy engine can only tighten
+# An agent that RETURNS one of these is a business failure → compensate (a raised exception is a
+# crash → propagate + resume, a different thing).
+_FAILURE_STATUSES = frozenset({"failed", "error"})
+
 _ENV = celpy.Environment()
 _PROGRAM_CACHE: dict[str, Any] = {}
 
@@ -269,6 +277,12 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                     if op == "WAIT":
                         from core.workflows import waits
                         await waits.register_wait(s, org_id, run_id, sid, ins, run["subject"])
+                    else:  # HUMAN — raise an approval linked to this run via its payload
+                        from core.approvals.service import create_approval
+                        await create_approval(
+                            s, org_id, action_type=WORKFLOW_HUMAN_ACTION, tier=HUMAN_TASK_TIER,
+                            payload={"workflow_run_id": str(run_id), "step_id": sid,
+                                     "kind": ins.get("kind"), "assignee": ins.get("assignee")})
                     await s.commit()
                     return
                 if op == "AGENT":
@@ -287,6 +301,15 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
             return
         if agent_ins is not None:
             output = await agent_runner(org_id, agent_ins)
+            if str(output.get("status")) in _FAILURE_STATUSES:
+                async with org_scoped_session(org_id) as s:
+                    await set_org_context(s, org_id)
+                    await _append(s, org_id, run_id, "step_failed", step_id=agent_ins["sid"],
+                                  data=output)
+                    await s.commit()
+                await _compensate(org_id, run_id, f"agent_task {agent_ins['task']} failed",
+                                  agent_runner)
+                return
             async with org_scoped_session(org_id) as s:
                 await set_org_context(s, org_id)
                 await _append(s, org_id, run_id, "step_completed", step_id=agent_ins["sid"],
@@ -347,6 +370,131 @@ async def wake_run(
         await s.commit()
     await _advance(org_id, run_id, agent_runner or _default_agent_runner)
     return True
+
+
+async def resume_human(
+    org_id: UUID, run_id: UUID, decision: str, *, agent_runner: AgentRunner | None = None
+) -> bool:
+    """Resolve a `human_task`: `approved` advances past the step and drives on; `rejected` triggers
+    compensation (never the gated step). Returns False if the run is not currently waiting."""
+    runner = agent_runner or _default_agent_runner
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        run = await _load(s, org_id, run_id)
+        if run is None or run["status"] != "waiting":
+            return False
+        pc = run["cursor"]
+        new_vars = {**run["vars"], "human": {"decision": decision}}
+        approved = decision == "approved"
+        await s.execute(
+            text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb), status = :st, "
+                 "cursor = :c, updated_at = now() WHERE id = :r AND org_id = :o"),
+            {"v": json.dumps(new_vars), "st": "running" if approved else "waiting",
+             "c": pc + 1 if approved else pc, "r": str(run_id), "o": str(org_id)})
+        await _append(s, org_id, run_id, "human_resolved", data={"decision": decision})
+        await s.commit()
+    if approved:
+        await _advance(org_id, run_id, runner)
+    else:
+        await _compensate(org_id, run_id, "human_task rejected", runner)
+    return True
+
+
+async def _compensate(
+    org_id: UUID, run_id: UUID, reason: str, agent_runner: AgentRunner
+) -> None:
+    """Saga compensation: run the definition's `compensation.on_failure` steps (author-ordered =
+    reverse of the effects to unwind), emit its `alert`, and mark the run `compensated` (or
+    `compensated_partial` if a compensator itself fails). No compensation block → `failed`."""
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        run = await _load(s, org_id, run_id)
+        if run is None:
+            return
+        comp = run["dsl"].get("compensation") if isinstance(run["dsl"], dict) else None
+        await _append(s, org_id, run_id, "compensation_started", data={"reason": reason})
+        if not comp:
+            await _set_cursor(s, org_id, run_id, run["cursor"], status="failed")
+            await _append(s, org_id, run_id, "run_failed", data={"reason": reason})
+            await s.commit()
+            return
+        subject, run_vars, alert = run["subject"], run["vars"], comp.get("alert")
+        on_failure = comp["on_failure"]
+        await s.commit()
+
+    partial = await _run_compensation(org_id, run_id, on_failure, subject, run_vars, agent_runner)
+
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        await s.execute(
+            text("UPDATE workflow_runs SET status = :st, completed_at = now(), updated_at = now() "
+                 "WHERE id = :r AND org_id = :o"),
+            {"st": "compensated_partial" if partial else "compensated",
+             "r": str(run_id), "o": str(org_id)})
+        await _append(s, org_id, run_id, "run_compensated",
+                      data={"reason": reason, "partial": partial})
+        if alert:
+            try:
+                await outbox_emit(
+                    s, org_id=org_id, event_type="alert.ops.v1",
+                    payload={"severity": "warn", "kind": "workflow_compensation",
+                             "detail": {"run_id": str(run_id), "reason": reason, "channel": alert}},
+                    source="workflow")
+            except Exception as exc:  # noqa: BLE001 - the alert is best-effort
+                logger.warning("compensation alert skipped: %s", exc)
+        await s.commit()
+
+
+async def _run_compensation(
+    org_id: UUID, run_id: UUID, steps: list[dict[str, Any]], subject: dict[str, Any],
+    run_vars: dict[str, Any], agent_runner: AgentRunner,
+) -> bool:
+    """Execute the compensation steps as a mini-program (SET/EMIT/AGENT/BRANCH; WAIT/HUMAN skipped —
+    compensation never blocks). Returns True if any compensating agent step failed (partial)."""
+    program = compile_program({"steps": steps})
+    partial = False
+    vars_ = dict(run_vars)
+    pc = 0
+    while pc < len(program):
+        ins = program[pc]
+        op = ins["op"]
+        sid = f"comp_{ins['sid']}"
+        activation = {**vars_, "subject": subject, "vars": vars_}
+        if op == "END":
+            break
+        if op == "AGENT":
+            output = await agent_runner(org_id, ins)  # outside any session (deadlock-safe)
+            async with org_scoped_session(org_id) as s:
+                await set_org_context(s, org_id)
+                await _append(s, org_id, run_id, "compensation_step", step_id=sid, data=output)
+                await s.commit()
+            if str(output.get("status")) in _FAILURE_STATUSES:
+                partial = True
+            pc += 1
+            continue
+        async with org_scoped_session(org_id) as s:
+            await set_org_context(s, org_id)
+            if op == "SET":
+                vars_ = {**vars_, **ins["vars"]}
+                await _append(s, org_id, run_id, "compensation_step", step_id=sid,
+                              data={"op": "set"})
+            elif op == "EMIT":
+                await _do_emit(s, org_id, ins, activation)
+                await _append(s, org_id, run_id, "compensation_step", step_id=sid,
+                              data={"op": "emit", "event": ins["event"]})
+            elif op == "BRANCH":
+                pc = next((c["target"] for c in ins["cases"]
+                           if _truthy(c["when"], activation)), ins["default"])
+                await s.commit()
+                continue
+            elif op in ("JUMP", "NOOP"):
+                pc = ins.get("target", pc + 1)
+                await s.commit()
+                continue
+            # WAIT/HUMAN inside compensation are skipped (a compensator must not block).
+            await s.commit()
+        pc += 1
+    return partial
 
 
 async def _do_emit(

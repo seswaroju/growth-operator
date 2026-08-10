@@ -13,9 +13,17 @@ selects and approves the next ticket.
 
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
-as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** → 3
-saga + human_task + ops timeline → 4 simulation → 5 builder → 6 owner-built/trust → then the Option-A
-diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
+**3 saga + human_task + ops timeline ✅** → 4 simulation → 5 builder → 6 owner-built/trust → then the
+Option-A diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+
+**Stage 3 (MVP-073c) `feature/mvp-073c-saga-human`:** saga compensation (agent returns failed →
+`compensation.on_failure` reverse-order + `alert.ops`; crash [raised exc] stays resumable) +
+`human_task` (park → raise `workflow.human_task` approval linked via payload; `approval.resolved`
+consumer → approve advances / reject compensates, never the gated action) + ops timeline
+(`timeline.py` + `GET /v1/workflows/runs[/{id}]`, `insights:read`). **Verify:** ruff/mypy(161)/
+**guards 0**/**419** unit+isolation/**451** integ+e2e+contract; **+6** tests. The engine is now fully
+runnable (trigger→steps→agents→waits→approvals→compensation). **Next:** stage 4 simulation mode.
 
 **Stage 2 (MVP-073b) `feature/mvp-073b-waits`:** migration 037 (`queued` status) + `waits.py`
 (register reply/duration/event subscriptions; `match_reply`/`match_event` atomic-claim wake-once;
