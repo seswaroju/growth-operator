@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.payments import delivery
 from core.payments import transactions as service
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
@@ -49,6 +50,12 @@ class TransactionCreate(BaseModel):
     provider_ref: str | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
+
+
+class ReceiptRequestOut(BaseModel):
+    approval_id: UUID
+    receipt_no: str
+    status: str  # always "pending_approval" — the receipt sends only once an owner approves
 
 
 class TransactionOut(BaseModel):
@@ -129,3 +136,29 @@ async def get_transaction(
         session, actor_user_id=current.user_id, action="transaction.read",
         target_org_id=org_id, detail={"receipt_no": tx["receipt_no"]})
     return TransactionOut(**tx)
+
+
+@router.post(
+    "/{org_id}/transactions/{tx_id}/request-receipt", response_model=ReceiptRequestOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Mark paid + draft a receipt-send approval (owner approves before it goes out)",
+)
+async def request_receipt(
+    org_id: UUID,
+    tx_id: UUID,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> ReceiptRequestOut:
+    tx = await service.get_transaction(session, org_id, tx_id)
+    if tx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "transaction not found")
+    if tx["status"] == "receipted":  # receipt already delivered — don't re-queue
+        raise HTTPException(status.HTTP_409_CONFLICT, "receipt already delivered")
+    approval_id = await delivery.mark_paid_and_request_receipt(
+        session, org_id, tx, requested_by=current.user_id)
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="receipt.requested",
+        target_org_id=org_id,
+        detail={"receipt_no": tx["receipt_no"], "approval_id": str(approval_id)})
+    return ReceiptRequestOut(
+        approval_id=approval_id, receipt_no=tx["receipt_no"], status="pending_approval")

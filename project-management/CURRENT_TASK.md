@@ -9,6 +9,19 @@ selects and approves the next ticket.
 
 ---
 
+## Operator payments track · PAY3 — approval-gated receipt delivery — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/pay3-receipt-delivery`. Charge a store → **mark paid drafts a `receipt.send`
+approval** into the owner's queue (202 `pending_approval` — nothing sends yet). On **approve**, a
+dedicated consumer (`approval.resolved.v1`, group "receipt-delivery") renders the branded receipt
+(PAY2) and sends it via the **gated** email + WhatsApp clients (simulated until a provider is live),
+then marks the transaction `receipted`. **Idempotent** (a `receipted` tx is a no-op) so a redelivered
+event never double-sends; a **rejected** approval sends nothing. WhatsApp is skipped gracefully when no
+number is connected. New: `core/payments/delivery.py`, `core/payments/receipt_consumer.py` (registered
+in `core/worker.py`), `POST …/transactions/{id}/request-receipt`. **Gate:** ruff · guards · mypy 178 ·
+full tests/unit 459 · new integ `test_receipt_delivery.py` 10 · payments+approvals/events integ 77.
+**Next in track:** PAY3b (Razorpay webhook endpoint) + operator "Charge this store" UI, then OC5–OC12.
+
 ## UX pass — bolder/premium redesign (direction v2 "Atelier") — **COMPLETE** (2026-08-10)
 
 All stages merged to main: **U1** shell/login/bell `24952d7` → **U2** dashboard + primitives `42aa159`

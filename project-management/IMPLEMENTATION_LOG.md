@@ -3639,3 +3639,42 @@ meaningful auto-number, discounts, and notes. Also chose the number scheme **`{S
 **Commands (full CI mirror before push):** ruff clean · guards 0 (fixed a **float-money** violation —
 Decimal, not float) · `mypy core` 176 · migration up/down/up · **full tests/unit 459** · isolation +
 payments/billing/tenants integ 41. **Next:** PAY3 — approval-gated receipt delivery (draft→approve→send).
+
+---
+
+## 2026-08-10 — PAY3 · Approval-gated receipt delivery (branch `feature/pay3-receipt-delivery`)
+
+**Founder ask:** after charging a store, the receipt must **route through approvals** (not auto-send),
+then go to **WhatsApp + email on file** — Shopify-style. **Approved shape:** the human approval is the
+gate; delivery uses the gated low-level clients (no separate execution token).
+
+- **`core/payments/delivery.py`** (NEW): `mark_paid_and_request_receipt` sets the tx `paid` and drafts
+  a `receipt.send` approval (tier 1) — the operator identity goes in the payload + audit log, since
+  `approvals.requested_by` FKs to `agent_instances` (agent-run approvals), not users. `deliver_receipt`
+  renders the PAY2 receipt and sends via **gated** `EmailClient` (if email on file) + `MetaClient` (if a
+  WhatsApp channel is connected — else skipped gracefully), then marks the tx `receipted`. **Idempotent:**
+  a `receipted` tx short-circuits (`already_sent`), so a redelivered `approval.resolved` never re-sends.
+- **`core/payments/receipt_consumer.py`** (NEW): consumer on `approval.resolved.v1`, own group
+  "receipt-delivery" (independent of runtime-resume on the same stream). Delivers only on
+  `decision == approved` for a `receipt.send` approval; rejected/expired send nothing. Registered in
+  **`core/worker.py`**.
+- **`core/payments/api.py`**: `POST /v1/admin/tenants/{org}/transactions/{tx_id}/request-receipt` →
+  202 `{approval_id, receipt_no, status: pending_approval}`. 404 unknown tx · 409 already receipted ·
+  admin-plane gated (TENANTS_MANAGE) · audited `receipt.requested`.
+
+**Requirement → evidence** (`tests/integration/test_receipt_delivery.py`):
+| Criterion | Test | Result |
+|---|---|---|
+| Request marks tx paid + drafts a pending `receipt.send` approval (nothing sent) | `test_request_receipt_marks_paid_and_queues_approval` | PASS |
+| 409 when already receipted · 404 unknown · 403 non-operator | `…409_when_already_receipted` / `…404_for_unknown_tx` / `…403_for_non_operator` | PASS |
+| Delivery sends email + is idempotent (2nd call = already_sent, stays receipted) | `test_deliver_receipt_sends_email_and_is_idempotent` | PASS |
+| WhatsApp skipped gracefully when no channel connected | `test_deliver_receipt_skips_whatsapp_when_no_channel` | PASS |
+| WhatsApp sent when a channel is connected (simulated) | `test_deliver_receipt_sends_whatsapp_when_channel_connected` | PASS |
+| Missing tx is a no-op | `test_deliver_receipt_missing_tx_is_no_op` | PASS |
+| Consumer delivers only on approved; ignores rejected | `test_consumer_delivers_only_on_approved` / `test_consumer_ignores_rejected` | PASS |
+
+**Commands (full CI mirror before push):** ruff `All checks passed!` · guards 0 · `mypy core` 178 ·
+**full tests/unit 459** · new integ `test_receipt_delivery.py` **10** · payments+approvals/events integ
+**77** (no regressions). **Security:** no real send without gate + live provider (§10.4); no secrets/OTP
+in logs or events; RLS enforced via `set_org_context`/`org_scoped_session`; operator-only surface.
+**Next:** PAY3b (Razorpay webhook endpoint) + operator "Charge this store" UI; then OC5–OC12.
