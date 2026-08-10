@@ -981,3 +981,23 @@ add it later as a *second selectable editor view*. This is cheap because the **D
 change**. To keep the transition easy, the form UI is built DSL-centric — the editor surface is
 decoupled from (a) the DSL model/compose helper and (b) the API client — so a graph surface can target
 the same model + endpoints later. **Decided by:** Founder (2026-08-09).
+
+---
+
+## 2026-08-10 — Email channel adapter over SMTP; free / self-hosted providers (PAY0)
+
+**Founder chose email via SMTP** — the open standard, provider-agnostic (no vendor lock-in) — built as a
+**gated-simulated** channel adapter (off by default, stdlib `smtplib`, **no new dependency**; reuses the
+existing `smtp_*` config built for OTP email). Founder goal: **"not pay or use a server."** Provider
+sequence, all free / no paid infra:
+
+- **Simulated** now (default) — no network, fake message id; tests mock SMTP.
+- **Local dev:** **Mailpit** (open-source SMTP catcher) — captures locally, nothing actually sent.
+- **Production** (when the founder flips `email_live_enabled` + supplies SMTP creds): self-hosted
+  **Postal** (open-source; sending + receiving) **or** a **free-tier relay** (Brevo, etc.) — same code,
+  the adapter only speaks SMTP.
+
+Deliverability caveat recorded: for receipts that must arrive, a free-tier relay is safer initially;
+self-hosted Postal needs SPF/DKIM/DMARC + IP reputation. A real email never sends without the gate + an
+approved action (§10.4). Inbound/receiving (Postal) is a **future** capability — PAY0 is send-only.
+**Decided by:** Founder (2026-08-10).

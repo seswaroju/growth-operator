@@ -3499,3 +3499,29 @@ insight reports.
 +analytics+store-analytics, +4) · **unit+contract 438** · web-ops oxlint/tsc/**vitest 20**(+3)/build ✓. No
 secrets; the SECDEF returns aggregate-only, org-scoped, no PII. **Completes the founder's TX1→OC3→OC4 set.**
 **Remaining backlog:** PAY0–PAY3 (Razorpay + receipts), OC5–OC12 forecast, SLA-number tuning.
+
+## 2026-08-10 — PAY0: gated email channel adapter (SMTP, simulated by default)
+
+**Branch:** `feature/pay0-email-adapter`. Backend only — no migration, **no new dependency**. First step
+of the PAY (Razorpay charge → receipt) track; also the parked multi-channel email adapter. Founder chose
+**email over SMTP** (open standard, provider-agnostic), free/self-hosted providers (DECISIONS 2026-08-10).
+
+- `core/channels/email/__init__.py`: `EmailClient.send(to, subject, text, html=None) -> EmailResult`.
+  **Gated + simulated by default** (`email_live_enabled=False` → fake id, no network). Real path = SMTP
+  STARTTLS via stdlib `smtplib` (reuses the `smtp_*` config from OTP email), run in a thread; enabled but
+  unwired (`smtp_host`/`smtp_from`) → `provider_unavailable`; SMTP errors → failed result, not a crash.
+  Never sends without the gate + an approved action (§10.4). Provider-agnostic: Mailpit (dev) / Postal /
+  free-tier relay (prod).
+- `core/common/config.py`: `email_live_enabled` (default False), separate from `otp_email_enabled`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Default-off = simulated, **no network** | `test_simulated_by_default_no_network` | PASS |
+| Live but unwired → provider_unavailable | `test_live_but_unwired_fails_closed` | PASS |
+| Live path sends over SMTP (mocked); correct headers | `test_live_path_sends_over_smtp` | PASS |
+| SMTP error → failed result, not a crash | `test_live_smtp_error_is_failed_result` | PASS |
+
+**Commands:** ruff clean · `mypy core` 169 · guards 0 · **unit 439** (+4) · no external call, no new dep,
+no secrets (SMTP password never logged). Decision recorded in `DECISIONS.md`. **Next (PAY track):** PAY1
+Razorpay charge adapter (gated) → PAY2 receipt generation → PAY3 deliver to WhatsApp + email.

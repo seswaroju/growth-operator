@@ -135,6 +135,11 @@ class Settings(BaseSettings):
     smtp_username: str | None = Field(default=None)
     smtp_password: str | None = Field(default=None)
     smtp_from: str | None = Field(default=None, description="From address, e.g. no-reply@x.com")
+    # Gate for the general EMAIL CHANNEL adapter (PAY0 — receipts etc.), separate from OTP email.
+    # OFF by default: the adapter runs simulated (no network) until the founder flips this AND SMTP
+    # is wired (smtp_host + smtp_from). Reuses the smtp_* fields; provider-agnostic (Mailpit /
+    # Postal / free-tier relay). Turning it on authorises a real external side effect (§10.4).
+    email_live_enabled: bool = Field(default=False)
 
     # WhatsApp / Meta webhook verification (MVP-031/032). Secrets in prod come from SOPS;
     # the dev defaults are obvious fakes so local webhook tests can compute signatures.

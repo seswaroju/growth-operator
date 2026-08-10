@@ -99,7 +99,7 @@ Ads — which would feed OC2/OC4 with real per-channel spend.)
 Here "the customer" = the **store owner** (GO's client/tenant). This is a multi-step feature, gated
 behind real payment credentials (§10.4 — never charge without founder approval + live keys). Split:
 
-- **PAY0 Email channel adapter (gated)** (M) — **prerequisite**; the parked email track. httpx/SMTP behind
+- **PAY0 Email channel adapter (gated)** (M) — **DONE** (2448238→); **prerequisite**; the parked email track. httpx/SMTP behind
   a flag, off by default / simulated in tests, never sends without gate + approval. Needed for the receipt
   email and for OC2/OC4's per-channel data.
 - **PAY1 Razorpay charge adapter (gated)** (M/L) — create/collect a charge against a tenant via Razorpay;
