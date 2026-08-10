@@ -2862,3 +2862,42 @@ the React flow-graph editor emitting DSL (server-side validation = the parser we
 **stage 6: owner-built / trust-ledger path**. After the engine stages, the **Option-A ghost-recovery
 diagnosis extension** (readable sugar verbs → generic steps) + the jewelry pack (taxonomy, prompt,
 templates) + eval harness (offline/synthetic) + CAPTURE-GAP migrations for live.
+
+---
+
+## 2026-08-09 — MVP-073e: Owner-built authoring backend (stage 5a — builder's server truth)
+
+**Branch:** `feature/mvp-073e-authoring` (off main). **Merge:** `pending`. The backend half of the
+builder (stage 5): validate + save owner-built definitions. The React editor is stage 5b (web/, the
+store-owner console). No migration, no dependency.
+
+**`core/workflows/authoring.py`** — `validate_owner_dsl` parses the DSL as an owner-built definition:
+platform **mandated guards injected** (`OWNER_MANDATED_GUARDS = [not_suppressed]`), and any **`emit`
+step refused** (owners cannot forge platform events — checked recursively incl. branch/compensation).
+`create_owner_definition` saves it `origin='owner_built'`, `status='draft'` (never active on creation)
+under a **complexity budget** (≤ `MAX_OWNER_DEFINITIONS = 10` per tenant). `update_owner_definition`
+re-validates + replaces the draft's DSL in place; `list_owner_definitions` for the builder list view.
+First activation stays gated on simulation + tier-2 approval + the trust ledger (stage 6).
+
+**API** (`core/workflows/api.py`, `catalog:write` — the "configure my store" write perm owner+manager
+hold, staff don't): `POST /v1/workflows/definitions/validate` (server-truth validation for the builder,
+returns `{valid, error}`), `POST /definitions` (201, draft), `PUT /definitions/{id}`, `GET /definitions`
+(422 on a guardrail violation).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Validation injects the mandated guard | `test_validate_injects_mandated_guard` | PASS |
+| Rejects a non-grammar step | `test_validate_rejects_non_grammar_step` | PASS |
+| **Owners cannot emit platform events** (even nested) | `test_validate_rejects_owner_emit` | PASS |
+| Create → owner_built draft + guard | `test_create_saves_owner_built_draft_with_guard` | PASS |
+| **Complexity budget caps at 10** | `test_complexity_budget_caps_creation` | PASS |
+| Update replaces the DSL in place (stays draft) | `test_update_replaces_dsl` | PASS |
+
+**Commands:** ruff clean · `mypy core` **163** · **guards 0** · **419** unit+isolation · **459**
+integ+e2e+contract (+6) · no migration/dep.
+
+**Next recommended action:** merge + push + record hash + verify CI, then **stage 5b: the builder UI**
+(React, in `web/`) — a structured editor that composes the DSL and round-trips through the validate/
+save endpoints (server truth), with the web gate (oxlint + tsc + build). Then stage 6 (owner-built /
+trust-ledger activation path).

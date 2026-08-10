@@ -14,8 +14,15 @@ selects and approves the next ticket.
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
-**3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → 5 builder → 6 owner-built/trust → then
-the Option-A diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+**3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅** / 5b builder
+UI → 6 owner-built/trust → then the Option-A diagnosis extension + jewelry ghost-recovery pack + eval +
+CAPTURE-GAP migrations.
+
+**Stage 5a (MVP-073e) `feature/mvp-073e-authoring`:** `authoring.py` — the builder's server truth:
+`validate_owner_dsl` (inject mandated `not_suppressed`; reject any owner `emit`) + create/update/list
+owner-built definitions (`origin=owner_built`, `status=draft`, ≤10/tenant). Owner endpoints under
+`/v1/workflows/definitions` (`catalog:write`). **Verify:** ruff/mypy(163)/**guards 0**/**419**
+unit+isolation/**459** integ+e2e+contract; **+6** tests. **Next:** stage 5b builder UI (React, web/).
 
 **Stage 4 (MVP-073d) `feature/mvp-073d-simulation`:** `simulate.py` dry-runs a definition against the
 org's historical `event_outbox` (read-only, zero side effects) → would_have_fired + guard_blocks
