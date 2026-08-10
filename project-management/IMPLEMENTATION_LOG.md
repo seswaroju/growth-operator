@@ -3718,8 +3718,8 @@ How a receipt is delivered today (see `core/payments/delivery.py`):
 - **WhatsApp** → a **formatted plain-text message** (`render_receipt_text` via `MetaClient.send_text`).
   It is **not a PDF and not an image**.
 
-A PDF/document on WhatsApp is a distinct future enhancement (**PAY4 · receipt PDF**): render the receipt
-to a PDF (needs a PDF library — a **new dependency**, so founder approval per §9) or an image → upload it
-to Meta's media endpoint for a `media_id` → send a `document` (or `image`) message. Not built; awaiting
-founder decision on whether it's wanted and which renderer. **Order stands:** PAY3b next, then PAY4 /
-OC5–OC12 by founder pick.
+A PDF/document on WhatsApp was considered (**PAY4 · receipt PDF**) — render receipt → PDF (needs a PDF
+library) → Meta media upload (`/media` → `media_id` → `document` message). **Founder decided 2026-08-10 to
+keep WhatsApp as the detailed text message and drop PAY4** (see DECISIONS): WhatsApp prices by message
+*category*, not media type, so a PDF buys no cost saving while adding a dependency + media lifecycle. No
+code change — the shipped behaviour already matches. **Order:** PAY3b next, then OC5–OC12 by founder pick.
