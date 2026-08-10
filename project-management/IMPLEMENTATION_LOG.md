@@ -2906,7 +2906,7 @@ trust-ledger activation path).
 
 ## 2026-08-09 — MVP-073f: Builder UI — structured form (stage 5b)
 
-**Branch:** `feature/mvp-073f-builder-ui` (off main). **Merge:** `pending`. The owner-facing workflow
+**Branch:** `feature/mvp-073f-builder-ui` (off main). **Merge:** `70f2049`. The owner-facing workflow
 builder, in `web/` (the store-owner console). Founder chose the **structured form** editor over a
 drag-and-drop flow-graph (DECISIONS 2026-08-09); the flow-graph is noted as a future *selectable* view,
 cheap to add because the DSL + authoring API (MVP-073e) is the fixed contract. Frontend only, no dep.
