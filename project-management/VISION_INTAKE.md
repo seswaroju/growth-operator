@@ -457,3 +457,36 @@ data capture, journey/timing logic, or real grounded figures · 🔴 needs heavi
 **Status:** VISION CAPTURE ONLY — not scope. These become prompt-layer/composition config in the
 marketing-agent framework layer when it gets its own approved ticket; each stays gated-simulated behind
 approval until then. See [[go-revenue-model]] and the marketing-agent framework layer (item 1).
+
+---
+
+## Addendum 2026-08-09 — Founder feedback after first local run (owner console)
+
+**a. Multi-channel campaigns (not just WhatsApp).** Founder wants campaigns across **email, WhatsApp,
+Instagram (stories, ads), Google Ads** — all channels. Reality: the `channels` table already models
+`whatsapp|gmail|instagram` (channel abstraction exists); only WhatsApp is implemented. Two distinct
+tracks: (1) **messaging** campaigns (WhatsApp + email + IG DM) extend the current campaign/channel
+model; (2) **advertising** (Meta ads, Google ads, IG stories) is a separate, bigger capability —
+ad-creative + budget + targeting, and it's **tier-4 never-autonomous** (`ads.publish`/`gbp.update` are
+CORE_TIER4 in the approval engine). Needs real ad-platform API access + its own tickets. Not MVP scope.
+
+**b. Automations discoverability.** Founder didn't grasp what the Automations builder is for — a **UX /
+onboarding gap** (empty state + examples/templates needed), not an engine gap. Add starter templates +
+an explanatory empty state.
+
+**c. In-app notifications / bell.** Owner has no unified way to see pending approvals / ticket updates /
+workflow events — wants a **notification bell**. Signals already exist server-side (`approval.requested`
+→ notify, the escalation ladder, the events/outbox); missing piece is a frontend notification center
+that aggregates them. Buildable on the existing event stream. Good near-term UX win.
+
+**d. Hook up real APIs (LLM + Meta WhatsApp).** Founder wants to see it work for real. LLM = quick
+(adapter + key via secure config + flip `llm_provider_enabled`; costs credits). Meta WhatsApp = the
+long-lead blocker (BLOCKERS #3: WABA verification not started — weeks; number + template approval).
+Both founder-gated external side effects (§10.4/§10.5). Build the adapters **real-ready behind the
+gate**; enabling needs the founder's accounts/keys + explicit approval.
+
+**e. UX overall.** Founder: "I kind of liked it" but "UX is terrible, we will get to it." → a dedicated
+UX pass is a planned track (both consoles).
+
+**Status:** VISION CAPTURE. (a) + (c) + real-API adapters become their own approved tickets; (b) + (e)
+are UX-track items. Nothing built without a ticket.
