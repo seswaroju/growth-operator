@@ -3104,7 +3104,7 @@ approval → compose → wait → reengage), offline / $0, showing would-recover
 
 ## 2026-08-09 — MVP-074: Real LLM provider adapter (gated, real-ready) — priority item 1
 
-**Branch:** `feature/mvp-074-llm-adapter` (off main). **Merge:** `pending`. First of the founder's
+**Branch:** `feature/mvp-074-llm-adapter` (off main). **Merge:** `e28c2f5`. First of the founder's
 post-demo priorities: make **real diagnosis** possible behind the gate. No migration, **no new
 dependency** (httpx is already present — no vendor SDK).
 
