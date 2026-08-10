@@ -2941,7 +2941,7 @@ extension + jewelry pack + eval + CAPTURE-GAP migrations.
 
 ## 2026-08-09 — MVP-073g: Owner-built activation + trust ledger (stage 6 — CLOSES the workflow engine)
 
-**Branch:** `feature/mvp-073g-owner-trust` (off main). **Merge:** `pending`. The governance that makes
+**Branch:** `feature/mvp-073g-owner-trust` (off main). **Merge:** `1fdfed1`. The governance that makes
 owner-authored workflows safe to switch on — the final stage of the 6-stage workflow-engine initiative.
 No migration, no dependency.
 
