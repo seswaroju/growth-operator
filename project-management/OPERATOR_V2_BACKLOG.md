@@ -49,7 +49,7 @@ Rank operator tickets by the tenant's plan tier + urgency, with SLA timers.
 - web-ops Queue: plan badge, SLA countdown, breach highlight, tier-aware sort.
 - Tests: sort/priority ordering, SLA breach boundary, permission gating.
 
-## OC4 — Tenant 360 performance profile (feedback E) — **Effort L** — status: todo
+## OC4 — Tenant 360 performance profile (feedback E) — **Effort L** — status: done
 Clicking a store opens a profile combining performance + spend (OC2) + plan (OC1) + tickets (OC3) +
 existing insight reports.
 **Acceptance:**

@@ -248,6 +248,28 @@ export function adminStoreReports(token: string, orgId: string): Promise<StoreRe
   return authed<StoreReportSummary[]>(`/v1/admin/tenants/${orgId}/reports`, token);
 }
 
+export interface StoreAnalytics {
+  period_days: number;
+  revenue_minor: number;
+  revenue_minor_prev: number;
+  orders: number;
+  orders_prev: number;
+  leads: number;
+  leads_prev: number;
+  quotes: number;
+  quotes_prev: number;
+  campaigns_run: number;
+  messages_sent: number;
+  campaigns_analyzed: number;
+  attributed_revenue_minor: number;
+}
+
+export function adminStoreAnalytics(
+  token: string, orgId: string, days = 30,
+): Promise<StoreAnalytics> {
+  return authed<StoreAnalytics>(`/v1/admin/tenants/${orgId}/analytics?days=${days}`, token);
+}
+
 export function adminStoreReport(
   token: string, orgId: string, reportId: string,
 ): Promise<StoreReportDetail> {

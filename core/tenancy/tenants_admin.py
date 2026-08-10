@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -141,3 +141,48 @@ async def get_store_report(
         target_org_id=org_id, detail={"report_id": str(report_id)},
     )
     return StoreReportDetail(**row)
+
+
+# ---- Per-store performance rollup for the Tenant 360 profile (OC4) ----------------------------
+# Aggregate SUMS/COUNTS for ONE store (current window + prior, for the revenue trend) — never any
+# customer rows/PII. From the org-scoped `platform_store_analytics()` SECDEF (this migration) so the
+# admin flag is not widened. Gated on `platform.tenants:read` (like the all-stores rollup).
+
+_STORE_ANALYTICS_SQL = text("SELECT * FROM platform_store_analytics(CAST(:o AS uuid), :d)")
+
+
+class StoreAnalytics(BaseModel):
+    period_days: int
+    revenue_minor: int
+    revenue_minor_prev: int
+    orders: int
+    orders_prev: int
+    leads: int
+    leads_prev: int
+    quotes: int
+    quotes_prev: int
+    campaigns_run: int
+    messages_sent: int
+    campaigns_analyzed: int
+    attributed_revenue_minor: int
+
+
+@router.get(
+    "/{org_id}/analytics",
+    response_model=StoreAnalytics,
+    summary="A store's performance rollup (sums/counts only; audited)",
+)
+async def store_analytics(
+    org_id: UUID,
+    days: int = Query(30, ge=1, le=90),
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> StoreAnalytics:
+    row = (
+        await session.execute(_STORE_ANALYTICS_SQL, {"o": str(org_id), "d": days})
+    ).mappings().one()
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="store.analytics.read",
+        target_org_id=org_id, detail={"days": days},
+    )
+    return StoreAnalytics(**row)

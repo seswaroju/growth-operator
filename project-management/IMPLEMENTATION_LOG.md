@@ -3467,3 +3467,35 @@ exposes each store's plan via `platform_tenant_roster()`, and the admin session 
 
 **Commands:** web-ops oxlint clean · `tsc -b` 0 · **vitest 17** (+4) · `vite build` ✓ · guards 0 · no
 forbidden nouns. **SLA numbers are defaults — flag for founder to tune.** **Next:** OC4 — Tenant 360.
+
+## 2026-08-10 — OC4: Tenant 360 performance profile (feedback E)
+
+**Branch:** `feature/oc4-tenant-360`. Founder chose the full version incl. the per-store revenue trend.
+Clicking a store → a profile combining performance + spend (OC2) + plan (OC1) + priority tickets (OC3) +
+insight reports.
+
+- **Migration `b6123061f10b`** (on `c84cf2817c98`): `platform_store_analytics(p_org, p_days)` —
+  **SECURITY DEFINER**, org-scoped, same curated pattern as the all-stores rollup (031). One row of
+  SUMS/COUNTS for ONE store, current window + prior (for the trend); never customer rows/PII; scoped to
+  the org passed in so the admin flag isn't widened. **Up/down verified** (function drops/recreates).
+- **Backend:** `core/tenancy/tenants_admin.py` — `StoreAnalytics` + **`GET /v1/admin/tenants/{org}/analytics`**
+  (`platform.tenants:read`, audited). Test proves **cross-store isolation** (org A's revenue never leaks
+  into org B's rollup) + 403/401/404 gates.
+- **Frontend (web-ops):** `api.ts` `StoreAnalytics` + `adminStoreAnalytics`; `lib/analytics.ts`
+  (`wowDelta`/`rupees`, +test). **`StoreReportsSection` → a Tenant 360 profile**: header (name/status/plan
+  + features), **performance strip** (revenue trend + orders/leads/quotes + campaign line), **spend-by-
+  channel** (OC2 lib), **priority tickets** (OC3 lib, top 6 w/ SLA), and the existing **insight reports**.
+  Each panel gated per-permission, degrades gracefully.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Per-store rollup moves by that store's numbers | `test_per_store_rollup_isolated_between_stores` | PASS |
+| One store's numbers never leak into another | same (org A vs org B) | PASS |
+| Gates: 403 non-op / 401 no token / 404 plane off | `test_store_analytics_{403,401,404…}` | PASS |
+| WoW delta up/down/flat + zero prior | web-ops `lib/analytics.test` | PASS |
+
+**Commands:** ruff clean · `mypy core` 168 · guards 0 · migration up/down/up · **admin integ 13** (tenants
++analytics+store-analytics, +4) · **unit+contract 438** · web-ops oxlint/tsc/**vitest 20**(+3)/build ✓. No
+secrets; the SECDEF returns aggregate-only, org-scoped, no PII. **Completes the founder's TX1→OC3→OC4 set.**
+**Remaining backlog:** PAY0–PAY3 (Razorpay + receipts), OC5–OC12 forecast, SLA-number tuning.
