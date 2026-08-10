@@ -2836,7 +2836,7 @@ The engine is now fully runnable (trigger → steps → agents → waits → app
 
 ## 2026-08-09 — MVP-073d: Workflow simulation mode (stage 4 of the executor initiative)
 
-**Branch:** `feature/mvp-073d-simulation` (off main). **Merge:** `pending`. The pre-activation dry-run —
+**Branch:** `feature/mvp-073d-simulation` (off main). **Merge:** `ac17f0d`. The pre-activation dry-run —
 "prove it works before going live" — which directly serves the ghost-recovery thesis. No migration/dep.
 
 **`core/workflows/simulate.py`** — `simulate(session, org, definition_id, window_days=30)` replays the
