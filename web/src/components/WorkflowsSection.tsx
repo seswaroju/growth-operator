@@ -10,6 +10,9 @@ import {
   type ValidateResult,
 } from "../api";
 import { useAuth } from "../auth";
+import {
+  AUTOMATION_EXAMPLES, AUTOMATION_OPTIONS, type Complexity,
+} from "../lib/automationExamples";
 import { hasPermission } from "../lib/roles";
 import {
   composeDsl,
@@ -23,7 +26,12 @@ import {
 } from "../lib/workflows";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Bolt, Plus } from "./icons";
-import { Card, EmptyState, PageHeader } from "./ui";
+import { Card, EmptyState, PageHeader, Tag } from "./ui";
+
+const COMPLEXITY_TONE: Record<Complexity, "good" | "warn" | "danger"> = {
+  simple: "good", medium: "warn", complex: "danger",
+};
+const COMPLEXITY_ORDER: Complexity[] = ["simple", "medium", "complex"];
 
 const input = fieldClasses("w-full");
 
@@ -106,9 +114,9 @@ function StepEditor({
   );
 }
 
-function Builder({ token }: { token: string }) {
+function Builder({ token, initialDraft }: { token: string; initialDraft?: WorkflowDraft }) {
   const qc = useQueryClient();
-  const [draft, setDraft] = useState<WorkflowDraft>(emptyDraft);
+  const [draft, setDraft] = useState<WorkflowDraft>(() => initialDraft ?? emptyDraft());
   const [check, setCheck] = useState<ValidateResult | null>(null);
 
   const validate = useMutation({
@@ -238,12 +246,97 @@ function List({ token }: { token: string }) {
   );
 }
 
+// TX1 — "start from an example" gallery, grouped by complexity.
+function ExamplesGallery({ onUse }: { onUse: (draft: WorkflowDraft) => void }) {
+  return (
+    <Card className="p-5">
+      <h3 className="text-sm font-semibold text-ink">Start from an example</h3>
+      <p className="mt-0.5 text-xs text-muted">
+        Pick one to load it into the builder below, then tweak it. It still saves as a draft and is
+        reviewed before anything runs.
+      </p>
+      <div className="mt-3 space-y-4">
+        {COMPLEXITY_ORDER.map((level) => {
+          const items = AUTOMATION_EXAMPLES.filter((e) => e.complexity === level);
+          if (items.length === 0) return null;
+          return (
+            <div key={level}>
+              <div className="mb-2 flex items-center gap-2">
+                <Tag tone={COMPLEXITY_TONE[level]}>{level}</Tag>
+                <span className="text-[11px] text-muted">
+                  {items.length} example{items.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {items.map((ex) => (
+                  <div key={ex.id} className="flex flex-col rounded-xl border border-line p-3">
+                    <div className="text-sm font-semibold text-ink">{ex.title}</div>
+                    <p className="mt-1 flex-1 text-xs text-muted">{ex.summary}</p>
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <span className="text-[11px] text-muted">
+                        {ex.draft.steps.length} step{ex.draft.steps.length === 1 ? "" : "s"}
+                      </span>
+                      <button onClick={() => onUse(ex.draft)} className={buttonClasses("ghost", "sm")}>
+                        Use this
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+// TX1 — plain-language docs for each option, like documented script arguments (collapsible).
+function ReferencePanel() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card className="p-5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <h3 className="text-sm font-semibold text-ink">How automations work — the options</h3>
+        <span className="text-lg leading-none text-muted">{open ? "–" : "+"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2.5">
+          {AUTOMATION_OPTIONS.map((o) => (
+            <div key={o.name} className="rounded-xl border border-line-2 p-3">
+              <div className="text-sm font-semibold text-ink">{o.name}</div>
+              <dl className="mt-1.5 space-y-1 text-xs">
+                {([["What", o.what], ["Why", o.why], ["How", o.how]] as const).map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <dt className="w-10 shrink-0 font-semibold text-accent-ink">{k}</dt>
+                    <dd className="text-ink-2">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function WorkflowsSection() {
   const { token, me } = useAuth();
+  const [seed, setSeed] = useState<WorkflowDraft | null>(null);
+  const [seedKey, setSeedKey] = useState(0);
   if (!token) return null;
   if (!hasPermission(me?.roles ?? [], "catalog:write")) {
     return <p className="text-sm text-muted">You don't have access to automations.</p>;
   }
+  const applyExample = (draft: WorkflowDraft) => {
+    setSeed(draft);
+    setSeedKey((k) => k + 1); // remount the builder with this example loaded
+    document.getElementById("automation-builder")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
     <div>
       <PageHeader
@@ -251,8 +344,12 @@ export default function WorkflowsSection() {
         subtitle="Build your own workflows. New automations save as drafts — activation is reviewed before anything runs."
       />
       <div className="space-y-4">
+        <ExamplesGallery onUse={applyExample} />
+        <ReferencePanel />
         <List token={token} />
-        <Builder token={token} />
+        <div id="automation-builder">
+          <Builder key={seedKey} token={token} initialDraft={seed ?? undefined} />
+        </div>
       </div>
     </div>
   );
