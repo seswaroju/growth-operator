@@ -102,7 +102,7 @@ behind real payment credentials (§10.4 — never charge without founder approva
 - **PAY0 Email channel adapter (gated)** (M) — **DONE** (2448238→); **prerequisite**; the parked email track. httpx/SMTP behind
   a flag, off by default / simulated in tests, never sends without gate + approval. Needed for the receipt
   email and for OC2/OC4's per-channel data.
-- **PAY1 Razorpay charge adapter (gated)** (M/L) — create/collect a charge against a tenant via Razorpay;
+- **PAY1 Razorpay charge adapter (gated)** (M/L) — **DONE**; create/collect a charge against a tenant via Razorpay;
   **simulated until `razorpay_live_enabled` + real keys** (mirror the WABA/LLM gated-adapter pattern —
   httpx, off by default, mocked in tests, no real charge without founder approval). Records the charge in
   the billing model (OC1/OC2) + payment status; webhook verification for capture.

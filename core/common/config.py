@@ -140,6 +140,13 @@ class Settings(BaseSettings):
     # is wired (smtp_host + smtp_from). Reuses the smtp_* fields; provider-agnostic (Mailpit /
     # Postal / free-tier relay). Turning it on authorises a real external side effect (§10.4).
     email_live_enabled: bool = Field(default=False)
+    # Razorpay payment adapter (PAY1). OFF by default → the adapter runs simulated (no network, no
+    # real charge). Enabled without keys fails closed (provider_unavailable). key_secret +
+    # webhook_secret are SECRETS (env/SOPS only). Turning it on moves real money (§10.4).
+    razorpay_live_enabled: bool = Field(default=False)
+    razorpay_key_id: str | None = Field(default=None)
+    razorpay_key_secret: str | None = Field(default=None)  # secret — never commit
+    razorpay_webhook_secret: str | None = Field(default=None)  # secret — verifies capture webhooks
 
     # WhatsApp / Meta webhook verification (MVP-031/032). Secrets in prod come from SOPS;
     # the dev defaults are obvious fakes so local webhook tests can compute signatures.

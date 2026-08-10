@@ -1001,3 +1001,20 @@ Deliverability caveat recorded: for receipts that must arrive, a free-tier relay
 self-hosted Postal needs SPF/DKIM/DMARC + IP reputation. A real email never sends without the gate + an
 approved action (§10.4). Inbound/receiving (Postal) is a **future** capability — PAY0 is send-only.
 **Decided by:** Founder (2026-08-10).
+
+---
+
+## 2026-08-10 — Razorpay payment adapter: payment-links + webhook capture (PAY1)
+
+**Approach = payment links + webhook confirmation**, the cross-industry standard (Stripe/PayPal/Razorpay
+all work this way; founder deferred to the standard). We create a **payment link** for the amount → the
+store owner pays on Razorpay's hosted page → a **webhook** whose HMAC-SHA256 signature we verify confirms
+capture → only then do we record the charge + send the receipt (PAY2/PAY3). We never hold card details
+and never silently charge a saved method (that would need eMandate/UPI-autopay — a separate, bigger
+ticket if recurring auto-charge is wanted later).
+
+Built as a **gated-simulated** adapter (`core/payments/razorpay.py`, httpx, no vendor SDK): OFF by
+default → simulated (fake link, no network, **no real charge**); enabled-but-keyless → `provider_unavailable`.
+Secrets (`razorpay_key_secret`, `razorpay_webhook_secret`) via env/SOPS, never committed/logged. Moving
+real money requires `razorpay_live_enabled` + keys + an approved action (§10.4). **Decided by:** Founder
+(2026-08-10, deferred to the standard approach).

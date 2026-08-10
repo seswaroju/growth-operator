@@ -3525,3 +3525,30 @@ of the PAY (Razorpay charge → receipt) track; also the parked multi-channel em
 **Commands:** ruff clean · `mypy core` 169 · guards 0 · **unit 439** (+4) · no external call, no new dep,
 no secrets (SMTP password never logged). Decision recorded in `DECISIONS.md`. **Next (PAY track):** PAY1
 Razorpay charge adapter (gated) → PAY2 receipt generation → PAY3 deliver to WhatsApp + email.
+
+## 2026-08-10 — PAY1: gated Razorpay payment adapter (payment-links + webhook)
+
+**Branch:** `feature/pay1-razorpay-adapter`. Backend only — no migration, **no new dependency** (httpx).
+Payment-links + webhook capture, the cross-industry standard (DECISIONS 2026-08-10). Fully **simulated**
+until real keys — no money moves without the gate + an approved action (§10.4).
+
+- `core/payments/razorpay.py`: `RazorpayClient.create_payment_link(amount_minor, description, contact…)`
+  → **simulated by default** (fake `plink_SIM…` + short_url, no network); real path = `POST /v1/payment_links`
+  (HTTP Basic auth, amount in paise = our minor units, INR); enabled-but-keyless → `provider_unavailable`;
+  non-2xx → failed result. `verify_webhook_signature(body, sig)` → HMAC-SHA256 (constant-time), **fails
+  closed** on missing secret/sig — a spoofed "paid" callback is rejected.
+- `core/common/config.py`: `razorpay_live_enabled` (default False) + `razorpay_key_id` /
+  `razorpay_key_secret` / `razorpay_webhook_secret` (secrets, empty by default).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Default-off = simulated, no network, no charge | `test_simulated_by_default_no_network` | PASS |
+| Live but keyless → provider_unavailable | `test_live_but_keyless_fails_closed` | PASS |
+| Live create-link request shape (mocked) | `test_live_create_payment_link_request_shape` | PASS |
+| Non-2xx → failed result | `test_live_error_returns_failed` | PASS |
+| Webhook sig: valid accept / spoof + missing + tampered reject | `test_verify_webhook_signature` | PASS |
+
+**Commands:** ruff clean · `mypy core` 171 · guards 0 · **unit 444** (+5) · scaffold imports clean · no
+external call, no new dep, no secrets logged. Decision in `DECISIONS.md`. **Next:** PAY2 — receipt
+generation (Shopify-style) → PAY3 — deliver the receipt to WhatsApp + email (uses PAY0 + WABA send).
