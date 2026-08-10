@@ -1,6 +1,7 @@
 """FastAPI application entrypoint — see docs/25-implementation-starter-kit/10-api-build-order.md."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from core.api.health import router as health_router
 from core.approvals.api import router as approvals_router
@@ -47,6 +48,20 @@ assert_otp_config_safe(_settings)
 assert_secrets_available(_settings)
 
 app = FastAPI(title="Growth Operator")
+
+# Browser CORS so the web app (a different origin, e.g. the Vite dev server) can call the API — its
+# preflight OPTIONS is answered here. Origins come from config (dev default: the local dev servers;
+# real domain in staging/prod). No origins configured → no CORS middleware.
+_cors_origins = [o.strip() for o in _settings.cors_allow_origins.split(",") if o.strip()]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 register_exception_handlers(app)
 register_rbac_handlers(app)
 setup_telemetry(app)  # no-op unless an OTLP endpoint is configured
