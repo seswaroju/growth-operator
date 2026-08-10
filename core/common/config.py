@@ -147,6 +147,11 @@ class Settings(BaseSettings):
     razorpay_key_id: str | None = Field(default=None)
     razorpay_key_secret: str | None = Field(default=None)  # secret — never commit
     razorpay_webhook_secret: str | None = Field(default=None)  # secret — verifies capture webhooks
+    # Which payment provider the factory returns (PAY1b): "razorpay" (PSP; free UPI + auto-confirm
+    # via webhook) or "upi_intent" (free upi:// QR against upi_vpa; NO auto-confirm — reconcile).
+    payment_provider: str = Field(default="razorpay")
+    upi_vpa: str | None = Field(default=None)  # merchant UPI id, e.g. name@bank (upi_intent)
+    upi_payee_name: str | None = Field(default=None)
 
     # WhatsApp / Meta webhook verification (MVP-031/032). Secrets in prod come from SOPS;
     # the dev defaults are obvious fakes so local webhook tests can compute signatures.

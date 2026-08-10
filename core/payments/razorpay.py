@@ -24,6 +24,7 @@ import httpx
 
 from core.common.config import Settings, get_settings
 from core.common.errors import GrowthOperatorError
+from core.payments.base import PaymentRequest
 
 _API = "https://api.razorpay.com/v1"
 _TIMEOUT = httpx.Timeout(10.0)
@@ -40,12 +41,29 @@ class PaymentLink:
 
 
 class RazorpayClient:
+    name = "razorpay"
+    auto_confirm = True  # a PSP confirms capture via a signed webhook (verify_webhook_signature)
+
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
     @property
     def simulated(self) -> bool:
         return not self.settings.razorpay_live_enabled
+
+    async def create_payment_request(
+        self, *, amount_minor: int, description: str,
+        contact_email: str | None = None, contact_phone: str | None = None,
+        reference_id: str | None = None,
+    ) -> PaymentRequest:
+        """Provider-agnostic entry point (PAY1b) — wraps the Razorpay payment link."""
+        link = await self.create_payment_link(
+            amount_minor=amount_minor, description=description,
+            contact_email=contact_email, contact_phone=contact_phone, reference_id=reference_id)
+        return PaymentRequest(
+            ok=link.ok, provider=self.name, auto_confirm=self.auto_confirm, id=link.id,
+            pay_url=link.short_url, qr_payload=link.short_url, status=link.status,
+            simulated=link.simulated, error=link.error)
 
     def _require_wired(self) -> None:
         s = self.settings

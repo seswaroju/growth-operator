@@ -1018,3 +1018,22 @@ default → simulated (fake link, no network, **no real charge**); enabled-but-k
 Secrets (`razorpay_key_secret`, `razorpay_webhook_secret`) via env/SOPS, never committed/logged. Moving
 real money requires `razorpay_live_enabled` + keys + an approved action (§10.4). **Decided by:** Founder
 (2026-08-10, deferred to the standard approach).
+
+---
+
+## 2026-08-10 — Payments are provider-agnostic; free UPI supported (PAY1b)
+
+**Founder: don't lock to Razorpay; want UPI (near-free).** Payments now sit behind a `PaymentProvider`
+interface (`core/payments/base.py`) so the processor is swappable. Two providers ship:
+- **Razorpay** (`payment_provider="razorpay"`, default) — a PSP: UPI through it is **free** (RBI ~0% MDR),
+  and it **auto-confirms** capture via a signed webhook (`auto_confirm=True`).
+- **UPI-intent** (`payment_provider="upi_intent"`) — a free `upi://` deep-link + QR against our `upi_vpa`,
+  **zero cost, no PSP**, but **`auto_confirm=False`**: a bare UPI intent has no webhook, so payment is
+  confirmed only by **manual reconciliation** (or a future bank merchant-UPI API).
+
+**How confirmation works (industry standard, recorded for clarity):** never trust the customer's browser.
+Confirmation is server-side — (1) a **signed webhook** from the PSP is the authoritative "captured" event
+(HMAC-verified), (2) a **server-side API status fetch** on redirect for immediate UX, (3) **reconciliation
+polling** as the backstop for missed webhooks. Auto-receipts (PAY3) therefore require an auto-confirming
+provider (a PSP); the free bare-QR path can only trigger a receipt after a manual "mark paid". Everything
+stays gated/simulated until the founder configures a provider + keys. **Decided by:** Founder (2026-08-10).

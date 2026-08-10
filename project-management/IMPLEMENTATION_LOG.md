@@ -3565,3 +3565,35 @@ invented, §18). PAY3 delivers what this renders.
 fields, **HTML-escaping/no-injection**, tax-row omitted when zero). No I/O, no deps. **Next:** PAY3 —
 deliver the receipt to WhatsApp + email (uses PAY0 + WABA send) — but see the new **PAY1b** (provider-
 agnostic payments incl. free UPI) raised by the founder first.
+
+## 2026-08-10 — PAY1b: provider-agnostic payments + free UPI-intent provider
+
+**Branch:** `feature/pay1b-provider-agnostic-upi`. Founder: don't lock to Razorpay; want UPI (near-free).
+Backend only, no migration, no new dep.
+
+- `core/payments/base.py`: a `PaymentProvider` Protocol (`create_payment_request` → `PaymentRequest`;
+  `verify_webhook_signature`; `name`/`auto_confirm`) + `get_payment_provider()` factory (config
+  `payment_provider`, default razorpay).
+- `core/payments/upi.py`: **`UpiIntentProvider`** — builds a free `upi://pay?…` deep-link + QR payload
+  against `upi_vpa` (NPCI intent). Zero cost, no network, **`auto_confirm=False`** (no webhook →
+  reconcile); simulated (placeholder VPA) until `upi_vpa` set.
+- `RazorpayClient` now implements the interface (`name`/`auto_confirm=True` + `create_payment_request`
+  wrapping the payment link); existing `create_payment_link` + PAY1 tests unchanged.
+- config: `payment_provider` (default "razorpay") + `upi_vpa` / `upi_payee_name`.
+
+**Confirmation model recorded** (DECISIONS): server-side only — signed webhook (authoritative) + API
+status-fetch (UX) + reconciliation polling (backstop); never trust the browser. Auto-receipts need an
+auto-confirming provider (a PSP); free bare-QR = manual "mark paid".
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Factory: default Razorpay / config → UPI; both satisfy the Protocol | `test_factory_*` | PASS |
+| Razorpay create_payment_request shape (auto_confirm, simulated) | `test_razorpay_create_payment_request_shape` | PASS |
+| UPI builds a valid free `upi://` link (pa/am/cu), no auto-confirm | `test_upi_intent_builds_free_link_no_confirm` | PASS |
+| UPI simulated without a VPA | `test_upi_intent_simulated_without_vpa` | PASS |
+| UPI has no webhook (verify → False) | `test_upi_intent_has_no_webhook` | PASS |
+
+**Commands:** ruff clean · `mypy core` 174 · guards 0 · **unit 455** (+6) · scaffold imports clean · no
+external call, no new dep, no secrets. Decision in `DECISIONS.md`. **Next:** PAY3 — deliver the receipt
+to WhatsApp + email when the (verified) payment confirms.
