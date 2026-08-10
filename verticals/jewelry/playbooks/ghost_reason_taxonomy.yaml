@@ -1,0 +1,75 @@
+# Ghost-reason taxonomy + recovery map (jewelry pack, MVP-073i).
+# Source of truth: docs/32-jewelry-mvp-playbooks/ghost-reason-taxonomy.md +
+# reason-conditioned-recovery-spec.md. Declarative L1 config — the diagnosis prompt scores against
+# these 8 reasons; the composer maps the diagnosed reason -> its recovery action -> its template.
+#
+# A reason survives only if it maps to a DISTINCT recovery play. Band-dependent reasons route to a
+# human sales handoff above a band threshold (the reason is still recorded; only the ACTION converges).
+
+reasons:
+  gold_rate_timing:
+    action: act_rate_lock
+    definition: Wants the piece but is waiting for the gold rate to move; timing of the metal rate,
+      not the piece price, is the objection.
+    signals: ["rate kitna hai today", "rate down ayithe cheppandi", "watching the rate"]
+    rules_out: ["contests the total -> sticker_shock", "contests making -> making_charge_objection"]
+
+  sticker_shock:
+    action: act_value_reframe        # low/mid band
+    high_band_action: act_sales_handoff
+    definition: The all-in total is above what the customer expected or can spend.
+    signals: ["anta ekkuva ah", "budget lo ledu", "silence right after the figure"]
+    rules_out: ["accepts total, needs EMI -> financing_emi_gap",
+                "balks at making only -> making_charge_objection"]
+
+  making_charge_objection:
+    action: act_making_flex
+    definition: Accepts the metal value but balks specifically at making / wastage charges.
+    signals: ["making charge enta", "wastage entha padtundi", "labour waive cheyyandi"]
+    rules_out: ["contests whole total -> sticker_shock",
+                "another shop's total -> comparison_shopping"]
+
+  comparison_shopping:
+    action: act_differentiator_anchor
+    high_band_action: act_sales_handoff
+    definition: Actively pricing the same/similar piece at another jeweller.
+    signals: ["XYZ lo cheaper vachindi", "waiting to compare", "per-gram breakdown to compare"]
+    rules_out: ["doubt about OUR authenticity -> authenticity_buyback_trust",
+                "no other shop, total high -> sticker_shock"]
+
+  consult_family:
+    action: act_warm_decision_check
+    definition: Decision paused pending a spouse, parent, or elder (common in bridal / high-ticket).
+    signals: ["family tho matladali", "husband decide chestaru", "will show at home"]
+    rules_out: ["pause about money/timing -> sticker_shock / financing_emi_gap",
+                "the piece itself is doubted -> design_not_right"]
+
+  financing_emi_gap:
+    action: act_finance_offer
+    definition: Wants the piece and accepts the price, but needs EMI, a scheme, or time to fund it.
+    signals: ["EMI unda", "scheme lo cheyyocha", "next month salary tarvata", "installments"]
+    rules_out: ["thinks price itself too high -> sticker_shock",
+                "waiting on the metal rate -> gold_rate_timing"]
+
+  design_not_right:
+    action: act_design_pivot           # the ONLY non-price play; routes AWAY from figures
+    definition: The piece or design itself isn't landing. Price nudges here backfire.
+    signals: ["design nachaledu", "something lighter", "different pattern unda", "stone baledu"]
+    rules_out: ["loves the piece, blocked on money/rate/family -> any price/timing reason"]
+
+  authenticity_buyback_trust:
+    action: act_trust_proof            # mid band
+    high_band_action: act_sales_handoff
+    definition: Hesitation about purity / hallmark, buyback / exchange terms, or trust in the shop.
+    signals: ["hallmark unda", "BIS certified", "buyback ela untundi", "meeru trusted na"]
+    rules_out: ["trusts us, comparing price elsewhere -> comparison_shopping",
+                "accepts trust, balks at total -> sticker_shock"]
+
+# When the diagnosis abstains (confidence below threshold, or thread too thin): the owner is shown the
+# top ranked candidates and picks; if the owner declines, the legacy generic nudge is the only send.
+abstain:
+  action: act_abstain_owner_pick       # owner picks 2-3 (no template — owner UI)
+  fallback: act_generic_nudge          # owner declines -> legacy warm nudge
+
+# Actions that do NOT have a customer-facing template (handled by a human / the owner UI).
+no_template_actions: [act_sales_handoff, act_abstain_owner_pick]

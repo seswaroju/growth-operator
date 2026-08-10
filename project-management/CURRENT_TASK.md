@@ -16,7 +16,15 @@ selects and approves the next ticket.
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
 **3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅ / 5b builder UI
 ✅** → **6 owner-built/trust ✅ → WORKFLOW ENGINE COMPLETE.** Ghost-recovery diagnosis track: **1 Option-A
-extension ✅** → 2 jewelry pack → 3 eval + CAPTURE-GAPs → then a synthetic-data demo.
+extension ✅** → **2 jewelry pack ✅** → 3 eval + CAPTURE-GAPs → then a synthetic-data demo.
+
+**Diagnosis item 2 (MVP-073i) `feature/mvp-073i-ghost-pack`:** the L1 jewelry pack — declarative config
+(`verticals/jewelry/`): `playbooks/ghost_reason_taxonomy.yaml` (8 reasons + recovery map),
+`templates/recovery.yaml` (9 figure-free templates), `prompts/ghost_diagnosis.md` (frontier prompt), and
+`workflows/silent_lead_reactivation.yaml` **v4** (sugar-based → parses/compiles/seeds). **Verify:**
+ruff/mypy(164)/**guards 0**/**434** unit+isolation/**467** integ+e2e+contract; **+14** rigorous tests
+(exactly-8 reasons, referential integrity, no orphan templates, **no literal figure**, band-handoffs).
+**Next:** item 3 eval harness (synthetic ghost set, gated-simulated diagnosis) + CAPTURE-GAP migrations.
 
 **Diagnosis item 1 (MVP-073h) `feature/mvp-073h-diagnosis-sugar`:** Option-A sugar — parser
 **desugars** `diagnose`/`classify_ghost`/`compose` → `agent_task` + `approval_gate` → ranked

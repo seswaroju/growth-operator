@@ -61,14 +61,16 @@ def test_kirana_workflows_parse() -> None:
 # ---- Acceptance: grammar-freeze enforcement ------------------------------------------
 
 
-def test_proposed_workflow_with_ungrammar_verbs_is_rejected() -> None:
-    # silent_lead_reactivation v3 is the Option-A target. Its diagnosis verbs now desugar
-    # (MVP-073h), but the file still carries fields beyond even the extended grammar (e.g.
-    # `on_shop_stopped`, ternary `mode`), so it is STILL rejected — the ghost-recovery pack ships a
-    # clean rewrite. It must not parse as-is today.
-    with pytest.raises(WorkflowSchemaError) as ei:
-        _parse_file(_JEWELRY / "silent_lead_reactivation.yaml")
-    assert "on_shop_stopped" in str(ei.value)
+def test_silent_lead_reactivation_v4_parses_via_the_sugar() -> None:
+    # The ghost-recovery workflow (MVP-073i v4) uses the Option-A sugar and now parses + compiles:
+    # `diagnose`/`compose` → agent_task, `approval_gate` → a ranked human_task; the block-style
+    # guards keep `touch_cap(3, 30d)` intact (not comma-split).
+    p = _parse_file(_JEWELRY / "silent_lead_reactivation.yaml")
+    assert p.workflow_key == "silent_lead_reactivation" and p.version == 4
+    assert GuardRef("touch_cap", ("3", "30d")) in p.guards
+    from core.workflows.program import compile_program
+    ops = [i["op"] for i in compile_program(p.dsl)]
+    assert ops.count("AGENT") == 2 and "HUMAN" in ops  # diagnose + compose, approval_gate
 
 
 def test_unknown_step_type_rejected() -> None:
