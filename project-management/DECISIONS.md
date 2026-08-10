@@ -1053,3 +1053,22 @@ too-long line), CI-relevant checks are now enforced **locally, blocking**:
 Enabled per clone with **`make hooks`** (`git config core.hooksPath .githooks`). This makes "CI clean
 before committing/pushing" a mechanical gate, not a discipline I can forget. **Decided by:** Founder
 (2026-08-10).
+
+---
+
+## 2026-08-10 — WhatsApp receipts stay a detailed text message (no PDF) — PAY4 dropped
+
+**Founder decision (2026-08-10):** deliver the WhatsApp receipt as a **detailed text message** (receipt
+number + line items + subtotal/discount/tax/total + note — the current `render_receipt_text`), **not** a
+PDF/image document. Rationale established in the same discussion:
+
+- **Cost:** WhatsApp prices by message **category** (utility / marketing / authentication / service),
+  **not** by media type or size — a PDF document costs the **same** as the text version of the same
+  category, so a PDF buys **no cost saving**. (Freeform text and templates apply equally to both; the
+  24-hour service-window / template rules are unchanged by media type.)
+- **Complexity:** a PDF adds a **render-to-PDF dependency** + Meta's two-step media upload (`/media` →
+  `media_id` → `document` message) + media-id lifecycle (~30-day expiry) — more moving parts for no gain.
+
+**Effect:** no code change — the shipped behaviour already sends the detailed text on WhatsApp and the
+**branded HTML on email**. The previously-noted **PAY4 · receipt PDF on WhatsApp is dropped** (revisit
+only if a founder later wants a formal PDF artefact). **Decided by:** Founder (2026-08-10).
