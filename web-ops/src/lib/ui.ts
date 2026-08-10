@@ -12,7 +12,7 @@ const BTN_SIZE: Record<BtnSize, string> = {
   md: "px-4 py-2.5 text-[13.5px]",
 };
 const BTN_VARIANT: Record<BtnVariant, string> = {
-  primary: "bg-accent text-white shadow-card hover:bg-accent-2",
+  primary: "bg-accent text-on-accent shadow-card hover:bg-accent-2",
   ghost: "border border-line bg-surface text-ink hover:border-muted",
   subtle: "text-accent-ink hover:text-accent",
   danger: "bg-danger text-white hover:opacity-90",

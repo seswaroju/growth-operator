@@ -53,7 +53,7 @@ export default function NotificationBell() {
         <Bell className="h-[18px] w-[18px]" />
         {unread > 0 && (
           <span className="absolute -right-1 -top-1 grid min-w-[17px] place-items-center rounded-full
-            bg-accent px-1 text-[10px] font-semibold leading-4 text-white ring-2 ring-surface">
+            bg-accent px-1 text-[10px] font-semibold leading-4 text-on-accent ring-2 ring-surface">
             {badge(unread)}
           </span>
         )}
