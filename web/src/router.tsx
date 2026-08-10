@@ -7,6 +7,7 @@ import ConversationsSection from "./components/ConversationsSection";
 import CatalogSection from "./components/CatalogSection";
 import CampaignsSection from "./components/CampaignsSection";
 import CustomersSection from "./components/CustomersSection";
+import WorkflowsSection from "./components/WorkflowsSection";
 import InsightsSection from "./components/InsightsSection";
 import SupportSection from "./components/SupportSection";
 import TeamSection from "./components/TeamSection";
@@ -27,6 +28,8 @@ const customersRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/customers", component: CustomersSection });
 const campaignsRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/campaigns", component: CampaignsSection });
+const workflowsRoute = createRoute({
+  getParentRoute: () => rootRoute, path: "/workflows", component: WorkflowsSection });
 const insightsRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/insights", component: InsightsSection });
 const supportRoute = createRoute({
@@ -38,7 +41,8 @@ const settingsRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   homeRoute, approvalsRoute, conversationsRoute, catalogRoute,
-  customersRoute, campaignsRoute, insightsRoute, supportRoute, teamRoute, settingsRoute,
+  customersRoute, campaignsRoute, workflowsRoute, insightsRoute, supportRoute, teamRoute,
+  settingsRoute,
 ]);
 
 export const router = createRouter({ routeTree });

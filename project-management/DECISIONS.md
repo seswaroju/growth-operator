@@ -962,3 +962,22 @@ Nothing external goes live: agent/send effects stay behind mediation + approval 
 provider throughout. **Never-drop-a-lead** principle (founder, 2026-08-09) holds: a guard block is a
 logged `workflow.skipped`, never a silent discard; diagnosis abstain → owner-pick lands in the
 ghost-recovery extension. **Decided by:** Founder (2026-08-09).
+
+---
+
+## 2026-08-09 — Builder UI (stage 5b): structured form now, flow-graph later (selectable)
+
+**Founder chose the structured **form** editor** for the workflow builder UI (over a drag-and-drop
+flow-graph). Rationale (efficiency / workability / future-ease / robustness): the DSL is a linear
+instruction list with structured branches — a form maps to it 1:1 (no impedance mismatch), runs well
+on the modest hardware owners have (incl. mobile), is robust + testable + accessible, and ships fast
+with no new dependency. A drag-and-drop **flow-graph** (à la Zapier/n8n, `@xyflow/react`) has a better
+ceiling for very complex flows and more demo-wow, but pays a large up-front cost (graph↔DSL
+serialization round-trip, mobile/a11y problems, library coupling).
+
+**Decision:** build the **structured form** builder now. **Note B (flow-graph) as a future option** —
+add it later as a *second selectable editor view*. This is cheap because the **DSL + backend
+(MVP-073e authoring API) is the stable contract**: a graph view can be added with **zero backend
+change**. To keep the transition easy, the form UI is built DSL-centric — the editor surface is
+decoupled from (a) the DSL model/compose helper and (b) the API client — so a graph surface can target
+the same model + endpoints later. **Decided by:** Founder (2026-08-09).

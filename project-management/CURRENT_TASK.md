@@ -14,9 +14,16 @@ selects and approves the next ticket.
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
-**3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅** / 5b builder
-UI → 6 owner-built/trust → then the Option-A diagnosis extension + jewelry ghost-recovery pack + eval +
+**3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅ / 5b builder UI
+✅** → 6 owner-built/trust → then the Option-A diagnosis extension + jewelry ghost-recovery pack + eval +
 CAPTURE-GAP migrations.
+
+**Stage 5b (MVP-073f) `feature/mvp-073f-builder-ui`:** the owner builder in `web/` — **structured form**
+(founder's choice; graph noted as a future view, DECISIONS 2026-08-09). `lib/workflows.ts` pure
+`composeDsl` (decoupled for a future graph editor) + `WorkflowsSection.tsx` (list drafts + step-list
+form with **Validate** [server-truth] + **Save draft**) + **Automations** nav (`catalog:write`).
+**Web gate:** oxlint/tsc clean · **vitest 56** (+6) · build OK · **guards 0**. **Next:** stage 6
+owner-built/trust activation path (closes the 6-stage engine initiative).
 
 **Stage 5a (MVP-073e) `feature/mvp-073e-authoring`:** `authoring.py` — the builder's server truth:
 `validate_owner_dsl` (inject mandated `not_suppressed`; reject any owner `emit`) + create/update/list

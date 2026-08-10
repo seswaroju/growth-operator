@@ -574,3 +574,45 @@ export function createInvite(token: string, input: CreateInviteInput): Promise<I
     body: JSON.stringify(input),
   });
 }
+
+// ---- Workflows / automations (owner-built, /v1/workflows, catalog:write) ----
+// The builder composes a DSL client-side, but the SERVER is the source of truth: /validate returns
+// the parser's verdict (client hints, server truth); saved definitions start as drafts.
+
+export interface OwnerDefinition {
+  id: string;
+  workflow_key: string;
+  version: number;
+  status: string; // draft | active | disabled | archived
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ValidateResult {
+  valid: boolean;
+  error?: string;
+  workflow_key?: string;
+  guards?: string[]; // includes server-injected mandated guards (locked)
+}
+
+export function validateDefinition(
+  token: string, dsl: Record<string, unknown>,
+): Promise<ValidateResult> {
+  return authed<ValidateResult>("/v1/workflows/definitions/validate", token, {
+    method: "POST",
+    body: JSON.stringify({ dsl }),
+  });
+}
+
+export function createDefinition(
+  token: string, dsl: Record<string, unknown>,
+): Promise<{ definition_id: string; status: string }> {
+  return authed("/v1/workflows/definitions", token, {
+    method: "POST",
+    body: JSON.stringify({ dsl }),
+  });
+}
+
+export function listOwnerDefinitions(token: string): Promise<{ definitions: OwnerDefinition[] }> {
+  return authed<{ definitions: OwnerDefinition[] }>("/v1/workflows/definitions", token);
+}
