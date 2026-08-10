@@ -3177,3 +3177,45 @@ integ+e2e+contract (+2) · migration 039 up/down · web gate (oxlint/tsc/**vites
 
 **Next:** priority item 3 — the **WABA send adapter** real-ready behind the gate (so real WhatsApp is a
 config flip once Meta verification clears), then the bigger multi-channel/advertising + UX tracks.
+
+## 2026-08-10 — MVP-076: WABA send adapter real-ready — live-path test coverage — priority item 3
+
+**Branch:** `feature/mvp-076-waba-adapter` (off main). Tests only; **no `core/` change**.
+
+**Honest finding:** the real Meta Graph-API send path was **already built** (MVP-031/034) — `MetaClient`
+(`core/channels/whatsapp/meta_client.py`) has real httpx paths for send_text/send_template/verify/webhook/
+templates, gated by `whatsapp_live_enabled` (simulated when off), wrapped by the 5-gate `send()`
+(`core/channels/whatsapp/send.py`: audit-cap → execution-token → suppression → consent → figures-ledgered,
+plus bounded 429/5xx retries). The **one gap** for "real-ready": every existing test ran the *simulated*
+branch, so the **live request shape + response parsing were never verified** — a wrong payload/header would
+have surfaced only against a real Meta account at go-live. This ticket closes that with **no network, no
+real Meta account, no real send** (§10.4).
+
+- `tests/unit/test_meta_client_live.py` (**+6**): flip `whatsapp_live_enabled=true`, mock
+  `httpx.AsyncClient.post`/`.get`, and pin — `send_text` URL `/{phone_number_id}/messages`, `Authorization:
+  Bearer …`, body `{messaging_product:whatsapp, to, type:text, text:{body}}` → `wamid` parsed; `send_template`
+  body `{type:template, template:{name, language:{code}}}`; **429** → `retry_after_s` from `Retry-After`,
+  `ok=False`; **5xx** → `ok=False` + error; `verify_credentials` GET + bearer; and a default-off sanity check
+  that the simulated path makes **no network call** and returns a `wamid.SIM-` id.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Live text send: real request shape + wamid parse | `test_send_text_live_request_shape_and_parse` | PASS |
+| Live template send: real request shape | `test_send_template_live_request_shape` | PASS |
+| 429 surfaces Retry-After, fails | `test_send_live_429_surfaces_retry_after` | PASS |
+| 5xx fails with status + error | `test_send_live_5xx_is_failed` | PASS |
+| Live credential verify (bearer) | `test_verify_credentials_live` | PASS |
+| Default-off = simulated, no network | `test_simulated_by_default_no_network` | PASS |
+
+**Go-live path (for later, needs founder + Meta approval):** set `GROWTH_OPERATOR_WHATSAPP_LIVE_ENABLED=true`
+**and** connect a real number via `POST /v1/channels/whatsapp/connect` (stores real `phone_number_id` +
+Fernet-encrypted `access_token` per org). Sends still require an **approval + execution token** (unchanged).
+External blocker remains: Meta WABA verification (BLOCKERS #3) — code is ready; no credentials wired.
+
+**Commands:** ruff clean · `mypy core` **168** · **guards 0** · **441** unit (+6) · whatsapp integ
+(send/connect/templates/media/figure-check) **31 passed, 4 skipped** (DB-gated). No dep, no migration, no
+external call.
+
+**Next:** the bigger multi-channel/advertising tracks (email, Instagram, Google Ads) + the UX pass — both
+captured in VISION_INTAKE.

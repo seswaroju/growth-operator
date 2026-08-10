@@ -24,7 +24,8 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Severity:** High — longest lead-time item in the entire MVP plan; blocks MVP-031..037 and the Week-1 exit demo
 - **Owner:** Founder
 - **Description:** Per `docs/25-implementation-starter-kit/02-week-1-plan.md`, WABA verification submission should start Day 1, in parallel with code. A decision is required first: Srila's existing number vs. a new number for Priya (porting freezes the number for days).
-- **Next action:** Founder decides the number question, then submits Meta verification immediately.
+- **Code readiness (2026-08-10, MVP-076):** the send/connect/template code path is **real-ready** — `MetaClient` (`core/channels/whatsapp/meta_client.py`) has the real Meta Graph-API httpx calls gated behind `whatsapp_live_enabled` (simulated when off), wrapped by the 5-gate `send()` + bounded 429/5xx retries, and the **live path is now test-covered** (`tests/unit/test_meta_client_live.py`, httpx mocked — real request shape + parse verified with no network). Only the external items below remain; **no code change** is expected to go live.
+- **Next action:** Founder decides the number question, then submits Meta verification. Go-live = flip `GROWTH_OPERATOR_WHATSAPP_LIVE_ENABLED=true` + connect the real number (`POST /v1/channels/whatsapp/connect`, stores real creds per org); sends still require approval + execution token.
 
 ### 4. Missing dependencies for planned modules
 
