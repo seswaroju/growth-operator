@@ -9,16 +9,18 @@ from typing import Any
 from core.payments.transactions import store_code, to_receipt
 
 
-def test_store_code_from_name() -> None:
-    assert store_code("Ratna Store") == "RATNA"
-    assert store_code("GoldN") == "GOLDN"
-    assert store_code("A B") == "AB"
-    assert store_code("!!!") == "STORE"  # nothing usable → fallback
+def test_store_code_is_fixed_short_length() -> None:
+    # Fixed 4 chars regardless of name length — a long name never makes a longer receipt number.
+    assert store_code("Ratna Store") == "RATN"
+    assert store_code("A Very Long Store Name Here") == "AVER"
+    assert store_code("Zephyr") == "ZEPH"
+    assert store_code("A B") == "AB"  # shorter names stay as-is
+    assert store_code("!!!") == "STOR"  # nothing usable → fallback
 
 
 def _row(**over: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
-        "receipt_no": "RATNA-2608-001", "created_at": datetime(2026, 8, 10, 9, 0),
+        "receipt_no": "RATN-2608-001", "created_at": datetime(2026, 8, 10, 9, 0),
         "currency": "INR",
         "line_items": [{"description": "Growth plan — monthly", "amount_minor": 2_500_000}],
         "discount_percent": Decimal("10.00"), "discount_reason": "loyal client",
@@ -31,7 +33,7 @@ def _row(**over: Any) -> dict[str, Any]:
 
 def test_to_receipt_builds_discounted_receipt() -> None:
     rec = to_receipt(_row(), seller_name="Growth Operator", buyer_name="Ratna Store")
-    assert rec.receipt_no == "RATNA-2608-001"
+    assert rec.receipt_no == "RATN-2608-001"
     assert rec.date == "2026-08-10"
     assert rec.subtotal_minor == 2_500_000
     assert rec.discount_minor == 250_000

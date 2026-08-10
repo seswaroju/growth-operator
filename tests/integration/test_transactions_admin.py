@@ -113,7 +113,7 @@ async def test_create_numbers_discounts_and_retrieves(scene: Scene) -> None:
         f"/v1/admin/tenants/{scene.org_a}/transactions", headers=op, json=_payload())
     assert r1.status_code == 201, r1.text
     tx = r1.json()
-    assert tx["receipt_no"] == f"RATNA-{ym}-001"           # store code · YYMM · seq
+    assert tx["receipt_no"] == f"RATN-{ym}-001"           # store code · YYMM · seq
     assert tx["subtotal_minor"] == 3_000_000
     assert tx["discount_minor"] == 300_000                 # 10% of 3,000,000
     assert tx["total_minor"] == 3_000_000 - 300_000 + 486_000
@@ -122,7 +122,7 @@ async def test_create_numbers_discounts_and_retrieves(scene: Scene) -> None:
     # second transaction this month → seq increments
     r2 = await scene.client.post(
         f"/v1/admin/tenants/{scene.org_a}/transactions", headers=op, json=_payload())
-    assert r2.json()["receipt_no"] == f"RATNA-{ym}-002"
+    assert r2.json()["receipt_no"] == f"RATN-{ym}-002"
 
     listed = (await scene.client.get(
         f"/v1/admin/tenants/{scene.org_a}/transactions", headers=op)).json()
