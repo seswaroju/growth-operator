@@ -2981,7 +2981,7 @@ harness (offline/synthetic, real-ready via the gate) + the CAPTURE-GAP migration
 
 ## 2026-08-09 — MVP-073h: Ghost-recovery diagnosis extension — Option A (sugar → generic grammar)
 
-**Branch:** `feature/mvp-073h-diagnosis-sugar` (off main). **Merge:** `pending`. The first of the three
+**Branch:** `feature/mvp-073h-diagnosis-sugar` (off main). **Merge:** `bcea001`. The first of the three
 ghost-recovery items (the MVP thesis): the **Option-A readable sugar** that lets a pack author
 `diagnose`/`approval_gate`/etc. while the engine stays generic. No migration, no dependency.
 
