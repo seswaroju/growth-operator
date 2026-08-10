@@ -271,7 +271,17 @@ export interface BillingPlan {
   name: string;
   price_minor: number;
   active: boolean;
+  description: string | null;
+  features: string[];
   created_at: string;
+}
+
+export interface PlanInput {
+  name: string;
+  price_minor: number;
+  active: boolean;
+  description: string | null;
+  features: string[];
 }
 
 export interface Subscription {
@@ -314,10 +324,23 @@ export function adminListPlans(token: string): Promise<BillingPlan[]> {
 
 export function adminCreatePlan(
   token: string, name: string, priceMinor: number,
+  extra?: { description?: string | null; features?: string[] },
 ): Promise<BillingPlan> {
   return authed<BillingPlan>("/v1/admin/billing/plans", token, {
     method: "POST",
-    body: JSON.stringify({ name, price_minor: priceMinor }),
+    body: JSON.stringify({
+      name, price_minor: priceMinor,
+      description: extra?.description ?? null, features: extra?.features ?? [],
+    }),
+  });
+}
+
+export function adminUpdatePlan(
+  token: string, planId: string, patch: PlanInput,
+): Promise<BillingPlan> {
+  return authed<BillingPlan>(`/v1/admin/billing/plans/${planId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
   });
 }
 

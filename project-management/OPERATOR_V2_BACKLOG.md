@@ -19,7 +19,7 @@ warm **cream ground + antique-gold accent** (light), with a dark mode. Presentat
 - No component logic change; web gate (oxlint/tsc/vitest/build) + guards green in both apps.
 - Sweep: no leftover emerald/slate assumptions that break on the new palette.
 
-## OC1 — Editable plans + “what's included” (feedback A) — **Effort S** — status: todo
+## OC1 — Editable plans + “what's included” (feedback A) — **Effort S** — status: done
 Plans today store only name + price, create/list only. Owner must be able to edit them and see what each
 plan includes.
 **Acceptance:**

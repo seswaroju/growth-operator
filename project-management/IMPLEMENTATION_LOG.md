@@ -3353,3 +3353,34 @@ system. **Next track:** multi-channel/advertising, then one channel end-to-end (
 **Verify:** web + web-ops each — oxlint clean · `tsc -b` 0 · vitest (web 57 / web-ops 6) · `vite build` ✓ ·
 **guards 0** · no forbidden nouns in either app (incl. `.css`). First ticket of the Operator-Console-v2
 backlog (`project-management/OPERATOR_V2_BACKLOG.md`). **Next:** OC1 — editable plans + "what's included".
+
+## 2026-08-10 — OC1: editable plans + "what's included" (feedback A)
+
+**Branch:** `feature/oc1-editable-plans`. Founder couldn't edit created plans and wanted to see what each
+plan includes. Plans previously stored only name + price with create/list only.
+
+- **Migration `0855d6b58a71`** (on `bdaf25315e59`): `billing_plans` gains `description text` +
+  `features jsonb NOT NULL DEFAULT '[]'`. Global GO table (no RLS). **Up/down/up verified** on live PG
+  (columns added → dropped → re-added).
+- **Backend:** `core/billing/service.py` — `_PLAN_COLS` + `create_plan` extended; new `update_plan`
+  (RETURNING → `None` when the id is unknown). `core/billing/api.py` — `PlanCreate`/`PlanOut` gain
+  description/features; new `PlanUpdate`; **`PATCH /v1/admin/billing/plans/{id}`** (`PLATFORM_TENANTS_MANAGE`),
+  **404** unknown id, **409** duplicate name (IntegrityError → HTTPException), audited `billing.plan.updated`.
+- **Frontend (web-ops):** `api.ts` — `BillingPlan` gains description/features, new `PlanInput` +
+  `adminUpdatePlan`, `adminCreatePlan` takes optional description/features. `lib/plans.ts` (parse/format
+  features, rupeesToMinor) + `plans.test.ts`. `FinancialSection` Plans panel rebuilt: each plan shows its
+  "what's included" list (drawn Check bullets); inline **edit** form (name/price/active/description/features)
+  + a New-plan form.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Create with features + edit price/desc/features/active, round-trips | `test_create_and_edit_plan_features` | PASS |
+| Edit unknown id → 404 | `test_edit_plan_404_for_unknown_id` | PASS |
+| Edit onto an existing name → 409 | `test_edit_plan_409_on_duplicate_name` | PASS |
+| Edit as non-operator → 403 | `test_edit_plan_403_for_non_operator` | PASS |
+| Feature editor parse/format | web-ops `lib/plans.test.ts` (4) | PASS |
+
+**Commands:** ruff clean · `mypy core` 168 · guards 0 · migration up/down/up · **billing integ 9** (+4) ·
+**unit+contract 438** · web-ops oxlint/tsc/**vitest 10**(+4)/build ✓. No secrets, no external calls, no
+tenant-isolation change (global admin-plane-only table). **Next:** OC2 — per-store spend-by-channel + ROI.

@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   adminAssignSubscription, adminBillingRollup, adminCreatePlan, adminGetSubscription,
-  adminListCharges, adminListPlans, adminListTenants, adminRecordCharge,
-  type BillingRollup, type ChargeType,
+  adminListCharges, adminListPlans, adminListTenants, adminRecordCharge, adminUpdatePlan,
+  type BillingPlan, type BillingRollup, type ChargeType, type PlanInput,
 } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { featuresToText, parseFeatures, rupeesToMinor } from "../lib/plans";
 import { buttonClasses, fieldClasses } from "../lib/ui";
+import { Check } from "./icons";
 import { Card } from "./ui";
 
 const CHARGE_TYPES: ChargeType[] = ["subscription", "social", "seo", "campaign", "other"];
@@ -45,48 +47,165 @@ function RollupCards({ r }: { r: BillingRollup }) {
   );
 }
 
+interface FormState {
+  name: string; priceRupees: string; active: boolean; description: string; featuresText: string;
+}
+
+function toInput(f: FormState): PlanInput {
+  return {
+    name: f.name.trim(),
+    price_minor: rupeesToMinor(f.priceRupees),
+    active: f.active,
+    description: f.description.trim() || null,
+    features: parseFeatures(f.featuresText),
+  };
+}
+
+function PlanForm({ initial, submitLabel, onSubmit, onCancel, pending, error }: {
+  initial: FormState;
+  submitLabel: string;
+  onSubmit: (f: FormState) => void;
+  onCancel?: () => void;
+  pending: boolean;
+  error: string | null;
+}) {
+  const [f, setF] = useState(initial);
+  const set = (patch: Partial<FormState>) => setF((prev) => ({ ...prev, ...patch }));
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(f); }} className="space-y-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="Plan name"
+          className={fieldClasses("w-44 py-1.5 text-xs")} />
+        <input value={f.priceRupees}
+          onChange={(e) => set({ priceRupees: e.target.value.replace(/[^\d.]/g, "") })}
+          placeholder="₹ / month" inputMode="decimal" className={fieldClasses("w-28 py-1.5 text-xs")} />
+        <label className="flex items-center gap-1.5 text-xs text-ink-2">
+          <input type="checkbox" checked={f.active} onChange={(e) => set({ active: e.target.checked })}
+            className="accent-[var(--accent)]" /> Active
+        </label>
+      </div>
+      <input value={f.description} onChange={(e) => set({ description: e.target.value })}
+        placeholder="Short description (optional)" className={fieldClasses("w-full py-1.5 text-xs")} />
+      <textarea value={f.featuresText} onChange={(e) => set({ featuresText: e.target.value })} rows={4}
+        placeholder={"What's included — one per line\ne.g. WhatsApp campaigns + ghost-recovery"}
+        className={fieldClasses("w-full resize-y text-xs")} />
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={pending || !f.name.trim() || !f.priceRupees}
+          className={buttonClasses("primary", "sm")}>
+          {pending ? "Saving…" : submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className={buttonClasses("ghost", "sm")}>Cancel</button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function PlanRow({ token, plan, canManage }:
+  { token: string; plan: BillingPlan; canManage: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const update = useMutation({
+    mutationFn: (f: FormState) => adminUpdatePlan(token, plan.id, toInput(f)),
+    onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
+  });
+
+  if (editing) {
+    return (
+      <li className="rounded-xl border border-line bg-raised p-3">
+        <PlanForm
+          initial={{
+            name: plan.name, priceRupees: String(plan.price_minor / 100), active: plan.active,
+            description: plan.description ?? "", featuresText: featuresToText(plan.features),
+          }}
+          submitLabel="Save changes"
+          onSubmit={(f) => update.mutate(f)}
+          onCancel={() => setEditing(false)}
+          pending={update.isPending}
+          error={update.isError ? (update.error as Error).message : null}
+        />
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded-xl border border-line p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-ink">{plan.name}</span>
+            {!plan.active && (
+              <span className="rounded-lg bg-line-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2">
+                inactive
+              </span>
+            )}
+          </div>
+          {plan.description && <p className="mt-0.5 text-xs text-muted">{plan.description}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="font-serif text-sm tnum text-ink">{rupees(plan.price_minor)}/mo</span>
+          {canManage && (
+            <button onClick={() => setEditing(true)} className={buttonClasses("ghost", "sm")}>Edit</button>
+          )}
+        </div>
+      </div>
+      {plan.features.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {plan.features.map((ft, i) => (
+            <li key={i} className="flex items-start gap-2 text-xs text-ink-2">
+              <Check className="mt-0.5 h-3 w-3 shrink-0 text-accent-ink" />
+              {ft}
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 function PlansPanel({ token, canManage }: { token: string; canManage: boolean }) {
   const qc = useQueryClient();
+  const [creating, setCreating] = useState(false);
   const plans = useQuery({ queryKey: ["billing-plans"], queryFn: () => adminListPlans(token) });
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
   const create = useMutation({
-    mutationFn: () => adminCreatePlan(token, name, Math.round(Number(price) * 100)),
-    onSuccess: () => { setName(""); setPrice(""); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
+    mutationFn: (f: FormState) => {
+      const inp = toInput(f);
+      return adminCreatePlan(token, inp.name, inp.price_minor,
+        { description: inp.description, features: inp.features });
+    },
+    onSuccess: () => { setCreating(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
   });
 
   return (
     <Card className="p-5">
-      <h2 className="text-sm font-semibold text-ink">Plans</h2>
-      <ul className="mt-2 space-y-1">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink">Plans</h2>
+        {canManage && !creating && (
+          <button onClick={() => setCreating(true)} className={buttonClasses("ghost", "sm")}>New plan</button>
+        )}
+      </div>
+      <ul className="mt-3 space-y-2">
         {(plans.data ?? []).map((p) => (
-          <li key={p.id} className="flex justify-between text-sm text-ink-2">
-            <span>{p.name}</span><span className="tnum">{rupees(p.price_minor)}/mo</span>
-          </li>
+          <PlanRow key={p.id} token={token} plan={p} canManage={canManage} />
         ))}
-        {(plans.data ?? []).length === 0 && <li className="text-xs text-muted">No plans yet.</li>}
+        {(plans.data ?? []).length === 0 && !creating && (
+          <li className="text-xs text-muted">No plans yet.</li>
+        )}
       </ul>
-      {canManage && (
-        <form
-          className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3"
-          onSubmit={(e) => { e.preventDefault(); if (name && price) create.mutate(); }}
-        >
-          <input
-            value={name} onChange={(e) => setName(e.target.value)} placeholder="Plan name"
-            className={fieldClasses("w-40 py-1.5 text-xs")}
+      {canManage && creating && (
+        <div className="mt-3 rounded-xl border border-line bg-raised p-3">
+          <div className="mb-2 text-xs font-semibold text-muted">New plan</div>
+          <PlanForm
+            initial={{ name: "", priceRupees: "", active: true, description: "", featuresText: "" }}
+            submitLabel="Create plan"
+            onSubmit={(f) => create.mutate(f)}
+            onCancel={() => setCreating(false)}
+            pending={create.isPending}
+            error={create.isError ? (create.error as Error).message : null}
           />
-          <input
-            value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))}
-            placeholder="₹ / month" inputMode="decimal"
-            className={fieldClasses("w-28 py-1.5 text-xs")}
-          />
-          <button
-            type="submit" disabled={!name || !price || create.isPending}
-            className={buttonClasses("primary", "sm")}
-          >
-            Add plan
-          </button>
-        </form>
+        </div>
       )}
     </Card>
   );
