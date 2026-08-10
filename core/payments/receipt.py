@@ -71,7 +71,7 @@ def render_receipt_text(r: Receipt) -> str:
 
 
 def render_receipt_html(r: Receipt) -> str:
-    """A branded, email-safe (inline styles + tables) cream/gold receipt. All values escaped."""
+    """A branded, email-safe (inline styles + tables) cream/champagne receipt; values escaped."""
     _SERIF = "Georgia,'Times New Roman',serif"
     _SANS = "Helvetica,Arial,sans-serif"
 
@@ -107,7 +107,7 @@ def render_receipt_html(r: Receipt) -> str:
         f'<div style="margin:0;padding:28px 12px;background:#f7f2e8;font-family:{_SANS}">'
         '<div style="max-width:560px;margin:0 auto;background:#fffdf8;border:1px solid #e8dfc9;'
         'border-radius:16px;overflow:hidden">'
-        # gold top rule
+        # accent top rule
         '<div style="height:4px;background:#b08d3e;font-size:0;line-height:0">&nbsp;</div>'
         '<div style="padding:28px 30px">'
         # header: wordmark + eyebrow, PAID pill
