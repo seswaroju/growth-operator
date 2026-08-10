@@ -3180,7 +3180,8 @@ config flip once Meta verification clears), then the bigger multi-channel/advert
 
 ## 2026-08-10 — MVP-076: WABA send adapter real-ready — live-path test coverage — priority item 3
 
-**Branch:** `feature/mvp-076-waba-adapter` (off main). Tests only; **no `core/` change**.
+**Branch:** `feature/mvp-076-waba-adapter` (off main). **Merge:** `981ad19`. Tests only; **no `core/`
+change**.
 
 **Honest finding:** the real Meta Graph-API send path was **already built** (MVP-031/034) — `MetaClient`
 (`core/channels/whatsapp/meta_client.py`) has real httpx paths for send_text/send_template/verify/webhook/

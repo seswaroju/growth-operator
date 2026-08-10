@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## MVP-076 — WABA send adapter real-ready — **Completed — awaiting founder review** (2026-08-10)
+## MVP-076 — WABA send adapter real-ready — **Merged `981ad19`, CI-green** (2026-08-10)
 
 **Priority item 3** (after item 1 LLM adapter / MVP-074, item 2 notification bell / MVP-075). Branch
 `feature/mvp-076-waba-adapter`. **Tests only — no `core/` change.** Honest finding: the real Meta
