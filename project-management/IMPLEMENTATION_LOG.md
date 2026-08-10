@@ -3143,3 +3143,37 @@ else changes — the ghost-recovery workflow then diagnoses on the real frontier
 
 **Next (priority order):** item 2 — the **notification bell** (aggregate approvals/tickets/workflow
 events from the existing event stream) → item 3 — the **WABA send adapter** real-ready behind the gate.
+
+---
+
+## 2026-08-09 — MVP-075: Notification bell (owner feed) — priority item 2
+
+**Branch:** `feature/mvp-075-notification-bell` (off main). **Merge:** `pending`. Functional-first (UX
+polish is a later pass, per founder). Backend + web. Migration 039, no dependency.
+
+**Derived, not a new pipeline:** the feed aggregates signals that already exist — **pending approvals**
+(the owner must act; a customer reply won't send until they do), **support-ticket updates**
+(in_progress/resolved), and **automation alerts** (workflow runs failed/compensated). Each item: kind,
+title, timestamp.
+
+- Migration **039** `notification_reads` (per-user `seen_at`, one row per (org,user), RLS-forced;
+  up/down verified). `core/notifications/service.py`: `get_feed` (merge + newest-first; unread = items
+  newer than `seen_at`) + `mark_seen` (upsert). `core/notifications/api.py`: `GET /v1/notifications`,
+  `POST /v1/notifications/seen` (`insights:read` — every role holds it), registered.
+- Web (`web/`): `NotificationBell.tsx` — a 🔔 in the Shell header with an unread badge (caps at 9+) and
+  a dropdown feed; opening it marks-seen (clears the badge); react-query polls every 30s.
+  `lib/notifications.ts` pure helpers (badge/kind/relative-time), `api.ts` client.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Feed aggregates the 3 signals, newest first | `test_feed_aggregates_the_three_signals` | PASS |
+| mark_seen clears; a later signal is unread | `test_mark_seen_clears_then_a_new_signal_is_unread` | PASS |
+| `notification_reads` RLS isolation | `tests/isolation/test_notification_reads_rls.py` | PASS |
+| Badge cap / kind labels / relative time | `web lib/notifications.test.ts` (3) | PASS |
+
+**Commands:** ruff clean · `mypy core` **168** · **guards 0** · **452** unit+isolation (+2) · **465**
+integ+e2e+contract (+2) · migration 039 up/down · web gate (oxlint/tsc/**vitest 59**/build) green. No dep.
+
+**Next:** priority item 3 — the **WABA send adapter** real-ready behind the gate (so real WhatsApp is a
+config flip once Meta verification clears), then the bigger multi-channel/advertising + UX tracks.

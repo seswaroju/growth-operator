@@ -616,3 +616,28 @@ export function createDefinition(
 export function listOwnerDefinitions(token: string): Promise<{ definitions: OwnerDefinition[] }> {
   return authed<{ definitions: OwnerDefinition[] }>("/v1/workflows/definitions", token);
 }
+
+// ---- Notifications / bell (/v1/notifications, insights:read) ----------------
+// A unified feed derived from existing signals: pending approvals, ticket updates, automation alerts.
+
+export interface NotificationItem {
+  kind: "approval" | "ticket" | "automation";
+  ref: string;
+  title: string;
+  tier?: number;
+  at: string;
+}
+
+export interface NotificationFeed {
+  items: NotificationItem[];
+  unread_count: number;
+  seen_at: string | null;
+}
+
+export function getNotifications(token: string): Promise<NotificationFeed> {
+  return authed<NotificationFeed>("/v1/notifications", token);
+}
+
+export function markNotificationsSeen(token: string): Promise<{ ok: boolean }> {
+  return authed("/v1/notifications/seen", token, { method: "POST" });
+}
