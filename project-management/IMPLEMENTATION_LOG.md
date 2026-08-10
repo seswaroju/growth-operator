@@ -3278,3 +3278,13 @@ one committed accent) skills.
 
 **Verify:** oxlint clean (2 pre-existing) · `tsc -b` 0 · **vitest 57** · `vite build` ✓ · **guards 0** ·
 no forbidden nouns. **Next:** U3 work surfaces (approvals/conversations/campaigns/…) on these primitives.
+
+## 2026-08-10 — UX-03a: Approvals + Conversations onto primitives (stage U3a)
+
+**Branch:** `feature/ux-03a-approvals-conversations`. Presentational only — all mutations/queries/
+permission-gating preserved. `ApprovalsSection` (view/edit/reject modes, tier badges, matched-rules,
+resolve mutation) and `ConversationsSection` (inbox↔thread, leads pipeline, tabs) re-skinned on the
+tokens + `Card`/`PageHeader`/`EmptyState`/`Tag`. Added `danger`/`danger-ghost` button variants
+(`lib/ui.ts`). Harmonized `lib/leads.ts` `STAGE_STYLE` from rainbow pastels to token tones (won=good,
+quoted=warn, lost=danger; leads.test doesn't pin the strings). Chat bubbles: store=ink/porcelain,
+customer=porcelain/ink. **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
