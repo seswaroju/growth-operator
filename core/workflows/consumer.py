@@ -57,3 +57,31 @@ async def on_approval_resolved(envelope: dict[str, Any]) -> None:
         return
     decision = "approved" if data.get("decision") == "approved" else "rejected"
     await executor.resume_human(org_id, UUID(str(wf_run_id)), decision)
+
+
+@consumer(stream_name("approval.resolved.v1"), "workflow-activation")
+async def on_activation_resolved(envelope: dict[str, Any]) -> None:
+    """A resolved `workflow.activate` approval → activate the owner-built draft (approve) or
+    leave it a draft (reject). Other approval kinds go to their own consumer groups."""
+    from core.workflows import activation
+
+    org_id = UUID(str(envelope["subject"]))
+    data = envelope.get("data") or {}
+    approval_id = data.get("approval_id")
+    if not approval_id:
+        return
+    async with org_scoped_session(org_id) as s:
+        appr = (await s.execute(
+            text("SELECT action_type, payload FROM approvals WHERE id = :id"),
+            {"id": str(approval_id)})).mappings().first()
+        if appr is None or appr["action_type"] != activation.ACTIVATE_ACTION:
+            return
+        payload = appr["payload"]
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        definition_id = payload.get("definition_id")
+        if not definition_id:
+            return
+        await activation.apply_activation_decision(
+            s, org_id, UUID(str(definition_id)), data.get("decision") == "approved")
+        await s.commit()

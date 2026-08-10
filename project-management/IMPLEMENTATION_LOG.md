@@ -2936,3 +2936,43 @@ trust-ledger activation path** — activation of an owner-built draft gated on a
 tier-2 approval, runs start tier-2-everything until the trust ledger clears ~50 clean runs, then earn
 autonomy. That closes the 6-stage workflow initiative; then the Option-A ghost-recovery diagnosis
 extension + jewelry pack + eval + CAPTURE-GAP migrations.
+
+---
+
+## 2026-08-09 — MVP-073g: Owner-built activation + trust ledger (stage 6 — CLOSES the workflow engine)
+
+**Branch:** `feature/mvp-073g-owner-trust` (off main). **Merge:** `pending`. The governance that makes
+owner-authored workflows safe to switch on — the final stage of the 6-stage workflow-engine initiative.
+No migration, no dependency.
+
+**`core/workflows/activation.py`** — owner-built drafts cannot self-activate. `request_activation` runs
+a **simulation** (MVP-073d) and raises a **tier-2 `workflow.activate` approval** with the report
+attached; the draft stays a draft until the approval resolves. A new `approval.resolved.v1` consumer
+group (`workflow-activation`) calls `apply_activation_decision` → **approve activates** the draft,
+**reject leaves it a draft**. **Trust ledger:** `owner_trust_status` counts clean (completed) runs for
+the definition; at `TRUST_THRESHOLD = 50` it is `earned` and the `tier_floor` drops from 2 to none —
+owner-built runs sit at a max-approval floor until they earn autonomy (surfaced for the mediation
+boundary; a draft never routes, so nothing runs before activation anyway).
+
+**API** (`catalog:write`): `POST /v1/workflows/definitions/{id}/activate` (returns approval id +
+simulation + trust), `GET /v1/workflows/definitions/{id}/trust`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Trust earns at the threshold (tier floor drops) | `test_trust_earns_at_threshold` | PASS |
+| Request → tier-2 approval + report attached, **stays draft** | `test_request_activation_raises_tier2_approval_and_stays_draft` | PASS |
+| Approve activates the draft | `test_apply_decision_activates_on_approve` | PASS |
+| Reject leaves it a draft | `test_apply_decision_reject_leaves_draft` | PASS |
+| Already-active → rejected | `test_activation_rejected_for_already_active` | PASS |
+| Trust counts only completed runs | `test_trust_status_counts_completed_runs` | PASS |
+
+**Commands:** ruff clean · `mypy core` **164** · **guards 0** · **419** unit+isolation · **465**
+integ+e2e+contract (+6) · no migration/dep.
+
+**WORKFLOW ENGINE COMPLETE** (6 stages, all merged + CI-green): 1 spine (073a) → 2 waits (073b) →
+3 saga/human_task/timeline (073c) → 4 simulation (073d) → 5 builder [backend 073e + UI 073f] →
+6 owner-built/trust (073g). **Next:** the **Option-A ghost-recovery diagnosis extension** — the readable
+sugar verbs (`diagnose`/`classify_ghost`/`approval_gate`/`compose`) desugared to the generic grammar +
+the jewelry pack (8-reason taxonomy, frontier diagnosis prompt, reason-conditioned templates) + the eval
+harness (offline/synthetic, real-ready via the gate) + the CAPTURE-GAP migrations for live diagnosis.
