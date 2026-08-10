@@ -2,6 +2,7 @@ import { Link, Outlet } from "@tanstack/react-router";
 
 import { useAuth } from "../auth";
 import { ROLE_LABEL, canInvite, hasPermission, type Role } from "../lib/roles";
+import NotificationBell from "./NotificationBell";
 
 const navLink =
   "rounded-md px-3 py-1.5 text-neutral-600 hover:bg-neutral-100";
@@ -79,6 +80,7 @@ export default function Shell() {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <NotificationBell />
             <div className="text-right">
               <div className="text-xs text-neutral-700">{userLabel}</div>
               <div className="flex justify-end gap-1">

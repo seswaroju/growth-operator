@@ -20,6 +20,7 @@ from core.customers.api import router as customers_router
 from core.ingestion.api import router as imports_router
 from core.insights.api import insight_admin_router, insights_router
 from core.insights.api import router as dashboard_router
+from core.notifications.api import router as notifications_router
 from core.packs.router import router as packs_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
@@ -90,6 +91,7 @@ app.include_router(ops_router)
 app.include_router(approvals_router)
 app.include_router(imports_router)
 app.include_router(workflows_router)
+app.include_router(notifications_router)
 app.include_router(support_owner_router)
 app.include_router(support_admin_router)
 app.include_router(platform_router)
