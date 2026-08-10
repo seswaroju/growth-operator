@@ -36,14 +36,18 @@ def compile_program(dsl: dict[str, Any]) -> list[dict[str, Any]]:
             elif verb == "agent_task":
                 program.append({"op": "AGENT", "archetype": body["archetype"],
                                 "task": body["task"], "input_map": body.get("input_map", {}),
-                                "timeout": body.get("timeout")})
+                                "timeout": body.get("timeout"), "tier": body.get("tier"),
+                                "output": body.get("output"), "output_as": body.get("output_as")})
             elif verb == "wait":
                 program.append({"op": "WAIT", "for": body["for"], "timeout": body.get("timeout"),
                                 "event": body.get("event")})
             elif verb == "human_task":
                 program.append({"op": "HUMAN", "kind": body["kind"],
                                 "assignee": body.get("assignee"), "timeout": body.get("timeout"),
-                                "payload": body.get("payload")})
+                                "payload": body.get("payload"), "mode": body.get("mode"),
+                                "options_from": body.get("options_from"),
+                                "recommended": body.get("recommended"),
+                                "label_sink": body.get("label_sink")})
             elif verb == "branch":
                 br: dict[str, Any] = {"op": "BRANCH", "cases": [], "default": None}
                 program.append(br)

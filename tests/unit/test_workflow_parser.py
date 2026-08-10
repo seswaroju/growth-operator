@@ -62,11 +62,13 @@ def test_kirana_workflows_parse() -> None:
 
 
 def test_proposed_workflow_with_ungrammar_verbs_is_rejected() -> None:
-    # silent_lead_reactivation v3 uses classify_ghost/diagnose/approval_gate/compose — not in the
-    # frozen grammar. It stays in the repo (the Option-A extension target) but must not parse today.
+    # silent_lead_reactivation v3 is the Option-A target. Its diagnosis verbs now desugar
+    # (MVP-073h), but the file still carries fields beyond even the extended grammar (e.g.
+    # `on_shop_stopped`, ternary `mode`), so it is STILL rejected — the ghost-recovery pack ships a
+    # clean rewrite. It must not parse as-is today.
     with pytest.raises(WorkflowSchemaError) as ei:
         _parse_file(_JEWELRY / "silent_lead_reactivation.yaml")
-    assert "classify_ghost" in str(ei.value)
+    assert "on_shop_stopped" in str(ei.value)
 
 
 def test_unknown_step_type_rejected() -> None:

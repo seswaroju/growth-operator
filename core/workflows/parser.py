@@ -28,6 +28,51 @@ from core.workflows.schema import parse_duration_s, validate_dsl
 
 _ENV = celpy.Environment()
 
+# Option-A readable sugar (DECISIONS 2026-08-09): a pack may write these verbs; the parser desugars
+# them to the generic grammar before validation, so the executor keeps its 7 generic step types and
+# `core/` stays industry-neutral. `diagnose`/`classify_ghost`/`compose` → `agent_task` (output bound
+# under the verb's name); `approval_gate` → a ranked `human_task`.
+_SUGAR_AGENT = frozenset({"diagnose", "classify_ghost", "compose"})
+
+
+def _desugar_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for step in steps:
+        verb, body = next(iter(step.items()))
+        body = dict(body) if isinstance(body, dict) else body
+        if verb in _SUGAR_AGENT:
+            body.setdefault("output_as", verb)  # the var namespace a later step reads
+            out.append({"agent_task": body})
+        elif verb == "approval_gate":
+            human: dict[str, Any] = {"kind": "approval", "mode": "ranked"}
+            for k in ("options_from", "recommended", "label_sink", "assignee", "timeout"):
+                if k in body:
+                    human[k] = body[k]
+            human["allow_decline"] = bool(body.get("allow_decline", body.get("allow_owner_handle")))
+            out.append({"human_task": human})
+        elif verb == "branch":
+            body["cases"] = [{**c, "steps": _desugar_steps(c.get("steps", []))}
+                             for c in body.get("cases", [])]
+            body["default"] = _desugar_steps(body.get("default", []))
+            out.append({"branch": body})
+        elif verb == "loop":
+            body["steps"] = _desugar_steps(body.get("steps", []))
+            out.append({"loop": body})
+        else:
+            out.append(step)
+    return out
+
+
+def desugar(dsl: dict[str, Any]) -> dict[str, Any]:
+    """Rewrite Option-A sugar verbs to the generic grammar. Pure; leaves generic verbs untouched."""
+    if "steps" not in dsl:
+        return dsl
+    result = {**dsl, "steps": _desugar_steps(dsl["steps"])}
+    comp = dsl.get("compensation")
+    if isinstance(comp, dict) and "on_failure" in comp:
+        result["compensation"] = {**comp, "on_failure": _desugar_steps(comp["on_failure"])}
+    return result
+
 # A trigger condition may carry a duration predicate: "<cel> FOR '72h'" — the CEL must hold
 # continuously for the window (compiled to a scheduler check, MVP-073).
 _FOR_RE = re.compile(r"^(?P<pred>.+?)\s+FOR\s+['\"](?P<dur>\d+[smhd])['\"]\s*$", re.IGNORECASE)
@@ -94,7 +139,8 @@ def _walk_steps(steps: list[dict[str, Any]], visit: Any) -> None:
 
 def parse(dsl: dict[str, Any], *, mandated: list[GuardRef] | None = None) -> ParsedWorkflow:
     """Validate + normalise a DSL definition. Raises `WorkflowSchemaError` (structure) or
-    `WorkflowParseError` (CEL/guard). `mandated` guards are injected before persistence."""
+    `WorkflowParseError` (CEL/guard). Option-A sugar desugared first; `mandated` guards injected."""
+    dsl = desugar(dsl)
     validate_dsl(dsl)
 
     declared = [guards_mod.parse_guard_ref(g) for g in dsl.get("guards", [])]

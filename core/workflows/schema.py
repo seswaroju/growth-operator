@@ -98,6 +98,12 @@ DSL_SCHEMA: dict[str, Any] = {
                 "input_map": {"type": "object"},
                 "timeout": _DURATION,
                 "on_timeout": {"type": ["string", "object"]},
+                # Model routing (frontier = high-value/low-volume) + structured output binding: the
+                # agent's JSON output is stored under `output_as` (its var namespace), narrowed
+                # `output` keys, so a later step reads e.g. `diagnose.top_reason`. (Option-A sugar.)
+                "tier": {"type": "string", "enum": ["frontier", "standard", "nano"]},
+                "output": {"type": "array", "items": {"type": "string"}},
+                "output_as": {"type": "string"},
             },
         },
         "human_task": {
@@ -110,6 +116,13 @@ DSL_SCHEMA: dict[str, Any] = {
                 "timeout": _DURATION,
                 "escalation": {"type": "array"},
                 "payload": {"type": ["string", "object"]},
+                # Ranked-options approval (the `approval_gate` sugar): present 2–3 options + a
+                # recommended one + an "I'll handle it" decline; the owner's pick becomes a label.
+                "mode": {"type": "string", "enum": ["single", "ranked"]},
+                "options_from": {"type": "string"},
+                "recommended": {"type": "string"},
+                "allow_decline": {"type": "boolean"},
+                "label_sink": {"type": "string"},
             },
         },
         "wait": {

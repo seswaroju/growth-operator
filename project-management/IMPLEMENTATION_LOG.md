@@ -2976,3 +2976,39 @@ integ+e2e+contract (+6) · no migration/dep.
 sugar verbs (`diagnose`/`classify_ghost`/`approval_gate`/`compose`) desugared to the generic grammar +
 the jewelry pack (8-reason taxonomy, frontier diagnosis prompt, reason-conditioned templates) + the eval
 harness (offline/synthetic, real-ready via the gate) + the CAPTURE-GAP migrations for live diagnosis.
+
+---
+
+## 2026-08-09 — MVP-073h: Ghost-recovery diagnosis extension — Option A (sugar → generic grammar)
+
+**Branch:** `feature/mvp-073h-diagnosis-sugar` (off main). **Merge:** `pending`. The first of the three
+ghost-recovery items (the MVP thesis): the **Option-A readable sugar** that lets a pack author
+`diagnose`/`approval_gate`/etc. while the engine stays generic. No migration, no dependency.
+
+**Parser desugar** (`core/workflows/parser.py::desugar`, runs before validation): `diagnose` /
+`classify_ghost` / `compose` → `agent_task` (output bound under the verb name via `output_as`);
+`approval_gate` → a ranked `human_task` (`allow_owner_handle` → `allow_decline`). Recurses into
+branch/loop/compensation. The executor never gains a step type — `core/` stays industry-neutral (guard
+clean). **Generic engine additions** (schema + program + executor): `agent_task` gains **`tier`**
+(frontier/standard/nano routing, passed to the runtime) and **structured `output` binding** — the
+agent's JSON output is stored in vars under `output_as`, narrowed to the declared `output` keys, so a
+later branch routes on `diagnose.top_reason`; `human_task` gains a **`ranked` mode** whose approval
+payload carries the resolved `options` (from `diagnose.ranked`), `recommended`, and `label_sink`.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Sugar desugars (diagnose/approval_gate/compose, incl. nested) | `test_workflow_sugar.py` (5) | PASS |
+| Generic verbs untouched | `test_generic_verbs_are_left_untouched` | PASS |
+| **Runtime: agent output binds + a branch routes on it** | `test_diagnose_output_binds_and_routes_the_branch` | PASS |
+| **approval_gate parks with a ranked payload (options/recommended/label_sink)** | `test_approval_gate_parks_with_ranked_payload` | PASS |
+| silent_lead_reactivation v3 still rejected (beyond extended grammar) | `test_proposed_workflow_with_ungrammar_verbs_is_rejected` (updated) | PASS |
+
+**Commands:** ruff clean · `mypy core` **164** · **guards 0** (core industry-neutral) · **424**
+unit+isolation · **467** integ+e2e+contract (+7) · no migration/dep.
+
+**Next recommended action:** merge + push + record hash + verify CI, then item 2 — the **jewelry
+ghost-recovery pack** (the 8-reason taxonomy, the frontier diagnosis prompt, the reason-conditioned
+templates as declarative `verticals/jewelry/` config + a clean `silent_lead_reactivation` rewrite using
+the sugar) — then item 3, the **eval harness** (offline/synthetic, real-ready via the gate) + the
+**CAPTURE-GAP migrations** for live diagnosis. Then the **synthetic-data demo** (founder request).
