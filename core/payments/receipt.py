@@ -27,6 +27,8 @@ class Receipt:
     buyer_name: str
     line_items: list[LineItem] = field(default_factory=list)
     currency: str = "INR"
+    discount_minor: int = 0
+    discount_label: str = "Discount"
     tax_label: str = "Tax"
     tax_minor: int = 0
     payment_ref: str | None = None
@@ -38,7 +40,7 @@ class Receipt:
 
     @property
     def total_minor(self) -> int:
-        return self.subtotal_minor + self.tax_minor
+        return self.subtotal_minor - self.discount_minor + self.tax_minor
 
 
 def money(minor: int, currency: str = "INR") -> str:
@@ -59,6 +61,8 @@ def render_receipt_text(r: Receipt) -> str:
         lines.append(f"  {li.description}: {money(li.amount_minor, r.currency)}")
     lines.append("")
     lines.append(f"Subtotal: {money(r.subtotal_minor, r.currency)}")
+    if r.discount_minor:
+        lines.append(f"{r.discount_label}: -{money(r.discount_minor, r.currency)}")
     if r.tax_minor:
         lines.append(f"{r.tax_label}: {money(r.tax_minor, r.currency)}")
     lines.append(f"Total: {money(r.total_minor, r.currency)}")
@@ -86,6 +90,13 @@ def render_receipt_html(r: Receipt) -> str:
         f'{cur(li.amount_minor)}</td>'
         f'</tr>'
         for li in r.line_items
+    )
+    discount_row = (
+        '<tr><td style="padding:3px 0;color:#6e7a73;font-size:13px">'
+        f'{escape(r.discount_label)}</td>'
+        '<td style="padding:3px 0;text-align:right;color:#2f7d57;font-size:13px">'
+        f'-{cur(r.discount_minor)}</td></tr>'
+        if r.discount_minor else ""
     )
     tax_row = (
         f'<tr><td style="padding:3px 0;color:#6e7a73;font-size:13px">{escape(r.tax_label)}</td>'
@@ -142,6 +153,7 @@ def render_receipt_html(r: Receipt) -> str:
         '<tr><td style="padding-top:12px;color:#6e7a73;font-size:13px">Subtotal</td>'
         f'<td style="padding-top:12px;text-align:right;color:#2a2318;font-size:13px">'
         f'{cur(r.subtotal_minor)}</td></tr>'
+        f'{discount_row}'
         f'{tax_row}'
         f'<tr><td style="padding-top:12px;font-family:{_SERIF};font-size:16px;color:#2a2318">'
         'Total paid</td>'

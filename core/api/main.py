@@ -22,6 +22,7 @@ from core.insights.api import insight_admin_router, insights_router
 from core.insights.api import router as dashboard_router
 from core.notifications.api import router as notifications_router
 from core.packs.router import router as packs_router
+from core.payments.api import router as transactions_admin_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
 from core.runtime.ops_router import router as ops_router
@@ -100,3 +101,4 @@ app.include_router(ops_admin_router)
 app.include_router(analytics_admin_router)
 app.include_router(customer_health_admin_router)
 app.include_router(billing_admin_router)
+app.include_router(transactions_admin_router)
