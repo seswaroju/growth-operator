@@ -3,18 +3,19 @@ import { useQuery } from "@tanstack/react-query";
 import { adminOpsHealth, type OperationalHealth } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { Card } from "./ui";
 
 type Tone = "ok" | "warn" | "bad";
 
 const TONE_CARD: Record<Tone, string> = {
-  ok: "border-slate-700 bg-slate-800/40",
-  warn: "border-amber-500/40 bg-amber-500/10",
-  bad: "border-red-500/40 bg-red-500/10",
+  ok: "border-line bg-surface",
+  warn: "border-warn-soft bg-warn-soft",
+  bad: "border-danger-soft bg-danger-soft",
 };
 const TONE_NUM: Record<Tone, string> = {
-  ok: "text-slate-100",
-  warn: "text-amber-300",
-  bad: "text-red-300",
+  ok: "text-ink",
+  warn: "text-warn",
+  bad: "text-danger",
 };
 
 // Each health metric: its value, a "breaking/delayed?" tone, and what it means.
@@ -31,13 +32,13 @@ function metrics(h: OperationalHealth): { label: string; value: number; tone: To
   ];
 }
 
-function Card({ label, value, tone, hint }:
+function MetricCard({ label, value, tone, hint }:
   { label: string; value: number; tone: Tone; hint: string }) {
   return (
     <div className={`rounded-2xl border p-5 ${TONE_CARD[tone]}`}>
-      <div className={`text-3xl font-semibold tabular-nums ${TONE_NUM[tone]}`}>{value}</div>
-      <div className="mt-2 text-sm font-medium text-slate-200">{label}</div>
-      <div className="mt-0.5 text-[11px] text-slate-400">{hint}</div>
+      <div className={`font-serif text-3xl font-medium tnum ${TONE_NUM[tone]}`}>{value}</div>
+      <div className="mt-2 text-sm font-medium text-ink">{label}</div>
+      <div className="mt-0.5 text-[11px] text-muted">{hint}</div>
     </div>
   );
 }
@@ -57,33 +58,33 @@ export default function OperationalSection() {
 
   if (!canRead) {
     return (
-      <section className="rounded-2xl border border-slate-700 bg-slate-800/40 p-5">
-        <p className="text-sm text-slate-400">
+      <Card className="p-5">
+        <p className="text-sm text-muted">
           You don't have access to operational health. Pick a section from the nav.
         </p>
-      </section>
+      </Card>
     );
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold">Operational health · all stores</h2>
-        <span className="text-xs text-slate-500">what's breaking / delayed, right now</span>
+        <h2 className="text-sm font-semibold text-ink">Operational health · all stores</h2>
+        <span className="text-xs text-muted">what's breaking / delayed, right now</span>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : isError ? (
-        <p className="text-sm text-red-400">Couldn't load health — {(error as Error).message}</p>
+        <p className="text-sm text-danger">Couldn't load health — {(error as Error).message}</p>
       ) : data ? (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {metrics(data).map((m) => <Card key={m.label} {...m} />)}
+          {metrics(data).map((m) => <MetricCard key={m.label} {...m} />)}
         </div>
       ) : null}
 
-      <p className="rounded-2xl border border-slate-700 bg-slate-800/40 p-4 text-xs text-slate-400">
-        Error <span className="text-slate-300">detail</span> (stack traces, affected users) lives in
+      <p className="rounded-2xl border border-line bg-surface p-4 text-xs text-muted">
+        Error <span className="text-ink-2">detail</span> (stack traces, affected users) lives in
         the self-hosted GlitchTip dashboard — this view is the at-a-glance counts. Numbers are counts
         only; no store's customer data is read here.
       </p>

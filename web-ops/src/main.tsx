@@ -15,7 +15,7 @@ function Root() {
   const { status } = useAuth();
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-900 text-sm text-slate-400">
+      <div className="flex min-h-screen items-center justify-center bg-porcelain text-sm text-muted">
         Loading…
       </div>
     );

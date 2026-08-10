@@ -3315,3 +3315,22 @@ over the primitive; 🔒 emoji → drawn `Lock`; Auto/Review + pause toggle on t
 **Full-app sweep:** zero legacy `neutral-*`/`bg-white`/color-scale classes remain in `web/src` — the
 **entire tenant app is on the design tokens.** **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓
 · guards 0. **Next:** U4 — `web-ops` operator console gets the same system.
+
+## 2026-08-10 — UX-04: operator console (web-ops) on a dark control-plane theme (stage U4 — UX PASS COMPLETE)
+
+**Branch:** `feature/ux-04-web-ops-console`. Presentational only — all operator queries/mutations/
+permission gating preserved. Gave `web-ops` its **own dark control-plane token system** (same token
+*names* as the tenant app, so the shared primitives work; deep graphite ground, on-brand emerald accent,
+serif wordmark, single committed dark theme — reads as an internal instrument).
+
+- `web-ops/src/index.css`: dark token system (`@theme inline`, themed selection/scrollbar/focus).
+- Copied the shared foundation into web-ops: `components/icons.tsx`, `lib/ui.ts`, `components/ui.tsx`.
+- Re-skinned the frame (`Shell` with monogram + emerald active-underline nav, `Login`, `Placeholder`,
+  `PlaneDisabled`, `main.tsx` loading) and **all 7 sections** (Queue, Stores, Operational, Analytics,
+  CustomerSuccess, Financial, StoreReports) — status/priority/severity/tone maps → token tones; local
+  `Card` clashes renamed (`MetricCard`/`StatCell`); forms → `fieldClasses`/`buttonClasses`.
+- **Sweep:** zero legacy `slate-*`/`indigo-*`/color-scale classes remain in `web-ops/src`.
+
+**Verify:** oxlint clean · `tsc -b` 0 · **vitest 6** · `vite build` ✓ · guards 0 (web-ops not
+noun-scanned by the guard, but manually clean). **UX pass complete** — both apps fully on the design
+system. **Next track:** multi-channel/advertising, then one channel end-to-end (per founder order).

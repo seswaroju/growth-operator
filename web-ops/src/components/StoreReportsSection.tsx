@@ -16,7 +16,7 @@ const REPORT_LABEL: Record<string, string> = {
 };
 
 const DOT: Record<string, string> = {
-  good: "bg-emerald-400", bad: "bg-red-400", neutral: "bg-slate-500",
+  good: "bg-good", bad: "bg-danger", neutral: "bg-muted",
 };
 
 function fmt(ts: string): string {
@@ -39,19 +39,19 @@ function Detail({ token, orgId, report }:
     queryFn: () => adminStoreReport(token, orgId, report.id),
     retry: false,
   });
-  if (!data) return <p className="px-4 py-3 text-xs text-slate-400">Loading…</p>;
+  if (!data) return <p className="px-4 py-3 text-xs text-muted">Loading…</p>;
   const d: StoreReportDetail = data;
   return (
-    <div className="space-y-3 border-t border-slate-700/60 px-4 py-3">
+    <div className="space-y-3 border-t border-line-2 px-4 py-3">
       {d.drivers.length > 0 && (
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Why</div>
+          <div className="text-[11px] font-semibold text-muted">Why</div>
           <ul className="mt-1 space-y-1">
             {d.drivers.map((dr, i) => (
               <li key={i} className="flex gap-2 text-sm">
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT[dr.sentiment] ?? DOT.neutral}`} />
-                <span><span className="text-slate-200">{dr.label}</span>
-                  <span className="text-slate-400"> — {dr.detail}</span></span>
+                <span><span className="text-ink-2">{dr.label}</span>
+                  <span className="text-muted"> — {dr.detail}</span></span>
               </li>
             ))}
           </ul>
@@ -59,14 +59,12 @@ function Detail({ token, orgId, report }:
       )}
       {Object.keys(d.full_breakdown).length > 0 && (
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Numbers
-          </div>
+          <div className="text-[11px] font-semibold text-muted">Numbers</div>
           <div className="mt-1 space-y-0.5">
             {Object.entries(d.full_breakdown).map(([k, v]) => (
               <div key={k} className="flex justify-between gap-4 text-sm">
-                <span className="text-slate-400">{k.replace(/_/g, " ")}</span>
-                <span className="tabular-nums text-slate-200">{money(k, v)}</span>
+                <span className="text-muted">{k.replace(/_/g, " ")}</span>
+                <span className="tnum text-ink-2">{money(k, v)}</span>
               </div>
             ))}
           </div>
@@ -80,21 +78,22 @@ function ReportCard({ token, orgId, report }:
   { token: string; orgId: string; report: StoreReportSummary }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/40">
+    <div className="overflow-hidden rounded-xl border border-line bg-surface">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-800/70"
+        className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-raised"
       >
         <div>
           <div className="flex items-center gap-2">
-            <span className="rounded-full border border-slate-600 px-2 py-0.5 text-[10px] text-slate-400">
+            <span className="inline-flex items-center rounded-lg bg-line-2 px-2.5 py-1 text-[10px]
+              font-semibold text-ink-2">
               {REPORT_LABEL[report.report_type] ?? report.report_type}
             </span>
-            <span className="text-[11px] text-slate-500">{fmt(report.generated_at)}</span>
+            <span className="text-[11px] text-muted">{fmt(report.generated_at)}</span>
           </div>
-          <div className="mt-1 text-sm text-slate-100">{report.verdict}</div>
+          <div className="mt-1 text-sm text-ink">{report.verdict}</div>
         </div>
-        <span className="text-lg leading-none text-slate-500">{open ? "–" : "+"}</span>
+        <span className="text-lg leading-none text-muted">{open ? "–" : "+"}</span>
       </button>
       {open && <Detail token={token} orgId={orgId} report={report} />}
     </div>
@@ -116,16 +115,18 @@ export default function StoreReportsSection() {
 
   return (
     <div className="space-y-4">
-      <Link to="/stores" className="text-xs text-indigo-300 hover:underline">← All stores</Link>
-      <h2 className="text-sm font-semibold">Store insight reports</h2>
+      <Link to="/stores" className="text-xs font-semibold text-accent-ink hover:text-accent hover:underline">
+        ← All stores
+      </Link>
+      <h2 className="text-sm font-semibold text-ink">Store insight reports</h2>
       {!canRead ? (
-        <p className="text-sm text-slate-400">You don't have access to store insights.</p>
+        <p className="text-sm text-muted">You don't have access to store insights.</p>
       ) : isLoading ? (
-        <p className="text-sm text-slate-400">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       ) : isError ? (
-        <p className="text-sm text-red-400">Couldn't load reports — {(error as Error).message}</p>
+        <p className="text-sm text-danger">Couldn't load reports — {(error as Error).message}</p>
       ) : (data ?? []).length === 0 ? (
-        <p className="text-sm text-slate-400">This store has no insight reports yet.</p>
+        <p className="text-sm text-muted">This store has no insight reports yet.</p>
       ) : (
         <div className="space-y-2">
           {(data ?? []).map((r) => (
