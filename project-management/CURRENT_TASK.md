@@ -16,8 +16,7 @@ selects and approves the next ticket.
 full dark mode — dashboards lead with the day's work, not a 4-stat template. Also installed **11
 markdown-only UI/UX craft skills** into `.claude/skills/` (UX-00, merged `edc760c`+`0455e7a`) and used
 them (craft-floor + new-work) to drive the design. **Order:** UX pass first → multi-channel → one
-channel end-to-end. **Stages:** **U1 foundation + Shell + Login + bell ✅** → U2 dashboard + shared
-primitives → U3 work surfaces (approvals/conversations/campaigns/…) → U4 web-ops.
+channel end-to-end. **Stages:** **U1 shell/login/bell ✅ → U2 dashboard + primitives ✅** → U3 work surfaces (approvals/conversations/campaigns/…) → U4 web-ops.
 
 **U1 (`feature/ux-01-foundation-shell-login`):** token system in `web/src/index.css` (Tailwind v4
 `@theme inline` over CSS vars, theme-reactive light/dark), `web/src/components/icons.tsx` (drawn set),
