@@ -7,19 +7,24 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { hasPermission } from "../lib/roles";
+import { buttonClasses, fieldClasses } from "../lib/ui";
+import { Megaphone, Plus } from "./icons";
+import { Card, EmptyState, PageHeader } from "./ui";
 
-const STATUS_STYLE: Record<string, string> = {
-  draft: "bg-neutral-100 text-neutral-600",
-  pending_approval: "bg-amber-100 text-amber-700",
-  executing: "bg-sky-100 text-sky-700",
-  executed: "bg-green-100 text-green-700",
-  halted: "bg-red-100 text-red-700",
-  rejected: "bg-neutral-200 text-neutral-500",
+// Status tone per campaign state, harmonized to the tokens.
+const STATUS_TONE: Record<string, string> = {
+  draft: "bg-line-2 text-ink-2",
+  pending_approval: "bg-warn-soft text-warn",
+  executing: "bg-accent-soft text-accent-ink",
+  executed: "bg-good-soft text-good",
+  halted: "bg-danger-soft text-danger",
+  rejected: "bg-line-2 text-ink-2",
 };
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[status] ?? ""}`}>
+    <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-semibold
+      ${STATUS_TONE[status] ?? "bg-line-2 text-ink-2"}`}>
       {status.replace("_", " ")}
     </span>
   );
@@ -42,41 +47,41 @@ function SendPanel({ token, campaign }: { token: string; campaign: Campaign }) {
   const mismatch = send.error instanceof ApiError && send.error.status === 409;
 
   return (
-    <div className="mt-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+    <div className="mt-3 rounded-xl border border-line bg-porcelain p-3.5">
       {preview.isLoading ? (
-        <p className="text-xs text-neutral-500">Checking audience…</p>
+        <p className="text-xs text-muted">Checking audience…</p>
       ) : (
         <>
-          <p className="text-sm text-neutral-700">
-            This will message <span className="font-semibold">{size}</span> contacts
+          <p className="text-sm text-ink-2">
+            This will message <span className="font-semibold text-ink">{size}</span> contacts
             {" "}(marketing consent, not suppressed).
           </p>
-          <p className="mt-0.5 text-[11px] text-neutral-500">
+          <p className="mt-0.5 text-[11px] text-muted">
             Type the number to confirm — it goes to an approver before anything sends.
           </p>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2.5 flex items-center gap-2">
             <input
               inputMode="numeric"
               value={typed}
               onChange={(e) => setTyped(e.target.value.replace(/\D/g, ""))}
               placeholder={size !== undefined ? String(size) : "count"}
-              className="w-24 rounded-lg border border-neutral-300 px-2 py-1 text-sm tabular-nums focus:border-neutral-500 focus:outline-none"
+              className={fieldClasses("w-24 tnum")}
             />
             <button
               onClick={() => send.mutate()}
               disabled={!typed || send.isPending}
-              className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              className={buttonClasses("primary", "sm")}
             >
               {send.isPending ? "Sending…" : "Send for approval"}
             </button>
           </div>
           {send.isSuccess && (
-            <p className="mt-2 text-xs text-green-600">
+            <p className="mt-2 text-xs text-good">
               Queued — approve it in the Approvals queue and it sends (staggered).
             </p>
           )}
           {send.isError && (
-            <p className="mt-2 text-xs text-red-600">
+            <p className="mt-2 text-xs text-danger">
               {mismatch
                 ? (send.error as ApiError).message
                 : `Couldn't send — ${(send.error as Error).message}`}
@@ -93,34 +98,33 @@ function CampaignRow({ token, campaign, canSend }:
   const [open, setOpen] = useState(false);
   const sendable = campaign.status === "draft" || campaign.status === "scheduled";
   return (
-    <li className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium text-neutral-900">{campaign.name}</div>
-          <div className="mt-0.5 text-[11px] text-neutral-500">
-            template: {campaign.template_key ?? "—"} · {campaign.sent_count} sent
-            {campaign.failed_count > 0 && ` · ${campaign.failed_count} failed`}
+    <li>
+      <Card className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-ink">{campaign.name}</div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              template: {campaign.template_key ?? "—"} · {campaign.sent_count} sent
+              {campaign.failed_count > 0 && ` · ${campaign.failed_count} failed`}
+            </div>
+            {campaign.status === "halted" && campaign.halt_reason && (
+              <div className="mt-0.5 text-[11px] text-danger">halted: {campaign.halt_reason}</div>
+            )}
+            {campaign.status === "pending_approval" && (
+              <div className="mt-0.5 text-[11px] text-warn">awaiting approval in Approvals</div>
+            )}
           </div>
-          {campaign.status === "halted" && campaign.halt_reason && (
-            <div className="mt-0.5 text-[11px] text-red-600">halted: {campaign.halt_reason}</div>
-          )}
-          {campaign.status === "pending_approval" && (
-            <div className="mt-0.5 text-[11px] text-amber-600">awaiting approval in Approvals</div>
-          )}
+          <div className="flex items-center gap-2">
+            <StatusBadge status={campaign.status} />
+            {canSend && sendable && (
+              <button onClick={() => setOpen((v) => !v)} className={buttonClasses("ghost", "sm")}>
+                {open ? "Cancel" : "Send…"}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={campaign.status} />
-          {canSend && sendable && (
-            <button
-              onClick={() => setOpen((v) => !v)}
-              className="rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-medium hover:bg-neutral-50"
-            >
-              {open ? "Cancel" : "Send…"}
-            </button>
-          )}
-        </div>
-      </div>
-      {open && sendable && <SendPanel token={token} campaign={campaign} />}
+        {open && sendable && <SendPanel token={token} campaign={campaign} />}
+      </Card>
     </li>
   );
 }
@@ -150,53 +154,49 @@ function CreateForm({ token }: { token: string }) {
   });
 
   return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); if (name && tpl) create.mutate(); }}
-      className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm"
-    >
-      <h2 className="text-sm font-semibold text-neutral-800">New campaign</h2>
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-neutral-500">Name</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Diwali offer"
-            className="w-48 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-neutral-500">Approved template</span>
-          <select
-            value={tpl}
-            onChange={(e) => setTpl(e.target.value)}
-            className="w-56 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm focus:border-neutral-500 focus:outline-none"
+    <Card className="p-4">
+      <form onSubmit={(e) => { e.preventDefault(); if (name && tpl) create.mutate(); }}>
+        <h2 className="text-sm font-semibold text-ink">New campaign</h2>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-muted">Name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Festival offer"
+              className={fieldClasses("w-48")}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium text-muted">Approved template</span>
+            <select value={tpl} onChange={(e) => setTpl(e.target.value)} className={fieldClasses("w-56")}>
+              <option value="">Select a template…</option>
+              {approved.map((t) => (
+                <option key={`${t.template_key}:${t.language}`} value={t.template_key}>
+                  {t.template_key} ({t.language})
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            disabled={!name || !tpl || create.isPending}
+            className={buttonClasses("primary", "md")}
           >
-            <option value="">Select a template…</option>
-            {approved.map((t) => (
-              <option key={`${t.template_key}:${t.language}`} value={t.template_key}>
-                {t.template_key} ({t.language})
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="submit"
-          disabled={!name || !tpl || create.isPending}
-          className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
-        >
-          {create.isPending ? "Creating…" : "Create draft"}
-        </button>
-      </div>
-      {approved.length === 0 && !templates.isLoading && (
-        <p className="mt-2 text-[11px] text-neutral-500">
-          No approved WhatsApp templates yet — marketing campaigns can only send an approved template.
-        </p>
-      )}
-      {create.isError && (
-        <p className="mt-2 text-xs text-red-600">Couldn't create — {(create.error as Error).message}</p>
-      )}
-    </form>
+            <Plus className="h-[15px] w-[15px]" />
+            {create.isPending ? "Creating…" : "Create draft"}
+          </button>
+        </div>
+        {approved.length === 0 && !templates.isLoading && (
+          <p className="mt-2.5 text-[11px] text-muted">
+            No approved WhatsApp templates yet — marketing campaigns can only send an approved template.
+          </p>
+        )}
+        {create.isError && (
+          <p className="mt-2.5 text-xs text-danger">Couldn't create — {(create.error as Error).message}</p>
+        )}
+      </form>
+    </Card>
   );
 }
 
@@ -213,34 +213,37 @@ export default function CampaignsSection() {
   const campaigns = data ?? [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold tracking-tight">Campaigns</h1>
-        <p className="text-sm text-neutral-500">
-          Send an approved template to your consented customers — with a typed-count confirm and an
-          approval before anything goes out.
-        </p>
+    <div>
+      <PageHeader
+        title="Campaigns"
+        subtitle="Send an approved template to your consented customers — with a typed-count confirm and an approval before anything goes out."
+      />
+
+      <div className="space-y-5">
+        {canSend && token && <CreateForm token={token} />}
+
+        {isLoading ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : isError ? (
+          <p className="rounded-2xl border border-danger-soft bg-danger-soft px-4 py-3 text-sm text-danger">
+            Couldn't load campaigns — {(error as Error).message}
+          </p>
+        ) : campaigns.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={<Megaphone className="h-6 w-6" />}
+              title="No campaigns yet"
+              hint="Create a draft from an approved template to reach your consented customers."
+            />
+          </Card>
+        ) : (
+          <ul className="space-y-2">
+            {campaigns.map((c) => (
+              <CampaignRow key={c.id} token={token as string} campaign={c} canSend={canSend} />
+            ))}
+          </ul>
+        )}
       </div>
-
-      {canSend && token && <CreateForm token={token} />}
-
-      {isLoading ? (
-        <p className="text-sm text-neutral-500">Loading…</p>
-      ) : isError ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          Couldn't load campaigns — {(error as Error).message}
-        </p>
-      ) : campaigns.length === 0 ? (
-        <p className="rounded-2xl border border-neutral-200 bg-white p-6 text-center text-sm text-neutral-500">
-          No campaigns yet.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {campaigns.map((c) => (
-            <CampaignRow key={c.id} token={token as string} campaign={c} canSend={canSend} />
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

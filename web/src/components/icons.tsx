@@ -93,3 +93,30 @@ export const Grid = (p: IconProps) => (
     <rect x="13" y="13" width="7" height="7" rx="1.5" />
   </Stroke>
 );
+
+export const Megaphone = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M3 11v2a1 1 0 0 0 1 1h2l4 3V7L6 10H4a1 1 0 0 0-1 1z" />
+    <path d="M14 8a4 4 0 0 1 0 8M10 17v3" />
+  </Stroke>
+);
+
+export const Users = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M16 19v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1" />
+    <circle cx="9.5" cy="8" r="3.2" />
+    <path d="M21 19v-1a4 4 0 0 0-3-3.8M16.5 5.2a3.2 3.2 0 0 1 0 5.6" />
+  </Stroke>
+);
+
+export const Box = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8" />
+  </Stroke>
+);
+
+export const Plus = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Stroke>
+);

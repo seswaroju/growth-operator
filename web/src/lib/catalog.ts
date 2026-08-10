@@ -24,10 +24,11 @@ export function availabilityLabel(a: string): string {
   return AVAILABILITY_LABEL[a] ?? a.replace(/_/g, " ");
 }
 
+// Harmonized to the design tokens (in_stock=good, made_to_order=warn, out_of_stock=muted).
 export const AVAILABILITY_STYLE: Record<string, string> = {
-  in_stock: "bg-green-100 text-green-800",
-  made_to_order: "bg-amber-100 text-amber-800",
-  out_of_stock: "bg-neutral-200 text-neutral-600",
+  in_stock: "bg-good-soft text-good",
+  made_to_order: "bg-warn-soft text-warn",
+  out_of_stock: "bg-line-2 text-ink-2",
 };
 
 // Rupees (as typed by the owner) → integer minor units for the API. NaN/empty → null.

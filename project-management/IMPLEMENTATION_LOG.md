@@ -3288,3 +3288,12 @@ tokens + `Card`/`PageHeader`/`EmptyState`/`Tag`. Added `danger`/`danger-ghost` b
 (`lib/ui.ts`). Harmonized `lib/leads.ts` `STAGE_STYLE` from rainbow pastels to token tones (won=good,
 quoted=warn, lost=danger; leads.test doesn't pin the strings). Chat bubbles: store=ink/porcelain,
 customer=porcelain/ink. **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
+
+## 2026-08-10 — UX-03b: Campaigns + Customers + Catalog (stage U3b)
+
+**Branch:** `feature/ux-03b-campaigns-customers-catalog`. Presentational only — all queries/mutations/
+permission gating + the campaign typed-count-confirm flow preserved. Re-skinned on tokens + primitives;
+added `fieldClasses` (shared form-field helper) + `Megaphone`/`Users`/`Box`/`Plus` icons. Harmonized
+`lib/customers.ts` `CONSENT_STYLE` and `lib/catalog.ts` `AVAILABILITY_STYLE` (+ campaigns status tones) to
+token tones (good/warn/danger/muted; no test pins the strings). Shape-only `Badge` so the tone class
+doesn't collide. **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
