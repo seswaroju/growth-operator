@@ -2901,3 +2901,38 @@ integ+e2e+contract (+6) · no migration/dep.
 (React, in `web/`) — a structured editor that composes the DSL and round-trips through the validate/
 save endpoints (server truth), with the web gate (oxlint + tsc + build). Then stage 6 (owner-built /
 trust-ledger activation path).
+
+---
+
+## 2026-08-09 — MVP-073f: Builder UI — structured form (stage 5b)
+
+**Branch:** `feature/mvp-073f-builder-ui` (off main). **Merge:** `pending`. The owner-facing workflow
+builder, in `web/` (the store-owner console). Founder chose the **structured form** editor over a
+drag-and-drop flow-graph (DECISIONS 2026-08-09); the flow-graph is noted as a future *selectable* view,
+cheap to add because the DSL + authoring API (MVP-073e) is the fixed contract. Frontend only, no dep.
+
+- `web/src/lib/workflows.ts` — **pure `composeDsl(draft)`** (owner draft → workflow DSL) +
+  `emptyStep` / `validKey`, deliberately decoupled from the editor UI so a graph surface can target the
+  same model. Owner step palette: `agent_task` / `wait` / `human_task` / `set` (`emit`/`branch`/`loop`
+  excluded — owners can't emit platform events; branch/loop a follow-on).
+- `web/src/api.ts` — `validateDefinition` (server-truth), `createDefinition`, `listOwnerDefinitions`.
+- `web/src/components/WorkflowsSection.tsx` — list owner drafts + a step-list form with **Validate**
+  (round-trips to `/definitions/validate`, shows the server verdict + locked guards) and **Save draft**.
+- Nav: **Automations** item + `/workflows` route, gated `catalog:write` (owner+manager; staff/viewer
+  don't see it). Frontend gating is UX-only; the backend enforces every call.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Draft → DSL composition (trigger/condition/steps) | `web workflows.test.ts` `composeDsl` (4) | PASS |
+| Empty-step defaults + key validation | `web workflows.test.ts` `emptyStep`/`validKey` (2) | PASS |
+| Nav gates Automations to catalog:write (owner+manager) | `web roles.test.ts` `visibleNav` (updated) | PASS |
+
+**Web gate:** oxlint clean (2 pre-existing warnings) · `tsc -b --noEmit` clean · **vitest 56** (+6) ·
+`npm run build` OK · **guards 0** (industry-nouns scans web/ — none). Backend unchanged.
+
+**Next recommended action:** merge + push + record hash + verify CI, then **stage 6: owner-built /
+trust-ledger activation path** — activation of an owner-built draft gated on a simulation report +
+tier-2 approval, runs start tier-2-everything until the trust ledger clears ~50 clean runs, then earn
+autonomy. That closes the 6-stage workflow initiative; then the Option-A ghost-recovery diagnosis
+extension + jewelry pack + eval + CAPTURE-GAP migrations.

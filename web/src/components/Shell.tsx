@@ -53,6 +53,11 @@ export default function Shell() {
                   Campaigns
                 </Link>
               )}
+              {hasPermission(roles, "catalog:write") && (
+                <Link to="/workflows" className={navLink} activeProps={navActive}>
+                  Automations
+                </Link>
+              )}
               {hasPermission(roles, "insights:read") && (
                 <Link to="/insights" className={navLink} activeProps={navActive}>
                   Insights
