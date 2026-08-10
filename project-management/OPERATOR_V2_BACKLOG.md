@@ -106,7 +106,7 @@ behind real payment credentials (§10.4 — never charge without founder approva
   **simulated until `razorpay_live_enabled` + real keys** (mirror the WABA/LLM gated-adapter pattern —
   httpx, off by default, mocked in tests, no real charge without founder approval). Records the charge in
   the billing model (OC1/OC2) + payment status; webhook verification for capture.
-- **PAY2 Receipt generation** (M) — a Shopify-style receipt (HTML → PDF) from a charge: store + line
+- **PAY2 Receipt generation** (M) — **DONE**; a Shopify-style receipt (HTML → PDF) from a charge: store + line
   items + amount + plan + date + tax fields; stored/retrievable; no secrets in the artifact.
 - **PAY3 Receipt delivery to WhatsApp + Email** (M) — send the generated receipt to the tenant's phone
   (WABA send — already real-ready, MVP-076) **and** email (PAY0) "on file", via the approval/mediation
