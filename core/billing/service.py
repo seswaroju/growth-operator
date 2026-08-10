@@ -8,6 +8,7 @@ dashboard comes from the ``platform_billing_rollup()`` SECURITY DEFINER function
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -17,17 +18,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.tenancy.repository import set_org_context
 
-_PLAN_COLS = "id, name, price_minor, active, created_at"
+_PLAN_COLS = "id, name, price_minor, active, description, features, created_at"
 _CHARGE_COLS = "id, org_id, period_month, charge_type, amount_minor, cost_minor, note, created_at"
 
 
 # ---- Plans (global GO catalog) -----------------------------------------------------------------
 
-async def create_plan(session: AsyncSession, *, name: str, price_minor: int) -> dict[str, Any]:
+async def create_plan(
+    session: AsyncSession, *, name: str, price_minor: int,
+    description: str | None = None, features: list[str] | None = None,
+) -> dict[str, Any]:
     row = (await session.execute(
-        text("INSERT INTO billing_plans (name, price_minor) VALUES (:n, :p) "
+        text("INSERT INTO billing_plans (name, price_minor, description, features) "
+             "VALUES (:n, :p, :d, CAST(:f AS jsonb)) "
              f"RETURNING {_PLAN_COLS}"),
-        {"n": name, "p": price_minor})).mappings().one()
+        {"n": name, "p": price_minor, "d": description,
+         "f": json.dumps(features or [])})).mappings().one()
     return dict(row)
 
 
@@ -35,6 +41,20 @@ async def list_plans(session: AsyncSession) -> list[dict[str, Any]]:
     rows = (await session.execute(
         text(f"SELECT {_PLAN_COLS} FROM billing_plans ORDER BY price_minor"))).mappings().all()
     return [dict(r) for r in rows]
+
+
+async def update_plan(
+    session: AsyncSession, plan_id: UUID, *, name: str, price_minor: int, active: bool,
+    description: str | None, features: list[str],
+) -> dict[str, Any] | None:
+    """Full update of a plan. Returns the updated row, or None if no plan has that id."""
+    row = (await session.execute(
+        text("UPDATE billing_plans SET name = :n, price_minor = :p, active = :a, "
+             "description = :d, features = CAST(:f AS jsonb) WHERE id = :id "
+             f"RETURNING {_PLAN_COLS}"),
+        {"id": plan_id, "n": name, "p": price_minor, "a": active, "d": description,
+         "f": json.dumps(features)})).mappings().one_or_none()
+    return dict(row) if row is not None else None
 
 
 # ---- Subscriptions (one active plan per client) ------------------------------------------------

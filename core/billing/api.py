@@ -12,8 +12,9 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.billing import service
@@ -39,6 +40,16 @@ ChargeType = Literal["subscription", "social", "seo", "campaign", "other"]
 class PlanCreate(BaseModel):
     name: str = Field(..., min_length=1)
     price_minor: int = Field(..., ge=0)
+    description: str | None = None
+    features: list[str] = Field(default_factory=list)
+
+
+class PlanUpdate(BaseModel):
+    name: str = Field(..., min_length=1)
+    price_minor: int = Field(..., ge=0)
+    active: bool = True
+    description: str | None = None
+    features: list[str] = Field(default_factory=list)
 
 
 class PlanOut(BaseModel):
@@ -46,6 +57,8 @@ class PlanOut(BaseModel):
     name: str
     price_minor: int
     active: bool
+    description: str | None = None
+    features: list[str] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -98,9 +111,32 @@ async def create_plan(
     current: CurrentAuth = Depends(get_current_auth),
     session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
 ) -> PlanOut:
-    plan = await service.create_plan(session, name=body.name, price_minor=body.price_minor)
+    plan = await service.create_plan(
+        session, name=body.name, price_minor=body.price_minor,
+        description=body.description, features=body.features)
     await log_platform_access(session, actor_user_id=current.user_id, action="billing.plan.created",
                               detail={"name": body.name})
+    return PlanOut(**plan)
+
+
+@router.patch("/plans/{plan_id}", response_model=PlanOut, summary="Edit a billing plan (GO tier)")
+async def update_plan(
+    plan_id: UUID,
+    body: PlanUpdate,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> PlanOut:
+    try:
+        plan = await service.update_plan(
+            session, plan_id, name=body.name, price_minor=body.price_minor, active=body.active,
+            description=body.description, features=body.features)
+    except IntegrityError as exc:  # another plan already owns that name (UNIQUE)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "a plan with that name already exists") from exc
+    if plan is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "plan not found")
+    await log_platform_access(session, actor_user_id=current.user_id, action="billing.plan.updated",
+                              detail={"plan_id": str(plan_id), "name": body.name})
     return PlanOut(**plan)
 
 

@@ -80,7 +80,7 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
         orgs = [org_a, org_b]
         await conn.execute("DELETE FROM billing_charges WHERE org_id = ANY($1::uuid[])", orgs)
         await conn.execute("DELETE FROM billing_subscriptions WHERE org_id = ANY($1::uuid[])", orgs)
-        await conn.execute("DELETE FROM billing_plans WHERE name = $1", plan_name)
+        await conn.execute("DELETE FROM billing_plans WHERE name LIKE $1", plan_name + "%")
         await conn.execute(
             "ALTER TABLE platform_access_log DISABLE TRIGGER trg_platform_access_log_immutable")
         await conn.execute("DELETE FROM platform_access_log WHERE actor_user_id=$1", operator)
@@ -161,3 +161,63 @@ async def test_billing_404_when_plane_disabled(
     monkeypatch.setenv("GROWTH_OPERATOR_ADMIN_PLANE_ENABLED", "false")
     r = await scene.client.get("/v1/admin/billing/rollup", headers=_op(scene.operator))
     assert r.status_code == 404
+
+
+# ---- OC1: editable plans + "what's included" ---------------------------------------------------
+
+async def test_create_and_edit_plan_features(scene: Scene) -> None:
+    op = _op(scene.operator)
+    # create with description + features
+    created = await scene.client.post(
+        "/v1/admin/billing/plans", headers=op,
+        json={"name": scene.plan_name, "price_minor": 500_000, "description": "Mid tier",
+              "features": ["WhatsApp campaigns", "SEO — 8 keywords"]})
+    assert created.status_code == 201, created.text
+    body = created.json()
+    plan_id = body["id"]
+    assert body["description"] == "Mid tier"
+    assert body["features"] == ["WhatsApp campaigns", "SEO — 8 keywords"]
+
+    # edit: change price, description, features, and deactivate
+    edited = await scene.client.patch(
+        f"/v1/admin/billing/plans/{plan_id}", headers=op,
+        json={"name": scene.plan_name, "price_minor": 750_000, "active": False,
+              "description": "Upgraded", "features": ["Google Ads", "Monthly report"]})
+    assert edited.status_code == 200, edited.text
+    e = edited.json()
+    assert e["price_minor"] == 750_000 and e["active"] is False
+    assert e["description"] == "Upgraded"
+    assert e["features"] == ["Google Ads", "Monthly report"]
+
+    # the change is durable (round-trips through list)
+    listed = (await scene.client.get("/v1/admin/billing/plans", headers=op)).json()
+    row = next(p for p in listed if p["id"] == plan_id)
+    assert row["features"] == ["Google Ads", "Monthly report"] and row["active"] is False
+
+
+async def test_edit_plan_404_for_unknown_id(scene: Scene) -> None:
+    r = await scene.client.patch(
+        f"/v1/admin/billing/plans/{uuid.uuid4()}", headers=_op(scene.operator),
+        json={"name": "x", "price_minor": 1000, "active": True, "features": []})
+    assert r.status_code == 404
+
+
+async def test_edit_plan_409_on_duplicate_name(scene: Scene) -> None:
+    op = _op(scene.operator)
+    p1 = await scene.client.post("/v1/admin/billing/plans", headers=op,
+                                 json={"name": scene.plan_name, "price_minor": 100_000})
+    p2 = await scene.client.post("/v1/admin/billing/plans", headers=op,
+                                 json={"name": scene.plan_name + "-2", "price_minor": 200_000})
+    assert p1.status_code == 201 and p2.status_code == 201
+    # rename p2 onto p1's (unique) name → conflict
+    clash = await scene.client.patch(
+        f"/v1/admin/billing/plans/{p2.json()['id']}", headers=op,
+        json={"name": scene.plan_name, "price_minor": 200_000, "active": True, "features": []})
+    assert clash.status_code == 409
+
+
+async def test_edit_plan_403_for_non_operator(scene: Scene) -> None:
+    r = await scene.client.patch(
+        f"/v1/admin/billing/plans/{uuid.uuid4()}", headers=_op(uuid.uuid4()),
+        json={"name": "x", "price_minor": 1000, "active": True, "features": []})
+    assert r.status_code == 403
