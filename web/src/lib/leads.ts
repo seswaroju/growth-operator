@@ -17,14 +17,15 @@ export const STAGE_LABEL: Record<Stage, string> = {
   lost: "Lost",
 };
 
-// Column accent per stage (Tailwind classes).
+// Column accent per stage, harmonized to the design tokens (won=good, quoted=warn — money on the
+// table, lost=danger, in-progress=accent/muted). Column position + label carry the finer distinction.
 export const STAGE_STYLE: Record<Stage, string> = {
-  new: "bg-sky-100 text-sky-800",
-  qualified: "bg-indigo-100 text-indigo-800",
-  quoted: "bg-amber-100 text-amber-800",
-  visit_booked: "bg-violet-100 text-violet-800",
-  won: "bg-green-100 text-green-800",
-  lost: "bg-neutral-200 text-neutral-600",
+  new: "bg-line-2 text-ink-2",
+  qualified: "bg-accent-soft text-accent-ink",
+  quoted: "bg-warn-soft text-warn",
+  visit_booked: "bg-accent-soft text-accent-ink",
+  won: "bg-good-soft text-good",
+  lost: "bg-danger-soft text-danger",
 };
 
 function isStage(s: string): s is Stage {

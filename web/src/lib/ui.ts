@@ -1,7 +1,7 @@
 // Shared presentational class helpers (pure — unit-testable, and kept out of component files so the
 // fast-refresh lint stays happy). The design tokens live in index.css; these compose them.
 
-export type BtnVariant = "primary" | "ghost" | "subtle";
+export type BtnVariant = "primary" | "ghost" | "subtle" | "danger" | "danger-ghost";
 export type BtnSize = "sm" | "md";
 
 const BTN_BASE =
@@ -15,6 +15,8 @@ const BTN_VARIANT: Record<BtnVariant, string> = {
   primary: "bg-accent text-white shadow-card hover:bg-accent-2",
   ghost: "border border-line bg-surface text-ink hover:border-muted",
   subtle: "text-accent-ink hover:text-accent",
+  danger: "bg-danger text-white hover:opacity-90",
+  "danger-ghost": "border border-danger-soft bg-surface text-danger hover:border-danger",
 };
 
 export function buttonClasses(variant: BtnVariant = "primary", size: BtnSize = "md", extra = ""): string {
