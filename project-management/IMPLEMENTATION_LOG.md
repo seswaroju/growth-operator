@@ -3148,7 +3148,7 @@ events from the existing event stream) → item 3 — the **WABA send adapter** 
 
 ## 2026-08-09 — MVP-075: Notification bell (owner feed) — priority item 2
 
-**Branch:** `feature/mvp-075-notification-bell` (off main). **Merge:** `pending`. Functional-first (UX
+**Branch:** `feature/mvp-075-notification-bell` (off main). **Merge:** `7076621`. Functional-first (UX
 polish is a later pass, per founder). Backend + web. Migration 039, no dependency.
 
 **Derived, not a new pipeline:** the feed aggregates signals that already exist — **pending approvals**
