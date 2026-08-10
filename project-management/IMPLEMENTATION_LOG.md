@@ -2867,7 +2867,7 @@ templates) + eval harness (offline/synthetic) + CAPTURE-GAP migrations for live.
 
 ## 2026-08-09 — MVP-073e: Owner-built authoring backend (stage 5a — builder's server truth)
 
-**Branch:** `feature/mvp-073e-authoring` (off main). **Merge:** `pending`. The backend half of the
+**Branch:** `feature/mvp-073e-authoring` (off main). **Merge:** `772fed1`. The backend half of the
 builder (stage 5): validate + save owner-built definitions. The React editor is stage 5b (web/, the
 store-owner console). No migration, no dependency.
 
