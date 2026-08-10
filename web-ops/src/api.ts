@@ -293,7 +293,9 @@ export interface Subscription {
   started_at: string;
 }
 
-export type ChargeType = "subscription" | "social" | "seo" | "campaign" | "other";
+export type ChargeType =
+  | "subscription" | "social" | "seo" | "campaign" | "other"
+  | "whatsapp" | "instagram" | "google_ads";
 
 export interface BillingCharge {
   id: string;

@@ -3384,3 +3384,34 @@ plan includes. Plans previously stored only name + price with create/list only.
 **Commands:** ruff clean · `mypy core` 168 · guards 0 · migration up/down/up · **billing integ 9** (+4) ·
 **unit+contract 438** · web-ops oxlint/tsc/**vitest 10**(+4)/build ✓. No secrets, no external calls, no
 tenant-isolation change (global admin-plane-only table). **Next:** OC2 — per-store spend-by-channel + ROI.
+
+## 2026-08-10 — OC2: per-store spend-by-channel (feedback D)
+
+**Branch:** `feature/oc2-spend-by-channel`. Founder wanted to see, per store, where the money goes
+(WhatsApp / Instagram / SEO / Google Ads …). The `billing_charges` spine already holds per-store/-month
+amount + our-cost per `charge_type`; OC2 adds channel granularity + a visible breakdown.
+
+- **Migration `c84cf2817c98`** (on `0855d6b58a71`): widen `billing_charges_charge_type_check` to add
+  **`whatsapp`, `instagram`, `google_ads`** (keeps the existing values → additive, rows preserved).
+  **Up/down/up verified** on live PG (constraint gains/loses `whatsapp`). Downgrade fails if a row already
+  uses a new value (documented — reclassify first).
+- **Backend:** `ChargeType` literal widened (record-charge validates against it).
+- **Frontend (web-ops):** `lib/spend.ts` (`spendByChannel` grouping → per-channel amount/cost/margin +
+  totals, sorted; `channelLabel`) + `spend.test.ts`. `FinancialSection` gains a **"Where the money went ·
+  by channel"** panel (bars + margin per channel + totals) on the tenant billing view; the record-charge
+  dropdown offers the new channels; raw list relabelled "Charges · detail". **Decision:** treated
+  `charge_type` as the channel (expanded the enum) rather than a separate column. ROI-per-channel deferred
+  (needs per-channel attribution — belongs to OC4/analytics).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| New channel charge types accepted + stored | `test_charge_accepts_new_channel_types` | PASS |
+| Group by channel: amount/cost/margin + totals, sorted | web-ops `lib/spend.test.ts` (grouping) | PASS |
+| Empty charges → empty breakdown / zero totals | web-ops `lib/spend.test.ts` (empty) | PASS |
+| Channel labels + fallback | web-ops `lib/spend.test.ts` (labels) | PASS |
+
+**Commands:** ruff clean · `mypy core` 168 · guards 0 · migration up/down/up · **billing integ 10** (+1) ·
+**unit+contract 438** · web-ops oxlint/tsc/**vitest 13**(+3)/build ✓. No secrets, no external calls, no
+tenant-isolation change. Also ticketed **TX1** (Automations onboarding examples) + **PAY0–PAY3** (Razorpay
+charge + WhatsApp/email receipt) from new founder feedback. **Next:** OC3 — plan-aware ticket priority + SLA.

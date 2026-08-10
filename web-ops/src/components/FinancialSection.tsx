@@ -9,11 +9,15 @@ import {
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
 import { featuresToText, parseFeatures, rupeesToMinor } from "../lib/plans";
+import { channelLabel, spendByChannel } from "../lib/spend";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Check } from "./icons";
 import { Card } from "./ui";
+import type { BillingCharge } from "../api";
 
-const CHARGE_TYPES: ChargeType[] = ["subscription", "social", "seo", "campaign", "other"];
+const CHARGE_TYPES: ChargeType[] = [
+  "whatsapp", "instagram", "google_ads", "seo", "social", "campaign", "subscription", "other",
+];
 
 function rupees(minor: number): string {
   return "₹" + (minor / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 });
@@ -211,6 +215,39 @@ function PlansPanel({ token, canManage }: { token: string; canManage: boolean })
   );
 }
 
+// OC2 — "where the money went" for one store: charges grouped by channel, bars + totals.
+function SpendBreakdownPanel({ charges }: { charges: BillingCharge[] }) {
+  const b = spendByChannel(charges);
+  if (b.channels.length === 0) return null;
+  const max = Math.max(...b.channels.map((c) => c.amount_minor), 1);
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-muted">Where the money went · by channel</div>
+      <div className="mt-2 space-y-1.5">
+        {b.channels.map((c) => (
+          <div key={c.channel} className="flex items-center gap-3 text-xs">
+            <span className="w-24 shrink-0 text-ink-2">{channelLabel(c.channel)}</span>
+            <span className="h-2 flex-1 overflow-hidden rounded-full bg-line-2">
+              <span className="block h-full rounded-full bg-accent"
+                style={{ width: `${Math.round((c.amount_minor / max) * 100)}%` }} />
+            </span>
+            <span className="w-20 shrink-0 text-right tnum text-ink">{rupees(c.amount_minor)}</span>
+            <span className={`w-20 shrink-0 text-right tnum ${c.margin_minor >= 0 ? "text-good" : "text-danger"}`}>
+              {c.margin_minor >= 0 ? "+" : "−"}{rupees(Math.abs(c.margin_minor))}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between border-t border-line-2 pt-2 text-xs font-semibold">
+        <span className="text-ink-2">Total</span>
+        <span className="tnum text-ink">
+          {rupees(b.total_amount_minor)} spend · {rupees(b.total_margin_minor)} margin
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function ClientBilling({ token, canManage }: { token: string; canManage: boolean }) {
   const qc = useQueryClient();
   const [org, setOrg] = useState("");
@@ -282,12 +319,14 @@ function ClientBilling({ token, canManage }: { token: string; canManage: boolean
             </div>
           )}
 
+          <SpendBreakdownPanel charges={charges.data ?? []} />
+
           <div>
-            <div className="text-[11px] font-semibold text-muted">This month's charges</div>
+            <div className="text-[11px] font-semibold text-muted">Charges · detail</div>
             <ul className="mt-1 space-y-1">
               {(charges.data ?? []).map((c) => (
                 <li key={c.id} className="flex justify-between text-sm text-ink-2">
-                  <span>{c.charge_type}</span>
+                  <span>{channelLabel(c.charge_type)}</span>
                   <span className="tnum">
                     {rupees(c.amount_minor)}
                     {c.cost_minor > 0 && <span className="text-muted"> − {rupees(c.cost_minor)} cost</span>}

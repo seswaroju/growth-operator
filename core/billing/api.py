@@ -32,7 +32,9 @@ router = APIRouter(
     dependencies=[Depends(require_admin_plane_enabled)],
 )
 
-ChargeType = Literal["subscription", "social", "seo", "campaign", "other"]
+ChargeType = Literal[
+    "subscription", "social", "seo", "campaign", "other", "whatsapp", "instagram", "google_ads",
+]
 
 
 # ---- Models ------------------------------------------------------------------------------------
