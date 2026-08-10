@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     # app_rw has no DDL rights, so migrations MUST use this URL, not database_url.
     database_migrator_url: str = Field(default="postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator")
     redis_url: str = Field(default="redis://localhost:6379/0")
+    # Browser CORS allow-list for the web app(s). Comma-separated origins. Dev default = the local
+    # Vite dev servers; set to the real web domain(s) in staging/prod. Empty disables CORS entirely.
+    cors_allow_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173")
     otel_exporter_otlp_endpoint: str | None = Field(default=None)
     # Error/exception tracking (security S2, audit #16d). OFF by default — with no DSN the SDK is
     # never initialized and no event leaves the process (see core/common/error_tracking.py). Points
