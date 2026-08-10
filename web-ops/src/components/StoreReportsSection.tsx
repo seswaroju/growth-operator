@@ -12,6 +12,7 @@ import { rupees, wowDelta } from "../lib/analytics";
 import { hasPerm } from "../lib/roles";
 import { channelLabel, spendByChannel } from "../lib/spend";
 import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
+import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
 
 const REPORT_LABEL: Record<string, string> = {
@@ -126,6 +127,7 @@ export default function StoreReportsSection() {
   const permissions = me?.permissions ?? [];
   const canInsights = hasPerm(permissions, "platform.insights:read");
   const canTenants = hasPerm(permissions, "platform.tenants:read");
+  const canManage = hasPerm(permissions, "platform.tenants:manage");
   const canTickets = hasPerm(permissions, "platform.tickets:read");
   const on = Boolean(token) && Boolean(orgId);
 
@@ -242,6 +244,14 @@ export default function StoreReportsSection() {
             </span>
           </div>
         </Card>
+      )}
+
+      {/* Payments — charge this store + receipts (PAY-TX / PAY3) */}
+      {canTenants && (
+        <StorePaymentsSection
+          token={t} orgId={orgId} storeName={store?.name ?? "Store"}
+          canRead={canTenants} canManage={canManage}
+        />
       )}
 
       {/* Priority tickets (OC3) */}

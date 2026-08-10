@@ -3642,7 +3642,7 @@ payments/billing/tenants integ 41. **Next:** PAY3 — approval-gated receipt del
 
 ---
 
-## 2026-08-10 — PAY3 · Approval-gated receipt delivery (branch `feature/pay3-receipt-delivery`)
+## 2026-08-10 — PAY3 · Approval-gated receipt delivery (branch `feature/pay3-receipt-delivery`) — merged `022f88b`, CI green
 
 **Founder ask:** after charging a store, the receipt must **route through approvals** (not auto-send),
 then go to **WhatsApp + email on file** — Shopify-style. **Approved shape:** the human approval is the
@@ -3678,3 +3678,32 @@ gate; delivery uses the gated low-level clients (no separate execution token).
 **77** (no regressions). **Security:** no real send without gate + live provider (§10.4); no secrets/OTP
 in logs or events; RLS enforced via `set_org_context`/`org_scoped_session`; operator-only surface.
 **Next:** PAY3b (Razorpay webhook endpoint) + operator "Charge this store" UI; then OC5–OC12.
+
+---
+
+## 2026-08-10 — Operator "Charge this store" UI (branch `feature/pay-ops-ui-charge-store`)
+
+**Founder ask:** after onboarding, be able to **charge the store** and generate/send a Shopify-style
+receipt (routed through approvals). This is the operator-facing front for PAY-TX + PAY3.
+
+- **`web-ops/src/api.ts`**: `Transaction`/`TxLineItem`/`NewTransactionInput`/`ReceiptRequestResult`
+  types + `adminListTransactions` / `adminCreateTransaction` / `adminRequestReceipt`.
+- **`web-ops/src/lib/receipts.ts`** (NEW, pure + tested): `toMinor` (₹→paise), `subtotalMinor`,
+  `previewTotals` (subtotal − discount% + tax, half-up rounding matching the server Decimal),
+  `hasChargeableLine`, `statusView` (status → label+tone), `canRequestReceipt`.
+- **`web-ops/src/components/StorePaymentsSection.tsx`** (NEW): a **Payments · charge this store** card
+  on the store-360 page — collapsible **New charge** form (multi-line items, %-discount + reason, tax
+  label/amount, notes, receipt email/WhatsApp, live total preview) → `adminCreateTransaction`; a
+  **transactions table** with a **Request receipt** action → `adminRequestReceipt` (drafts the PAY3
+  approval; inline "queued — awaiting the owner's approval" note). Status chip: Awaiting receipt →
+  Receipt pending approval → Receipt sent. Charge/request gated on `platform.tenants:manage`.
+- **`web-ops/src/components/StoreReportsSection.tsx`**: mounts the payments card (read-gated).
+
+**Requirement → evidence:** `web-ops/src/lib/receipts.test.ts` (8) — ₹→paise, subtotal, discount+tax
+preview + half-up rounding, chargeable-line validation, status label/tone, request-receipt gating.
+
+**Commands (web gate):** `npm run lint` (oxlint) clean · `npx tsc -b --noEmit` 0 · `vitest run` **28
+passed** (6 files) · `npm run build` ✓ · repo `scripts/guards.py` 0 (industry-nouns scans web-ops too).
+**Security:** operator-only surface; writes gated on `platform.tenants:manage`; no secrets; receipt
+still can't send without the PAY3 approval + a live provider. **Next:** PAY3b — Razorpay webhook
+endpoint (payment confirmation), then OC5–OC12 forecast backlog.
