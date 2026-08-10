@@ -3257,3 +3257,24 @@ one committed accent) skills.
 **Verify:** oxlint clean (2 pre-existing warnings) · `tsc -b` 0 · **vitest 59** · `vite build` ✓ ·
 **guards 0** (emerald/porcelain/ink are not industry nouns) · no forbidden nouns in changed files.
 **Next stages:** U2 dashboard + shared primitives → U3 work surfaces → U4 web-ops.
+
+## 2026-08-10 — UX-02: dashboard recompose + shared primitives (stage U2)
+
+**Branch:** `feature/ux-02-dashboard-primitives`. Presentational only — same endpoints
+(`/v1/dashboard/overview` + insights summary), no new data. Applied the craft-floor: replaced the
+**four-identical-stat-card template** with real hierarchy grounded in real numbers.
+
+- **Shared primitives** (used across U3): `web/src/lib/ui.ts` — pure class helpers (`buttonClasses`,
+  `tagClasses`, `cardClasses`; lint-safe, non-component); `web/src/components/ui.tsx` — `Card`,
+  `PageHeader`, `Stat`, `Tag`, `Button`, `EmptyState`, `CaretLink`. `icons.tsx` gained
+  `MessageCircle`/`Grid`.
+- **Dashboard** (`HomeSection.tsx`) recomposed: **approvals lead** as the focal "Waiting for your OK"
+  panel (the owner's core daily act — nothing sends until approved), with a calm all-caught-up state at
+  zero; **this-week revenue** as the proof card (real delta vs last week + leads/orders, no fake
+  sparkline); a subordinate **quick-links** row (conversations/catalog/tickets) with drawn icons. Themed
+  skeleton + error states.
+- Removed superseded `lib/home.ts` + `lib/home.test.ts` (the old `HOME_TILES` config, now replaced by
+  the inline quick-links) — dead-code cleanup, so **vitest 59 → 57**.
+
+**Verify:** oxlint clean (2 pre-existing) · `tsc -b` 0 · **vitest 57** · `vite build` ✓ · **guards 0** ·
+no forbidden nouns. **Next:** U3 work surfaces (approvals/conversations/campaigns/…) on these primitives.
