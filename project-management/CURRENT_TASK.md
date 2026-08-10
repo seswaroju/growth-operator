@@ -14,8 +14,14 @@ selects and approves the next ticket.
 **Founder expanded scope + chose staged delivery** (DECISIONS 2026-08-09): the previously-fenced
 **simulation mode**, **builder UI**, and **owner-built/trust-ledger path** are now IN SCOPE, delivered
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
-**3 saga + human_task + ops timeline ✅** → 4 simulation → 5 builder → 6 owner-built/trust → then the
-Option-A diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+**3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → 5 builder → 6 owner-built/trust → then
+the Option-A diagnosis extension + jewelry ghost-recovery pack + eval + CAPTURE-GAP migrations.
+
+**Stage 4 (MVP-073d) `feature/mvp-073d-simulation`:** `simulate.py` dry-runs a definition against the
+org's historical `event_outbox` (read-only, zero side effects) → would_have_fired + guard_blocks
+breakdown + estimated cost + sample messages. `POST /v1/workflows/{id}/simulate` (`insights:read`).
+**Verify:** ruff/mypy(162)/**guards 0**/**419** unit+isolation/**453** integ+e2e+contract; **+2** tests
+(report accuracy + no side effects). Serves the "prove it works" goal. **Next:** stage 5 builder UI.
 
 **Stage 3 (MVP-073c) `feature/mvp-073c-saga-human`:** saga compensation (agent returns failed →
 `compensation.on_failure` reverse-order + `alert.ops`; crash [raised exc] stays resumable) +
