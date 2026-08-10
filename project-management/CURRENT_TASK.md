@@ -16,7 +16,16 @@ selects and approves the next ticket.
 as rigorously-tested stages, each pushed to main. Roadmap: **1 executor spine ✅** → **2 waits ✅** →
 **3 saga + human_task + ops timeline ✅** → **4 simulation ✅** → **5a builder backend ✅ / 5b builder UI
 ✅** → **6 owner-built/trust ✅ → WORKFLOW ENGINE COMPLETE.** Ghost-recovery diagnosis track: **1 Option-A
-extension ✅** → **2 jewelry pack ✅** → 3 eval + CAPTURE-GAPs → then a synthetic-data demo.
+extension ✅** → **2 jewelry pack ✅** → **3 eval + CAPTURE-GAPs ✅ → DIAGNOSIS TRACK COMPLETE.** Then a
+synthetic-data demo.
+
+**Diagnosis item 3 (MVP-073j) `feature/mvp-073j-eval-capture`:** migration **038** (CAPTURE-GAPs:
+leads/messages columns + `lead_diagnoses` label table, RLS) + eval harness `scripts/ghost_eval.py`
+(gated-simulated keyword diagnoser over the 8 reasons, fail-closed when provider on; `run_eval` over
+18 synthetic cases → **18/18, accuracy 1.0**). **Verify:** ruff/mypy(164)/**guards 0**/**442**
+unit+isolation/**467** integ+e2e+contract; **+8** rigorous tests (abstain-not-guess, fail-closed gate,
+determinism, taxonomy-map integrity) + lead_diagnoses RLS isolation; migration 038 up/down. **Next:**
+the **synthetic-data demo** — run v4 silent_lead_reactivation end-to-end on the synthetic set.
 
 **Diagnosis item 2 (MVP-073i) `feature/mvp-073i-ghost-pack`:** the L1 jewelry pack — declarative config
 (`verticals/jewelry/`): `playbooks/ghost_reason_taxonomy.yaml` (8 reasons + recovery map),

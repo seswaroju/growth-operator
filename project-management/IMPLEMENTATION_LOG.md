@@ -3055,3 +3055,47 @@ integ+e2e+contract · pack installer + jewelry/kirana e2e green (v4 now seeds). 
 `llm_provider_enabled`) + the **CAPTURE-GAP migrations** (quoted_catalog_item_id, is_price_reveal,
 first_customer_response, last_outbound_msg_at/direction, `lead_diagnoses`) for live diagnosis. Then the
 **synthetic-data demo** (founder request).
+
+---
+
+## 2026-08-09 — MVP-073j: Ghost-diagnosis eval harness + CAPTURE-GAP migrations (diagnosis item 3)
+
+**Branch:** `feature/mvp-073j-eval-capture` (off main). **Merge:** `pending`. Closes the three-item
+ghost-recovery diagnosis track. Migration 038, no dependency.
+
+**Migration 038 (CAPTURE-GAPs, additive; up/down verified):** the schema LIVE diagnosis needs (the
+offline eval/demo need none of it):
+- `leads` += `quoted_catalog_item_id` (FK catalog_items, GAP-01), `first_customer_response_at` /
+  `first_response_message_id` (GAP-03), `last_outbound_msg_at` / `last_message_direction` (GAP-04);
+- `messages` += `is_price_reveal` (GAP-02);
+- **`lead_diagnoses`** (GAP-06): stored diagnosis + owner label (RLS-forced) — the `label_sink` the
+  recovery approval's owner-pick writes to.
+
+**Eval harness (`scripts/ghost_eval.py`, jewelry logic, not `core/`):** a **gated-simulated**
+deterministic keyword diagnoser over the 8 reasons — provider OFF → deterministic ranked output;
+provider ON but the frontier model unwired → fail-closed `provider_unavailable`; **real-ready** (flip
+the gate + wire the model → the SAME workflow runs on real threads). `run_eval` scores accuracy +
+confusion over `verticals/jewelry/playbooks/synthetic_ghost_set.yaml` (18 cases, ≥2/reason + abstain).
+`uv run python scripts/ghost_eval.py` → **18/18, accuracy 1.0** (plumbing proven; real correctness
+needs the D1/D2 loop). The synthetic set lives in `playbooks/` (not `evals/`, whose pack contract is
+the concierge-style `EvalSuite`).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Migration up/down + `lead_diagnoses` RLS + isolation | `alembic up/down`, `tests/isolation/test_lead_diagnoses_rls.py` | PASS |
+| Synthetic set covers every reason + abstain | `test_synthetic_set_covers_every_reason_and_abstain` | PASS |
+| Accurate + diagonal confusion on the synthetic plumbing | `test_eval_is_accurate_on_the_synthetic_plumbing` | PASS |
+| Deterministic; valid reasons/actions; ranked ≈ 1.0 | `test_diagnosis_is_deterministic`, `test_outputs_are_valid_reasons_and_actions` | PASS |
+| **Thin thread abstains (not guesses)** | `test_thin_thread_abstains_rather_than_guesses` | PASS |
+| **Fail-closed gate when provider enabled** | `test_diagnoser_fails_closed_when_provider_enabled` | PASS |
+| recommended_action matches the taxonomy map | `test_recommended_action_matches_the_taxonomy_map` | PASS |
+
+**Commands:** ruff clean · `mypy core` **164** · **guards 0** · **442** unit+isolation (+8) · **467**
+integ+e2e+contract · migration 038 up/down. No dependency. (Two transient DB-pool flakes in a mixed
+run cleared on re-run — not code.)
+
+**GHOST-RECOVERY DIAGNOSIS TRACK COMPLETE:** Option-A sugar (073h) → jewelry pack (073i) → eval +
+CAPTURE-GAPs (073j). **Next: the synthetic-data demo** (founder request) — run the full v4
+`silent_lead_reactivation` end to end on the synthetic set through the executor (diagnose → ranked
+approval → compose → wait → reengage), offline / $0, showing would-recover counts + the diagnosis loop.
