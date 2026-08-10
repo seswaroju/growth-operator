@@ -3552,3 +3552,16 @@ until real keys — no money moves without the gate + an approved action (§10.4
 **Commands:** ruff clean · `mypy core` 171 · guards 0 · **unit 444** (+5) · scaffold imports clean · no
 external call, no new dep, no secrets logged. Decision in `DECISIONS.md`. **Next:** PAY2 — receipt
 generation (Shopify-style) → PAY3 — deliver the receipt to WhatsApp + email (uses PAY0 + WABA send).
+
+## 2026-08-10 — PAY2: receipt generation (Shopify-style, pure)
+
+**Branch:** `feature/pay2-receipt-generation`. Pure, no I/O — provider-independent. `core/payments/receipt.py`:
+`Receipt`/`LineItem` (subtotal + optional tax → total), `render_receipt_text` (SMS/WhatsApp) and
+`render_receipt_html` (self-contained inline-style HTML for the email body — CSP-safe). **All dynamic
+strings HTML-escaped** (a store name/note can't inject markup). Tax is a caller-passed field (rules not
+invented, §18). PAY3 delivers what this renders.
+
+**Verify:** ruff clean · `mypy core` 172 · guards 0 · **receipt tests 5** (math, INR formatting, text
+fields, **HTML-escaping/no-injection**, tax-row omitted when zero). No I/O, no deps. **Next:** PAY3 —
+deliver the receipt to WhatsApp + email (uses PAY0 + WABA send) — but see the new **PAY1b** (provider-
+agnostic payments incl. free UPI) raised by the founder first.
