@@ -63,7 +63,7 @@ existing insight reports.
 
 ## Tenant app polish (new — founder 2026-08-10)
 
-- **TX1 Automations onboarding — worked examples + option guidance** (M) — the tenant Automations page
+- **TX1 Automations onboarding — worked examples + option guidance** (M) — **DONE** — the tenant Automations page
   (`web/src/components/WorkflowsSection.tsx`) is hard to operate. Add: a **library of ready-made example
   automations** (2 simple, 2 medium, 3–4 complex) the owner can read and "use as a template", and, for
   each **option** (trigger event, condition/CEL, the step types agent_task/human_task/wait/branch/emit/

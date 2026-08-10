@@ -3415,3 +3415,29 @@ amount + our-cost per `charge_type`; OC2 adds channel granularity + a visible br
 **unit+contract 438** · web-ops oxlint/tsc/**vitest 13**(+3)/build ✓. No secrets, no external calls, no
 tenant-isolation change. Also ticketed **TX1** (Automations onboarding examples) + **PAY0–PAY3** (Razorpay
 charge + WhatsApp/email receipt) from new founder feedback. **Next:** OC3 — plan-aware ticket priority + SLA.
+
+## 2026-08-10 — TX1: Automations onboarding — worked examples + option docs (feedback, tenant app)
+
+**Branch:** `feature/tx1-automation-examples`. Founder found the tenant Automations page hard to operate.
+Presentational only — no API/backend change; the server still validates + reviews every draft.
+
+- `web/src/lib/automationExamples.ts` (+ `.test.ts`): **7 ready-made examples** (2 simple / 2 medium /
+  3 complex) as valid `WorkflowDraft`s the builder loads directly (welcome enquiry, quote follow-up,
+  reactivate-quiet, festival greeting, **ghost-recovery**, high-value concierge, post-purchase review);
+  plus **`AUTOMATION_OPTIONS`** — for every option (trigger event, condition/CEL, the 4 owner step types,
+  and the server-locked guards) a plain-language **what / why / how**, like documented script arguments.
+- `web/src/components/WorkflowsSection.tsx`: a **"Start from an example"** gallery (grouped by complexity;
+  "Use this" loads the draft into the builder + scrolls to it) + a collapsible **"How automations work —
+  the options"** reference panel. `Builder` gained an `initialDraft` prop; the section reseeds it via a
+  remount key.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| ≥2 simple / ≥2 medium / ≥3 complex examples | `automationExamples.test` (spread) | PASS |
+| Every example is a valid, editable, composable draft | `automationExamples.test` (valid draft) | PASS |
+| Unique ids + workflow keys | `automationExamples.test` (unique) | PASS |
+| Every option doc has what/why/how | `automationExamples.test` (options) | PASS |
+
+**Commands:** oxlint clean (2 pre-existing) · `tsc -b` 0 · **vitest 61** (+4) · `vite build` ✓ · guards 0 ·
+no forbidden nouns. **Next:** OC3 — plan-aware ticket priority + SLA.
