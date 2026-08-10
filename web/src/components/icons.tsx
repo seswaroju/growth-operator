@@ -132,3 +132,18 @@ export const Bolt = (p: IconProps) => (
     <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
   </Stroke>
 );
+
+export const Lock = (p: IconProps) => (
+  <Stroke {...p}>
+    <rect x="4.5" y="10" width="15" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </Stroke>
+);
+
+export const LifeBuoy = (p: IconProps) => (
+  <Stroke {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M5 5l4.5 4.5M14.5 14.5L19 19M19 5l-4.5 4.5M9.5 14.5L5 19" />
+  </Stroke>
+);

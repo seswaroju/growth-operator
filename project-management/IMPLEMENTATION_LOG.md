@@ -3305,3 +3305,13 @@ the "Ask Growth Operator" thread, and the owner workflow builder/validate/save f
 `InsightsSection` (TONE_DOT/TONE_BADGE → token tones) and `WorkflowsSection` (STATUS tones, `input`/`btn`
 → `fieldClasses`/`buttonClasses`) re-skinned on tokens + primitives; `BarChart`/`Bolt` icons added.
 **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
+
+## 2026-08-10 — UX-03d: Support + Team + Settings + shell states (stage U3d — tenant app COMPLETE)
+
+**Branch:** `feature/ux-03d-support-team-settings`. Presentational only. Re-skinned `SupportSection`
+(status/priority/severity tones → tokens), `TeamSection`, `SettingsSection` (local Card → `SettingCard`
+over the primitive; 🔒 emoji → drawn `Lock`; Auto/Review + pause toggle on tokens), plus the shared
+`ComingSoon`, `ErrorBoundary`, and `main.tsx` loading/no-org shells. Added `Lock`/`LifeBuoy` icons.
+**Full-app sweep:** zero legacy `neutral-*`/`bg-white`/color-scale classes remain in `web/src` — the
+**entire tenant app is on the design tokens.** **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓
+· guards 0. **Next:** U4 — `web-ops` operator console gets the same system.

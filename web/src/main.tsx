@@ -20,7 +20,7 @@ function Root() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 text-sm text-neutral-500">
+      <div className="flex min-h-screen items-center justify-center bg-porcelain text-sm text-muted">
         Loading…
       </div>
     );
@@ -28,11 +28,11 @@ function Root() {
   if (!me) return <Login />;
   if (!me.org) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-neutral-50 p-4 text-center text-neutral-900">
-        <p className="text-sm text-neutral-700">You're signed in, but not part of any store yet.</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-porcelain p-4 text-center text-ink">
+        <p className="text-sm text-ink-2">You're signed in, but not part of any store yet.</p>
         <button
           onClick={logout}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium hover:bg-neutral-50"
+          className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-medium hover:border-muted"
         >
           Sign out
         </button>
