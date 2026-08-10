@@ -10,7 +10,13 @@ from __future__ import annotations
 import pytest
 
 from core.common.errors import GrowthOperatorError
-from scripts.ghost_eval import load_synthetic, load_taxonomy, run_eval, simulated_diagnose
+from scripts.ghost_eval import (
+    diagnose,
+    load_synthetic,
+    load_taxonomy,
+    run_eval,
+    simulated_diagnose,
+)
 
 _FROZEN_REASONS = {
     "gold_rate_timing", "sticker_shock", "making_charge_objection", "comparison_shopping",
@@ -64,11 +70,20 @@ def test_thin_thread_abstains_rather_than_guesses() -> None:
     assert d["recommended_action_id"] == "act_abstain_owner_pick"
 
 
-def test_diagnoser_fails_closed_when_provider_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_diagnose_uses_the_simulated_path_when_provider_off() -> None:
+    # Default (provider off) → the dispatcher runs the offline diagnoser, no network.
+    d = await diagnose("customer: anta ekkuva andi budget lo ledu")
+    assert d["top_reason"] == "sticker_shock"
+
+
+async def test_diagnose_fails_closed_when_provider_enabled_without_key(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("GROWTH_OPERATOR_LLM_PROVIDER_ENABLED", "true")
+    monkeypatch.delenv("GROWTH_OPERATOR_LLM_API_KEY", raising=False)
     with pytest.raises(GrowthOperatorError) as ei:
-        simulated_diagnose("customer: anta ekkuva andi")
-    assert ei.value.code == "provider_unavailable"  # real diagnosis not wired → fail closed
+        await diagnose("customer: anta ekkuva andi")  # real path, no key → fail closed
+    assert ei.value.code == "provider_unavailable"
 
 
 def test_recommended_action_matches_the_taxonomy_map() -> None:
@@ -77,3 +92,38 @@ def test_recommended_action_matches_the_taxonomy_map() -> None:
         d = simulated_diagnose(c["thread"])
         if not d["abstain"]:
             assert d["recommended_action_id"] == tax["reasons"][d["top_reason"]]["action"]
+
+
+async def test_real_diagnose_parses_json_and_re_derives_the_action(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.runtime import llm_client
+
+    async def fake(system: str, user: str, **_: object) -> object:
+        return llm_client.LlmResponse(
+            text='here is my answer {"top_reason":"sticker_shock","abstain":false,'
+                 '"ranked":[{"reason":"sticker_shock","confidence":0.7}]}')
+
+    monkeypatch.setattr(llm_client, "complete", fake)
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_API_KEY", "sk-test")
+    d = await diagnose("anything")
+    assert d["top_reason"] == "sticker_shock"
+    # The action is re-derived from the taxonomy, never trusted from the model.
+    assert d["recommended_action_id"] == "act_value_reframe"
+
+
+async def test_real_diagnose_abstains_on_out_of_taxonomy_reason(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.runtime import llm_client
+
+    async def fake(system: str, user: str, **_: object) -> object:
+        return llm_client.LlmResponse(text='{"top_reason":"unicorn","abstain":false}')
+
+    monkeypatch.setattr(llm_client, "complete", fake)
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_API_KEY", "sk-test")
+    d = await diagnose("anything")
+    assert d["abstain"] is True  # hallucinated reason → abstain, not act on it
+    assert d["recommended_action_id"] == "act_abstain_owner_pick"

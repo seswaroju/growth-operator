@@ -3099,3 +3099,47 @@ run cleared on re-run — not code.)
 CAPTURE-GAPs (073j). **Next: the synthetic-data demo** (founder request) — run the full v4
 `silent_lead_reactivation` end to end on the synthetic set through the executor (diagnose → ranked
 approval → compose → wait → reengage), offline / $0, showing would-recover counts + the diagnosis loop.
+
+---
+
+## 2026-08-09 — MVP-074: Real LLM provider adapter (gated, real-ready) — priority item 1
+
+**Branch:** `feature/mvp-074-llm-adapter` (off main). **Merge:** `pending`. First of the founder's
+post-demo priorities: make **real diagnosis** possible behind the gate. No migration, **no new
+dependency** (httpx is already present — no vendor SDK).
+
+**`core/runtime/llm_client.py`** — the single real-model call. httpx POST to **Anthropic** (`/v1/
+messages`, default per CLAUDE.md) or **OpenAI** (`/v1/chat/completions`); the request/parse shape is the
+only difference. **Fails closed** (`provider_unavailable`) unless `llm_provider_enabled` AND
+`llm_api_key` are set, so the whole system keeps running simulated by default. Wired into the runtime:
+`RealModel.turn` and `get_provider` → a real `LlmProvider` (replacing the `NotImplementedError` stub),
+so the agent loop can use a real model when enabled (returns the model's text; tool-calling later).
+
+**`scripts/ghost_eval.py`** — `real_diagnose` (pack diagnosis prompt → model → JSON) with the model's
+**untrusted output re-validated** against the frozen taxonomy (out-of-taxonomy/malformed → abstain; the
+recovery action is always re-derived from the taxonomy, never trusted from the model); a `diagnose()`
+dispatcher runs real when enabled, else the simulated diagnoser. The offline eval is unchanged (18/18).
+
+**Config:** `llm_provider` (anthropic|openai), `llm_api_key` (**secret** — env/SOPS, never committed),
+`llm_model`, `llm_api_base` (per-provider default), `llm_max_tokens`. All off unless enabled.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Disabled by default → fails closed | `test_disabled_by_default_fails_closed` | PASS |
+| Enabled without a key → fails closed | `test_enabled_without_key_fails_closed` | PASS |
+| Anthropic request shape + parse (mocked HTTP) | `test_anthropic_request_shape_and_parse` | PASS |
+| OpenAI request shape + parse (mocked HTTP) | `test_openai_request_shape_and_parse` | PASS |
+| diagnose dispatcher: off → simulated; on+no-key → fail closed | `test_diagnose_*` | PASS |
+| **Real diagnosis re-derives the action from the taxonomy** | `test_real_diagnose_parses_json_and_re_derives_the_action` | PASS |
+| **Hallucinated reason → abstain** | `test_real_diagnose_abstains_on_out_of_taxonomy_reason` | PASS |
+
+**Commands:** ruff clean · `mypy core` **165** · **guards 0** · **451** unit+isolation (+9) · **463**
+integ+e2e+contract · eval `18/18`. No migration, no dependency. Tests never hit the network.
+
+**Enabling for real (founder-gated, costs credits):** set `GROWTH_OPERATOR_LLM_PROVIDER_ENABLED=true`
+and `GROWTH_OPERATOR_LLM_API_KEY=…` (Anthropic key; or `_LLM_PROVIDER=openai` + an OpenAI key). Nothing
+else changes — the ghost-recovery workflow then diagnoses on the real frontier model.
+
+**Next (priority order):** item 2 — the **notification bell** (aggregate approvals/tickets/workflow
+events from the existing event stream) → item 3 — the **WABA send adapter** real-ready behind the gate.
