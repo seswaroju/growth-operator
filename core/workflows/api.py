@@ -15,16 +15,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import INSIGHTS_READ
+from core.tenancy.permissions import CATALOG_WRITE, INSIGHTS_READ
 from core.tenancy.rbac import requires
+from core.workflows import authoring, timeline
 from core.workflows import simulate as simulate_mod
-from core.workflows import timeline
+from core.workflows.guards import UnknownGuard
+from core.workflows.parser import WorkflowParseError
+from core.workflows.schema import WorkflowSchemaError
 
 router = APIRouter(prefix="/v1/workflows", tags=["workflows"])
 
 
 class SimulateRequest(BaseModel):
     window_days: int = Field(default=30, ge=1, le=180)
+
+
+class DefinitionBody(BaseModel):
+    dsl: dict[str, object]
+
+
+_AUTHORING_ERRORS = (
+    WorkflowSchemaError, WorkflowParseError, UnknownGuard, authoring.AuthoringError)
 
 
 @router.get("/runs", summary="List recent workflow runs")
@@ -65,3 +76,66 @@ async def simulate(
             session, current.org_id, definition_id, window_days=body.window_days)
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "definition not found") from exc
+
+
+# ---- Owner-built authoring (builder backend; client hints, server truth) ---------------
+
+
+@router.post("/definitions/validate", summary="Validate a DSL (server truth for the builder)")
+async def validate_definition(
+    body: DefinitionBody,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+) -> dict[str, object]:
+    try:
+        parsed = authoring.validate_owner_dsl(dict(body.dsl))
+    except _AUTHORING_ERRORS as exc:
+        return {"valid": False, "error": str(exc)}
+    return {"valid": True, "workflow_key": parsed.workflow_key,
+            "guards": [g.render() for g in parsed.guards]}
+
+
+@router.post("/definitions", status_code=status.HTTP_201_CREATED,
+             summary="Create an owner-built workflow (draft)")
+async def create_definition(
+    body: DefinitionBody,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    try:
+        def_id = await authoring.create_owner_definition(session, current.org_id, dict(body.dsl))
+    except _AUTHORING_ERRORS as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    await session.commit()
+    return {"definition_id": str(def_id), "status": "draft"}
+
+
+@router.put("/definitions/{definition_id}", summary="Update an owner-built workflow (draft)")
+async def update_definition(
+    definition_id: UUID,
+    body: DefinitionBody,
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    try:
+        await authoring.update_owner_definition(
+            session, current.org_id, definition_id, dict(body.dsl))
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "definition not found") from exc
+    except _AUTHORING_ERRORS as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    await session.commit()
+    return {"definition_id": str(definition_id), "updated": True}
+
+
+@router.get("/definitions", summary="List the org's owner-built workflows")
+async def list_definitions(
+    current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "no tenant context")
+    return {"definitions": await authoring.list_owner_definitions(session, current.org_id)}
