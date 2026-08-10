@@ -3297,3 +3297,11 @@ added `fieldClasses` (shared form-field helper) + `Megaphone`/`Users`/`Box`/`Plu
 `lib/customers.ts` `CONSENT_STYLE` and `lib/catalog.ts` `AVAILABILITY_STYLE` (+ campaigns status tones) to
 token tones (good/warn/danger/muted; no test pins the strings). Shape-only `Badge` so the tone class
 doesn't collide. **Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
+
+## 2026-08-10 — UX-03c: Insights + Automations (stage U3c)
+
+**Branch:** `feature/ux-03c-insights-automations`. Presentational only — the escalating question-levels,
+the "Ask Growth Operator" thread, and the owner workflow builder/validate/save flow all preserved.
+`InsightsSection` (TONE_DOT/TONE_BADGE → token tones) and `WorkflowsSection` (STATUS tones, `input`/`btn`
+→ `fieldClasses`/`buttonClasses`) re-skinned on tokens + primitives; `BarChart`/`Bolt` icons added.
+**Verify:** oxlint clean · tsc 0 · **vitest 57** · build ✓ · guards 0.
