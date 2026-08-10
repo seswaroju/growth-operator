@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { requestOtp, verifyOtp } from "../api";
 import { useAuth } from "../auth";
+import { ArrowRight, Mark } from "./icons";
 
 export default function Login() {
   const { login } = useAuth();
@@ -36,24 +37,38 @@ export default function Login() {
   }
 
   const input =
-    "w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none " +
-    "focus:border-neutral-900 focus:ring-1 focus:ring-neutral-900";
+    "w-full rounded-xl border border-line bg-raised px-3.5 py-3 text-sm text-ink caret-accent " +
+    "outline-none placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent-soft";
   const primary =
-    "w-full rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white " +
-    "transition hover:bg-neutral-700 disabled:opacity-50";
+    "flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-sm " +
+    "font-semibold text-white shadow-card transition hover:bg-accent-2 disabled:opacity-50";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4 text-neutral-900">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">Growth Operator</h1>
-          <p className="text-sm text-neutral-500">Store sign-in</p>
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-porcelain
+      p-4 text-ink">
+      {/* two soft emerald washes — the accent doing one atmospheric job, not decoration everywhere */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(90% 60% at 15% 0%, var(--accent-soft), transparent 55%)," +
+            "radial-gradient(70% 50% at 100% 100%, var(--accent-soft), transparent 60%)",
+        }}
+      />
+      <div className="relative w-full max-w-sm">
+        <div className="rounded-2xl border border-line bg-surface p-7 shadow-pop">
+          <div className="mx-auto mb-4 grid h-11 w-11 place-items-center rounded-xl bg-ink text-porcelain">
+            <Mark className="h-6 w-6" />
+          </div>
+          <h1 className="text-center font-serif text-[22px] font-medium tracking-tight">Welcome back</h1>
+          <p className="mb-6 mt-1 text-center text-sm text-muted">
+            {step === "email" ? "Sign in to your store" : "Enter the code we sent"}
+          </p>
 
-        <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
           {step === "email" ? (
-            <form onSubmit={onSend} className="space-y-4">
-              <label className="block text-sm font-medium text-neutral-700" htmlFor="email">
+            <form onSubmit={onSend} className="space-y-3.5">
+              <label className="block text-[12.5px] font-semibold text-ink-2" htmlFor="email">
                 Email address
               </label>
               <input
@@ -68,12 +83,13 @@ export default function Login() {
               />
               <button type="submit" disabled={busy} className={primary}>
                 {busy ? "Sending…" : "Send code"}
+                {!busy && <ArrowRight className="h-[15px] w-[15px]" />}
               </button>
             </form>
           ) : (
-            <form onSubmit={onVerify} className="space-y-4">
-              <p className="text-sm text-neutral-600">
-                We sent a 6-digit code to <span className="font-medium">{email}</span>.
+            <form onSubmit={onVerify} className="space-y-3.5">
+              <p className="text-sm text-ink-2">
+                We sent a 6-digit code to <span className="font-semibold text-ink">{email}</span>.
               </p>
               <input
                 id="code"
@@ -83,7 +99,7 @@ export default function Login() {
                 value={code}
                 onChange={(ev) => setCode(ev.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="123456"
-                className={`${input} text-center font-mono text-lg tracking-[0.4em]`}
+                className={`${input} text-center font-serif text-2xl tracking-[0.4em] tnum`}
               />
               <button type="submit" disabled={busy || code.length < 6} className={primary}>
                 {busy ? "Verifying…" : "Verify & sign in"}
@@ -91,7 +107,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setStep("email")}
-                className="w-full text-center text-xs text-neutral-500 hover:text-neutral-800"
+                className="w-full text-center text-xs text-muted hover:text-ink"
               >
                 Use a different email
               </button>
@@ -99,12 +115,11 @@ export default function Login() {
           )}
 
           {error && (
-            <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>
+            <p className="mt-4 rounded-xl bg-danger-soft px-3 py-2.5 text-xs text-danger">{error}</p>
           )}
         </div>
-        <p className="mt-3 text-center text-[11px] text-neutral-400">
-          Local dev: set <span className="font-mono">GROWTH_OPERATOR_OTP_DEV_FIXED_CODE=000000</span>{" "}
-          and sign in with 000000.
+        <p className="mt-4 text-center text-[11px] text-muted">
+          A 6-digit code, no passwords. It expires in 5 minutes.
         </p>
       </div>
     </div>

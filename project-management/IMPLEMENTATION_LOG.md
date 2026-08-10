@@ -3220,3 +3220,40 @@ external call.
 
 **Next:** the bigger multi-channel/advertising tracks (email, Instagram, Google Ads) + the UX pass — both
 captured in VISION_INTAKE.
+
+## 2026-08-10 — UX-00: vendor curated UI/UX design skills — merge `edc760c` (+ cleanup `0455e7a`)
+
+Founder asked to install four open-source design-skill collections so Claude Code has strong UI/UX
+craft. Installed **11, markdown-only** (guidance; zero executable surface) under `.claude/skills/`:
+`impeccable` (Apache-2.0, premium-craft playbooks — scripts/live-browser/image-gen toolchain omitted),
+`apple-design`/`animate`/`animation-vocabulary`/`review-animations`/`emil-design-eng` (MIT, Emil
+Kowalski), `design-system`/`ui-styling`/`brand` (MIT, nextlevelbuilder), `design-taste-frontend`/
+`redesign-existing-projects` (MIT, leonxlnx). Security-scanned all SKILL.md + scripts (clean). Sources,
+licenses, and held-back menu in `.claude/skills/README.md`. Cleanup `0455e7a` stripped orphaned
+`ui-styling/canvas-fonts/*-OFL.txt` + empty `scripts/`. No product code touched.
+
+## 2026-08-10 — UX-01: design foundation + Shell + Login + bell (stage U1 of the UX pass)
+
+**Branch:** `feature/ux-01-foundation-shell-login`. **Direction v2 "Atelier"** (founder-approved via
+mockup): committed emerald accent on a cool porcelain ground, ink w/ green undertone, serif reserved for
+money/wordmark, drawn icons (no emoji), themed browser surfaces. Purely presentational — no API/route/
+data change. Applied the installed **craft-floor** (dropped eyebrow kickers, the 4-stat template, emoji
+icons; themed selection/scrollbar/focus/caret) + **new-work** (Operate surface → premium via precision +
+one committed accent) skills.
+
+- `web/src/index.css`: full **token system** via Tailwind v4 `@theme inline` over CSS custom properties
+  (light default + `prefers-color-scheme: dark` + `data-theme` override, both directions) → theme-reactive
+  utilities (`bg-surface`/`text-ink`/`text-accent`/`border-line`/`shadow-card`/`font-serif`…). Base layer
+  themes selection, scrollbar, focus-visible, caret.
+- `web/src/components/icons.tsx` (**new**): drawn SVG icon set, one 1.6 stroke weight (Mark monogram,
+  Bell, Check/CheckCircle, ArrowRight, SignOut, Ticket, Gear) — replaces all emoji.
+- `Shell.tsx`: re-skinned header — monogram mark, emerald active-underline nav (same permission-gated
+  links/order, so `roles.test.ts` visibleNav is untouched), avatar + role, drawn sign-out.
+- `Login.tsx`: re-skinned passwordless sign-in (serif wordmark, emerald wash, themed caret/focus, drawn
+  arrow); dropped the always-visible dev-OTP hint (not production-appropriate).
+- `NotificationBell.tsx`: drawn Bell + per-kind drawn icons (approval/ticket/automation) replacing emoji;
+  restyled dropdown on tokens. Feed/mark-seen/poll logic unchanged.
+
+**Verify:** oxlint clean (2 pre-existing warnings) · `tsc -b` 0 · **vitest 59** · `vite build` ✓ ·
+**guards 0** (emerald/porcelain/ink are not industry nouns) · no forbidden nouns in changed files.
+**Next stages:** U2 dashboard + shared primitives → U3 work surfaces → U4 web-ops.

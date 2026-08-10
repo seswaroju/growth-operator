@@ -9,6 +9,21 @@ selects and approves the next ticket.
 
 ---
 
+## UX pass — bolder/premium redesign (direction v2 "Atelier") — **U1 done** (2026-08-10)
+
+**Founder approved** (mockup) the bolder/premium direction: committed **emerald** accent on a cool
+**porcelain** ground, serif reserved for money, **drawn icons** (no emoji), themed browser surfaces,
+full dark mode — dashboards lead with the day's work, not a 4-stat template. Also installed **11
+markdown-only UI/UX craft skills** into `.claude/skills/` (UX-00, merged `edc760c`+`0455e7a`) and used
+them (craft-floor + new-work) to drive the design. **Order:** UX pass first → multi-channel → one
+channel end-to-end. **Stages:** **U1 foundation + Shell + Login + bell ✅** → U2 dashboard + shared
+primitives → U3 work surfaces (approvals/conversations/campaigns/…) → U4 web-ops.
+
+**U1 (`feature/ux-01-foundation-shell-login`):** token system in `web/src/index.css` (Tailwind v4
+`@theme inline` over CSS vars, theme-reactive light/dark), `web/src/components/icons.tsx` (drawn set),
+re-skinned `Shell`/`Login`/`NotificationBell`. Presentational only — no API/route/data change. **Verify:**
+oxlint clean · tsc 0 · vitest 59 · build ✓ · guards 0. **Next:** U2 dashboard.
+
 ## MVP-076 — WABA send adapter real-ready — **Merged `981ad19`, CI-green** (2026-08-10)
 
 **Priority item 3** (after item 1 LLM adapter / MVP-074, item 2 notification bell / MVP-075). Branch
