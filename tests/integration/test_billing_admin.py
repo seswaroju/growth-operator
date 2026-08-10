@@ -221,3 +221,18 @@ async def test_edit_plan_403_for_non_operator(scene: Scene) -> None:
         f"/v1/admin/billing/plans/{uuid.uuid4()}", headers=_op(uuid.uuid4()),
         json={"name": "x", "price_minor": 1000, "active": True, "features": []})
     assert r.status_code == 403
+
+
+# ---- OC2: per-channel charge categories --------------------------------------------------------
+
+async def test_charge_accepts_new_channel_types(scene: Scene) -> None:
+    op = _op(scene.operator)
+    for ct in ("whatsapp", "instagram", "google_ads"):
+        r = await scene.client.post(
+            f"/v1/admin/billing/tenants/{scene.org_a}/charges", headers=op,
+            json={"period_month": date.today().isoformat(), "charge_type": ct,
+                  "amount_minor": 10_000, "cost_minor": 4_000})
+        assert r.status_code == 201, r.text
+    listed = (await scene.client.get(
+        f"/v1/admin/billing/tenants/{scene.org_a}/charges", headers=op)).json()
+    assert {"whatsapp", "instagram", "google_ads"} <= {c["charge_type"] for c in listed}

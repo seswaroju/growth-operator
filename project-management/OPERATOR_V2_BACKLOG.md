@@ -30,7 +30,7 @@ plan includes.
 - web-ops Financial: edit-plan form + a “what's included” features editor + display.
 - Tests: service + API; no plaintext secrets.
 
-## OC2 — Per-store spend-by-channel + ROI (feedback D) — **Effort M** — status: todo
+## OC2 — Per-store spend-by-channel + ROI (feedback D) — **Effort M** — status: done
 The `billing_charges` spine already stores per-store/per-month/per-type amount + cost. Add channel
 granularity and a visible breakdown.
 **Acceptance:**
@@ -61,6 +61,16 @@ existing insight reports.
 
 ---
 
+## Tenant app polish (new — founder 2026-08-10)
+
+- **TX1 Automations onboarding — worked examples + option guidance** (M) — the tenant Automations page
+  (`web/src/components/WorkflowsSection.tsx`) is hard to operate. Add: a **library of ready-made example
+  automations** (2 simple, 2 medium, 3–4 complex) the owner can read and "use as a template", and, for
+  each **option** (trigger event, condition/CEL, the step types agent_task/human_task/wait/branch/emit/
+  set/loop, and the server-locked guards) a plain-language **what it is / why you'd use it / how to fill
+  it in** — like documented script arguments. Likely a declarative examples file in the jewelry pack +
+  a help/reference panel + a "start from example" action. Presentational-ish; no new external actions.
+
 ## Forecast backlog (feedback F) — proposed, not yet scheduled
 
 - **OC5 Churn-risk score + early alerts** (M) — composite health score; extends Customer Success at-risk.
@@ -77,3 +87,31 @@ existing insight reports.
 
 (Also still parked from before: the multi-channel/advertising adapter track — email → Instagram → Google
 Ads — which would feed OC2/OC4 with real per-channel spend.)
+
+---
+
+## Payments & receipts (new — founder 2026-08-10)
+
+> "After I on-board the customer (after integrating the Razorpay API) I should be able to charge the
+> customer and automatically the receipt is generated and sent to both WhatsApp and Email on file,
+> similar to a Shopify charge receipt."
+
+Here "the customer" = the **store owner** (GO's client/tenant). This is a multi-step feature, gated
+behind real payment credentials (§10.4 — never charge without founder approval + live keys). Split:
+
+- **PAY0 Email channel adapter (gated)** (M) — **prerequisite**; the parked email track. httpx/SMTP behind
+  a flag, off by default / simulated in tests, never sends without gate + approval. Needed for the receipt
+  email and for OC2/OC4's per-channel data.
+- **PAY1 Razorpay charge adapter (gated)** (M/L) — create/collect a charge against a tenant via Razorpay;
+  **simulated until `razorpay_live_enabled` + real keys** (mirror the WABA/LLM gated-adapter pattern —
+  httpx, off by default, mocked in tests, no real charge without founder approval). Records the charge in
+  the billing model (OC1/OC2) + payment status; webhook verification for capture.
+- **PAY2 Receipt generation** (M) — a Shopify-style receipt (HTML → PDF) from a charge: store + line
+  items + amount + plan + date + tax fields; stored/retrievable; no secrets in the artifact.
+- **PAY3 Receipt delivery to WhatsApp + Email** (M) — send the generated receipt to the tenant's phone
+  (WABA send — already real-ready, MVP-076) **and** email (PAY0) "on file", via the approval/mediation
+  boundary; idempotent (no double-send on retry); audited.
+
+Dependencies: PAY0 (email) → PAY3; PAY1 (Razorpay) → PAY2 → PAY3. Onboarding must capture/verify the
+tenant's phone + email + Razorpay customer/token first. Sequencing TBD with founder (likely after OC2–OC4,
+and needs the Razorpay account + keys).
