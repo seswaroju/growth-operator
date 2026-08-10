@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from core.common.config import get_settings
-from core.common.errors import GrowthOperatorError
 
 
 @dataclass(frozen=True)
@@ -66,14 +65,17 @@ class SimulatedModel:
 
 
 class RealModel:
-    """The real provider-agnostic client. Gated: fails closed until go-live wiring."""
+    """The real client (MVP-074). Gated: fails closed unless `llm_provider_enabled` AND a key are
+    configured (`core.runtime.llm_client`); returns the model's text as the reply (tool-calling via
+    the real model is a later enhancement)."""
 
     async def turn(
         self, *, node_key: str, prompt: str, context: dict[str, Any]
     ) -> ModelResult:
-        if not get_settings().llm_provider_enabled:
-            raise GrowthOperatorError("provider_unavailable", "LLM provider disabled")
-        raise NotImplementedError("real LLM provider not wired — chosen at go-live")
+        from core.runtime import llm_client  # local import: keeps httpx off the hot import path
+        resp = await llm_client.complete(system="", user=prompt)  # raises if provider off
+        return ModelResult(tool_call=None, text=resp.text,
+                           tokens_in=resp.tokens_in, tokens_out=resp.tokens_out)
 
 
 def default_model() -> Model:
@@ -107,17 +109,32 @@ class SimulatedProvider:
         return await self._model.turn(node_key=node_key, prompt=prompt, context=context)
 
 
-# Real vendor clients register here at go-live (each fails closed until then, like RealModel).
+class LlmProvider:
+    """Real provider backed by `core.runtime.llm_client` (MVP-074). `name` is the route's provider
+    (recorded for cost attribution); the client uses the configured `llm_provider`. Returns the
+    model's text as the reply."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    async def complete(
+        self, *, node_key: str, prompt: str, context: dict[str, Any], model: str,
+        params: dict[str, Any],
+    ) -> ModelResult:
+        from core.runtime import llm_client
+        resp = await llm_client.complete(system="", user=prompt, model=model)
+        return ModelResult(tool_call=None, text=resp.text,
+                           tokens_in=resp.tokens_in, tokens_out=resp.tokens_out)
+
+
+# Optional pre-registered clients; otherwise the LLM client backs every provider name.
 _REAL_PROVIDERS: dict[str, Provider] = {}
 
 
 def get_provider(name: str) -> Provider:
     """Resolve a provider by name. **Gated:** until `llm_provider_enabled`, every provider name
-    resolves to the deterministic simulated client — so routing + failover run with no vendor, no
-    network, no spend. At go-live, real clients populate `_REAL_PROVIDERS` behind the flag."""
+    resolves to the deterministic simulated client — routing + failover run with no vendor / spend.
+    When enabled, the real `LlmProvider` backs it (fails closed without a key)."""
     if not get_settings().llm_provider_enabled:
         return SimulatedProvider(name)
-    provider = _REAL_PROVIDERS.get(name)
-    if provider is None:
-        raise GrowthOperatorError("provider_unavailable", f"provider '{name}' not wired")
-    return provider
+    return _REAL_PROVIDERS.get(name) or LlmProvider(name)

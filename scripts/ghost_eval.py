@@ -2,35 +2,29 @@
 
 Scores a deterministic keyword diagnoser over the synthetic ghost set. It validates **plumbing** —
 that the `diagnose → reason → recovery-action` mapping holds end to end — NOT real-world correctness
-(which needs the D1/D2 loop: real exported WhatsApp logs + a wired frontier model). The diagnoser
-is the **gated-simulated** stand-in: with `llm_provider_enabled` OFF (default) it returns
-deterministic ranked output; ON but the model unwired it fails closed (`provider_unavailable`).
-**Real-ready:** wire the model + flip the gate and the SAME workflow runs on real threads with no
-change. This lives in `scripts/` (jewelry logic, not `core/`).
+(which needs the D1/D2 loop: real exported WhatsApp logs + a wired frontier model). `diagnose()` has
+two paths: `llm_provider_enabled` OFF (default) → the deterministic simulated diagnoser (offline);
+ON + a key → the **real frontier model** via `core.runtime.llm_client` (MVP-074), with the model's
+untrusted JSON re-validated against the taxonomy. The eval always uses the simulated path so it's
+offline + deterministic. This lives in `scripts/` (jewelry logic, not `core/`).
 
 Run: `uv run python scripts/ghost_eval.py`
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from core.common.config import get_settings
-from core.common.errors import GrowthOperatorError
 
 _PACK = Path(__file__).resolve().parents[1] / "verticals" / "jewelry"
 _TAXONOMY = _PACK / "playbooks" / "ghost_reason_taxonomy.yaml"
 _SYNTH = _PACK / "playbooks" / "synthetic_ghost_set.yaml"
-
-
-def _gate() -> None:
-    """Fail closed if the real LLM is enabled but the frontier diagnosis model isn't wired."""
-    if get_settings().llm_provider_enabled:
-        raise GrowthOperatorError(
-            "provider_unavailable", "real ghost diagnosis needs the frontier LLM (not wired)")
+_PROMPT = _PACK / "prompts" / "ghost_diagnosis.md"
 
 
 def load_taxonomy() -> dict[str, Any]:
@@ -42,9 +36,8 @@ def load_synthetic() -> list[dict[str, Any]]:
 
 
 def simulated_diagnose(thread: str, taxonomy: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Deterministic keyword diagnosis over the 8 reasons — the gated-simulated stand-in for the
-    frontier model. No signal in the thread → abstain (routes the owner to pick)."""
-    _gate()
+    """Deterministic keyword diagnosis over the 8 reasons — the offline stand-in for the frontier
+    model. No signal → abstain (routes the owner to pick). Always safe (no network)."""
     tax = taxonomy or load_taxonomy()
     reasons = tax["reasons"]
     text = thread.lower()
@@ -61,6 +54,43 @@ def simulated_diagnose(thread: str, taxonomy: dict[str, Any] | None = None) -> d
     return {"top_reason": top, "ranked": ranked, "abstain": False,
             "confidence_top": ranked[0]["confidence"],
             "recommended_action_id": reasons[top]["action"]}
+
+
+def _parse_diagnosis(text: str, tax: dict[str, Any]) -> dict[str, Any]:
+    """Parse + **validate** the model's (untrusted) JSON: an out-of-taxonomy or malformed reason
+    abstains rather than act on a hallucinated one; the action is re-derived from the taxonomy."""
+    reasons = tax["reasons"]
+    try:
+        start, end = text.find("{"), text.rfind("}")
+        data = json.loads(text[start:end + 1]) if start >= 0 else {}
+    except (ValueError, TypeError):
+        data = {}
+    top = data.get("top_reason")
+    if data.get("abstain") or top not in reasons:
+        return {"top_reason": None, "ranked": data.get("ranked", []), "abstain": True,
+                "confidence_top": data.get("confidence_top", 0.0),
+                "recommended_action_id": tax["abstain"]["action"]}
+    return {"top_reason": top, "ranked": data.get("ranked", []), "abstain": False,
+            "confidence_top": data.get("confidence_top", 0.0),
+            "recommended_action_id": reasons[top]["action"]}
+
+
+async def real_diagnose(thread: str, taxonomy: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Real frontier diagnosis via the gated LLM client (`core.runtime.llm_client`) using the pack's
+    diagnosis prompt. Raises `provider_unavailable` when gated off / unconfigured."""
+    from core.runtime import llm_client
+
+    tax = taxonomy or load_taxonomy()
+    resp = await llm_client.complete(system=_PROMPT.read_text(), user=thread)
+    return _parse_diagnosis(resp.text, tax)
+
+
+async def diagnose(thread: str, taxonomy: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Production entrypoint: real frontier diagnosis when `llm_provider_enabled`, else the
+    deterministic simulated diagnoser (offline). Same output shape either way."""
+    if get_settings().llm_provider_enabled:
+        return await real_diagnose(thread, taxonomy)
+    return simulated_diagnose(thread, taxonomy)
 
 
 def run_eval() -> dict[str, Any]:

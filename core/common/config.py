@@ -187,6 +187,15 @@ class Settings(BaseSettings):
     # is chosen at go-live (provider-agnostic decision) — enabling this before a provider is wired
     # fails closed (provider_unavailable). Tests always use the simulated model.
     llm_provider_enabled: bool = Field(default=False)
+    # Real LLM wiring (MVP-074). Only consulted when llm_provider_enabled is True; enabled without a
+    # key fails closed (provider_unavailable). `llm_api_key` is a SECRET — set via env/SOPS, never
+    # committed. Provider is `anthropic` (project default, CLAUDE.md) or `openai`. `llm_api_base`
+    # defaults per provider when unset. Model defaults to a capable frontier model.
+    llm_provider: str = Field(default="anthropic")  # anthropic | openai
+    llm_api_key: str | None = Field(default=None)  # secret — never commit
+    llm_model: str = Field(default="claude-sonnet-4-5")
+    llm_api_base: str | None = Field(default=None)  # e.g. https://api.anthropic.com
+    llm_max_tokens: int = Field(default=1024)
 
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
