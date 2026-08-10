@@ -120,3 +120,15 @@ export const Plus = (p: IconProps) => (
     <path d="M12 5v14M5 12h14" />
   </Stroke>
 );
+
+export const BarChart = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M4 20V4M4 20h16M8 20v-6M12 20v-9M16 20v-4M20 20v-11" />
+  </Stroke>
+);
+
+export const Bolt = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
+  </Stroke>
+);
