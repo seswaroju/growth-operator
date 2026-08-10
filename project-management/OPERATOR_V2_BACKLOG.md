@@ -114,7 +114,7 @@ behind real payment credentials (§10.4 — never charge without founder approva
   rail cost (see notes below). Gated/simulated like the rest.
 - **PAY2 Receipt generation** (M) — **DONE**; a Shopify-style receipt (HTML → PDF) from a charge: store + line
   items + amount + plan + date + tax fields; stored/retrievable; no secrets in the artifact.
-- **PAY-TX Transactions record** (M/L) — **NEW (founder 2026-08-10)**; a persisted, retrievable
+- **PAY-TX Transactions record** (M/L) — **DONE**; a persisted, retrievable
   transaction per charge: org_id, an **auto-generated meaningful receipt/transaction no.** (scheme TBD
   with founder — must not invent §18), amount + line items, **discount_minor + discount_reason**,
   **notes**, tax, provider + provider_ref, status (created→paid→receipted), contacts, timestamps; RLS;

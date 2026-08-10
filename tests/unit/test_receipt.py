@@ -29,6 +29,15 @@ def test_subtotal_and_total_math() -> None:
     assert r.total_minor == 3_540_000  # subtotal + tax
 
 
+def test_discount_reduces_total_and_shows_on_receipt() -> None:
+    r = _receipt(discount_minor=300_000, discount_label="Discount (10% — loyal)")
+    assert r.subtotal_minor == 3_000_000
+    assert r.total_minor == 3_240_000  # subtotal − discount + tax = 3,000,000 − 300,000 + 540,000
+    assert "Discount (10% — loyal): -₹3,000.00" in render_receipt_text(r)
+    html = render_receipt_html(r)
+    assert "Discount (10% — loyal)" in html and "-₹3,000.00" in html
+
+
 def test_money_formats_inr() -> None:
     assert money(2_500_000) == "₹25,000.00"
     assert money(540_000) == "₹5,400.00"

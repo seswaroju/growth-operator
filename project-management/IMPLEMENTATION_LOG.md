@@ -3609,3 +3609,33 @@ receipt (WhatsApp) unchanged. Preview published for founder review (sample/demo 
 
 **Verify:** ruff clean · `mypy core` 174 · **receipt tests 5** (math, formatting, **escaping**, tax-row
 logic still pass against the new markup) · guards 0. **Next:** PAY3 — deliver it on verified payment.
+
+## 2026-08-10 — PAY-TX: Transactions store (meaningful number, %-discount, notes, retrievable)
+
+**Branch:** `feature/pay-tx-transactions`. Founder wanted every charge stored + retrievable with a
+meaningful auto-number, discounts, and notes. Also chose the number scheme **`{STORE}-{YYMM}-{seq}`**
+(store code · YYMM · per-store monthly sequence) and **percent** discounts.
+
+- **Migration `8508f4155753`** (on `b6123061f10b`): `transactions` table (org_id, receipt_no,
+  store_code, period_ym, seq, line_items jsonb, subtotal/discount/tax/total minor, discount_percent +
+  reason, notes, provider/provider_ref, status, contacts, timestamps; UNIQUE(org_id,receipt_no) +
+  UNIQUE(org_id,period_ym,seq); **RLS**). **Up/down/up verified**.
+- **Service** (`core/payments/transactions.py`): `store_code` (name→"RATNA"), immutable auto-number,
+  `create_transaction` (percent discount via **Decimal — no float on money**, subtotal/total computed),
+  `list`/`get`, `to_receipt` (builds the PAY2 receipt incl. discount line). Sets `set_org_context` (RLS).
+- **API** (`core/payments/api.py`, registered): `POST/GET /v1/admin/tenants/{org}/transactions[/{id}]`
+  — admin-plane gated (MANAGE create / READ list+get), audited with target_org_id.
+- **Receipt** (`receipt.py`): gained a discount line (text + branded HTML); total = subtotal − discount + tax.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Auto-number `RATNA-YYMM-001`, seq increments, %-discount math, retrieve | `test_create_numbers_discounts_and_retrieves` | PASS |
+| One store's transactions never show under another (RLS) | `test_transactions_isolated_between_stores` | PASS |
+| 403 non-operator / 404 unknown id | `test_transactions_403…` / `…404…` | PASS |
+| store_code + to_receipt (discount label, totals) | `tests/unit/test_transactions.py` (3) | PASS |
+| Discount reduces total + shows on receipt | `test_discount_reduces_total_and_shows_on_receipt` | PASS |
+
+**Commands (full CI mirror before push):** ruff clean · guards 0 (fixed a **float-money** violation —
+Decimal, not float) · `mypy core` 176 · migration up/down/up · **full tests/unit 459** · isolation +
+payments/billing/tenants integ 41. **Next:** PAY3 — approval-gated receipt delivery (draft→approve→send).
