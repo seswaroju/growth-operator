@@ -11,11 +11,12 @@ export function consentLabel(s: string): string {
   return CONSENT_LABEL[s] ?? s.replace(/_/g, " ");
 }
 
+// Harmonized to the design tokens (opted_in=good, opted_out=danger, pending=warn, unknown=muted).
 export const CONSENT_STYLE: Record<string, string> = {
-  opted_in: "bg-green-100 text-green-800",
-  opted_out: "bg-red-100 text-red-800",
-  pending: "bg-amber-100 text-amber-800",
-  unknown: "bg-neutral-100 text-neutral-600",
+  opted_in: "bg-good-soft text-good",
+  opted_out: "bg-danger-soft text-danger",
+  pending: "bg-warn-soft text-warn",
+  unknown: "bg-line-2 text-ink-2",
 };
 
 export const ORDER_STATUS_LABEL: Record<string, string> = {

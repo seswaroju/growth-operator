@@ -42,3 +42,10 @@ export function tagClasses(tone: Tone = "muted", extra = ""): string {
 
 export const cardClasses = (extra = ""): string =>
   `rounded-2xl border border-line bg-surface shadow-card ${extra}`.trim();
+
+// Form fields (input / select / textarea) — themed border, caret, and focus ring.
+export const fieldClasses = (extra = ""): string =>
+  (
+    "rounded-xl border border-line bg-raised px-3 py-2.5 text-sm text-ink caret-accent outline-none " +
+    `placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent-soft ${extra}`
+  ).trim();
