@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import httpx
@@ -134,7 +134,9 @@ async def _rollup(org: uuid.UUID) -> None:
 
 
 async def test_compute_day_counts_the_domain_tables(scene: Scene) -> None:
-    day = date.today() - timedelta(days=2)
+    # UTC basis to match the seeding (`datetime.now(UTC)`); a local `date.today()` is off by one
+    # when the local/UTC date boundary differs.
+    day = datetime.now(UTC).date() - timedelta(days=2)
     factory = dbmod.get_sessionmaker()
     async with factory() as s:
         vals = await metrics.compute_day(s, scene.org_a, day)
@@ -151,7 +153,7 @@ async def test_rollup_is_idempotent(scene: Scene) -> None:
     try:
         n = await conn.fetchval(
             "SELECT count(*) FROM business_metrics WHERE org_id=$1 AND metric_key='leads_created' "
-            "AND metric_date=$2", scene.org_a, date.today() - timedelta(days=2))
+            "AND metric_date=$2", scene.org_a, datetime.now(UTC).date() - timedelta(days=2))
     finally:
         await conn.close()
     assert n == 1

@@ -2783,3 +2783,51 @@ integ+e2e+contract (+5) · migration 037 up/down. No dependency.
 compensation + human_task (approval) + ops run-timeline view**. Event-wait live fan-in (a generic event
 consumer, shared with `triggers.match_and_start`) is a small follow-on when a workflow needs a live
 event trigger — the matching logic is built + tested; only the Redis-stream wiring is deferred.
+
+---
+
+## 2026-08-09 — MVP-073c: Workflow saga + human_task + ops timeline (stage 3 of the executor initiative)
+
+**Branch:** `feature/mvp-073c-saga-human` (off main). **Merge:** `pending`. Failure handling, HITL, and
+the run-timeline read — `festival_campaign` (human approval + compensation block) is now fully runnable.
+No migration, no dependency.
+
+**Saga compensation** (`executor._compensate` / `_run_compensation`): an `agent_task` that **returns** a
+failed status is a *business failure* → run `compensation.on_failure` (author-ordered, the reverse of
+the effects to undo) as a mini-program (SET/EMIT/AGENT; WAIT/HUMAN skipped — a compensator must not
+block), emit the `alert` (`alert.ops.v1`), mark the run `compensated` (or `compensated_partial` if a
+compensator itself fails); no compensation block → `failed`. A **raised exception** stays a crash
+(propagates, resumable) — the two are deliberately distinct.
+
+**`human_task`** — the HUMAN step parks the run and raises an **approval** via
+`approvals.service.create_approval` (action `workflow.human_task`, tier 2; the workflow run is linked in
+the approval **payload** because `approvals.run_id` FKs `agent_runs`). A new `approval.resolved.v1`
+consumer group (`workflow-human-task`) calls `executor.resume_human`: **approve** advances past the step
+to the gated action; **reject** routes to compensation and never runs the gated action.
+
+**Ops timeline** — `core/workflows/timeline.py` (`get_run_timeline` = run state + ordered event log;
+`list_runs`) + `core/workflows/api.py` tenant router `GET /v1/workflows/runs` and `/runs/{id}`
+(`insights:read`), registered in the app.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| **Compensators run in reverse (authored) order + alert** | `test_agent_failure_runs_compensators_in_authored_order` | PASS |
+| No compensation block → failed | `test_failure_without_compensation_marks_failed` | PASS |
+| human_task parks + raises a linked approval | `test_human_task_parks_and_raises_linked_approval` | PASS |
+| Approve advances to the gated step | `test_approve_advances_to_gated_step` | PASS |
+| Reject never runs the gated step | `test_reject_never_runs_gated_step` | PASS |
+| Run timeline reads state + events | `test_run_timeline_reads_state_and_events` | PASS |
+
+**Incidental fix (unrelated to workflows):** `tests/integration/test_business_metrics.py` used
+`date.today()` (local) against `datetime.now(UTC)` seeding — a UTC/local off-by-one that the mid-session
+date rollover exposed (it passed during stages 1–2). Aligned the test to the UTC basis. Confirmed
+pre-existing: it fails on main with the stage-3 work stashed.
+
+**Commands:** ruff clean · `mypy core` **161** · **guards 0** · **419** unit+isolation · **451**
+integ+e2e+contract (+6) · no migration/dep.
+
+**Next recommended action:** merge + push + record hash + verify CI, then **stage 4: simulation mode**
+(`POST /v1/workflows/{id}/simulate` — replay historical events in a dry-run shadow, report would-have-
+fired / guard-block / sample messages / cost) — the stage that directly serves the ghost-recovery proof.
+The engine is now fully runnable (trigger → steps → agents → waits → approvals → compensation).

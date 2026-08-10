@@ -38,6 +38,7 @@ from core.tenancy.rbac import register_rbac_handlers
 from core.tenancy.router import router as auth_router
 from core.tenancy.settings_router import router as settings_router
 from core.tenancy.tenants_admin import router as tenants_admin_router
+from core.workflows.api import router as workflows_router
 
 # Fail closed at import/startup: dev-only OTP echo outside dev (§10.3), and a required
 # secrets file that decryption did not produce (MVP-008).
@@ -73,6 +74,7 @@ app.include_router(rates_router)
 app.include_router(ops_router)
 app.include_router(approvals_router)
 app.include_router(imports_router)
+app.include_router(workflows_router)
 app.include_router(support_owner_router)
 app.include_router(support_admin_router)
 app.include_router(platform_router)
