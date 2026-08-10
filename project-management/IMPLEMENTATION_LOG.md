@@ -2788,7 +2788,7 @@ event trigger — the matching logic is built + tested; only the Redis-stream wi
 
 ## 2026-08-09 — MVP-073c: Workflow saga + human_task + ops timeline (stage 3 of the executor initiative)
 
-**Branch:** `feature/mvp-073c-saga-human` (off main). **Merge:** `pending`. Failure handling, HITL, and
+**Branch:** `feature/mvp-073c-saga-human` (off main). **Merge:** `b05ffd0`. Failure handling, HITL, and
 the run-timeline read — `festival_campaign` (human approval + compensation block) is now fully runnable.
 No migration, no dependency.
 
