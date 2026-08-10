@@ -3441,3 +3441,29 @@ Presentational only — no API/backend change; the server still validates + revi
 
 **Commands:** oxlint clean (2 pre-existing) · `tsc -b` 0 · **vitest 61** (+4) · `vite build` ✓ · guards 0 ·
 no forbidden nouns. **Next:** OC3 — plan-aware ticket priority + SLA.
+
+## 2026-08-10 — OC3: plan-aware ticket priority + SLA (feedback C)
+
+**Branch:** `feature/oc3-plan-aware-tickets`. **Frontend-only** — no migration/backend. The roster already
+exposes each store's plan via `platform_tenant_roster()`, and the admin session can't read the RLS'd
+`billing_subscriptions` directly (that's why billing uses SECDEF), so the Queue joins **tickets ↔ roster
+(org→plan) ↔ plan catalog (name→price for tier rank)** client-side — cleaner than a new SECDEF.
+
+- `web-ops/src/lib/ticketPriority.ts` (+`.test.ts`): `plansByTier` (price desc → tier order), `tierRank`,
+  `slaHoursForTier`, `slaStatus` (breach + compact label), `rankTickets` (open→closed, breached first,
+  higher tier, then priority/severity/age). **SLA defaults (tunable):** top plan **4h**, next **8h**, next
+  **24h**, base/none **48h** (`SLA_HOURS_BY_TIER`).
+- `web-ops/src/components/QueueSection.tsx`: fetches tenants + plans alongside tickets (**degrades
+  gracefully** without `tenants:read` → urgency-only sort); each row shows a **plan badge** + **SLA
+  countdown**, breached rows highlighted red; header shows the breached count; **tier-aware sort**.
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Plans → tier order; tierRank + fallback | `ticketPriority.test` (plansByTier/tierRank) | PASS |
+| SLA hours per tier, clamped | `ticketPriority.test` (slaHoursForTier) | PASS |
+| SLA breach at the boundary + labels | `ticketPriority.test` (slaStatus) | PASS |
+| Rank: open→closed, breached, tier, urgency | `ticketPriority.test` (ranks) | PASS |
+
+**Commands:** web-ops oxlint clean · `tsc -b` 0 · **vitest 17** (+4) · `vite build` ✓ · guards 0 · no
+forbidden nouns. **SLA numbers are defaults — flag for founder to tune.** **Next:** OC4 — Tenant 360.

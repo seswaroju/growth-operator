@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { adminListTickets, adminUpdateTicket, type AdminTicket, type TicketPriority } from "../api";
+import {
+  adminListPlans, adminListTenants, adminListTickets, adminUpdateTicket, type TicketPriority,
+} from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { planByOrg, plansByTier, rankTickets, type RankedTicket } from "../lib/ticketPriority";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Card } from "./ui";
 
@@ -39,16 +42,10 @@ function fmt(ts: string): string {
   return new Date(ts).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function OperatorRow({
-  token,
-  ticket,
-  canResolve,
-}: {
-  token: string;
-  ticket: AdminTicket;
-  canResolve: boolean;
-}) {
+function OperatorRow({ token, r, canResolve }:
+  { token: string; r: RankedTicket; canResolve: boolean }) {
   const qc = useQueryClient();
+  const ticket = r.ticket;
   const [priority, setPriority] = useState<TicketPriority>(ticket.priority);
   const [note, setNote] = useState("");
 
@@ -59,17 +56,27 @@ function OperatorRow({
   });
 
   const resolved = ticket.status === "resolved" || ticket.status === "closed";
+  const breached = r.sla?.breached ?? false;
 
   return (
-    <li className="rounded-xl border border-line bg-raised p-3">
+    <li className={`rounded-xl border p-3 ${breached ? "border-danger-soft bg-danger-soft" : "border-line bg-raised"}`}>
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted">
-            {ticket.org_name}
-          </p>
-          <p className="text-sm font-semibold text-ink">{ticket.subject}</p>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{ticket.org_name}</p>
+            <Badge label={r.planName ?? "no plan"}
+              className={r.planName ? "bg-accent-soft text-accent-ink" : "bg-line-2 text-ink-2"} />
+          </div>
+          <p className="mt-0.5 text-sm font-semibold text-ink">{ticket.subject}</p>
         </div>
-        <Badge label={ticket.status} className={STATUS_TONE[ticket.status] ?? "bg-line-2 text-ink-2"} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Badge label={ticket.status} className={STATUS_TONE[ticket.status] ?? "bg-line-2 text-ink-2"} />
+          {r.sla && (
+            <span className={`text-[11px] font-semibold ${breached ? "text-danger" : "text-muted"}`}>
+              SLA {r.sla.label}
+            </span>
+          )}
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted">{ticket.description}</p>
       <div className="mt-2 flex items-center gap-1.5">
@@ -125,11 +132,26 @@ export default function QueueSection() {
   const permissions = me?.permissions ?? [];
   const canRead = hasPerm(permissions, "platform.tickets:read");
   const canResolve = hasPerm(permissions, "platform.tickets:resolve");
+  const canSeeTenants = hasPerm(permissions, "platform.tenants:read");
 
-  const { data, isLoading } = useQuery({
+  const tickets = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => adminListTickets(token as string),
     enabled: Boolean(token) && canRead,
+    retry: false,
+  });
+  // Plan-aware ranking needs the roster (org→plan) + plan catalog (name→price). Degrades gracefully:
+  // without tenants:read these stay empty and tickets sort by urgency alone.
+  const tenants = useQuery({
+    queryKey: ["admin-tenants"],
+    queryFn: () => adminListTenants(token as string),
+    enabled: Boolean(token) && canRead && canSeeTenants,
+    retry: false,
+  });
+  const plans = useQuery({
+    queryKey: ["billing-plans"],
+    queryFn: () => adminListPlans(token as string),
+    enabled: Boolean(token) && canRead && canSeeTenants,
     retry: false,
   });
 
@@ -143,22 +165,27 @@ export default function QueueSection() {
     );
   }
 
-  const open = (data ?? []).filter((t) => t.status === "open" || t.status === "in_progress");
+  const orgPlan = planByOrg(tenants.data ?? []);
+  const tierOrder = plansByTier(plans.data ?? []);
+  const ranked = rankTickets(tickets.data ?? [], orgPlan, tierOrder, Date.now());
+  const openCount = ranked.filter((r) => r.open).length;
+  const breachedCount = ranked.filter((r) => r.sla?.breached).length;
 
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-sm font-semibold text-ink">Support queue · all stores</h2>
         <span className="text-xs text-muted">
-          {open.length} open · {data?.length ?? 0} total
+          {openCount} open · {ranked.length} total
+          {breachedCount > 0 && <span className="text-danger"> · {breachedCount} SLA breached</span>}
         </span>
       </div>
-      {isLoading ? (
+      {tickets.isLoading ? (
         <p className="text-sm text-muted">Loading…</p>
-      ) : data && data.length > 0 ? (
+      ) : ranked.length > 0 ? (
         <ul className="space-y-2">
-          {data.map((t) => (
-            <OperatorRow key={t.id} token={token as string} ticket={t} canResolve={canResolve} />
+          {ranked.map((r) => (
+            <OperatorRow key={r.ticket.id} token={token as string} r={r} canResolve={canResolve} />
           ))}
         </ul>
       ) : (

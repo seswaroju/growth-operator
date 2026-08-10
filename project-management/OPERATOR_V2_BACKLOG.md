@@ -41,7 +41,7 @@ granularity and a visible breakdown.
 - web-ops: a spend-by-channel breakdown panel (grouped bars + totals) on the tenant view.
 - Tests: rollup math (incl. zero/─ cases), isolation (per-org), API.
 
-## OC3 — Plan-aware ticket priority + SLA (feedback C) — **Effort M** — status: todo
+## OC3 — Plan-aware ticket priority + SLA (feedback C) — **Effort M** — status: done
 Rank operator tickets by the tenant's plan tier + urgency, with SLA timers.
 **Acceptance:**
 - Admin ticket list carries the org's plan (join subscription→plan) and a derived tier.
