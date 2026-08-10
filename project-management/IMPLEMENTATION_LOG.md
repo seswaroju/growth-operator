@@ -3681,7 +3681,7 @@ in logs or events; RLS enforced via `set_org_context`/`org_scoped_session`; oper
 
 ---
 
-## 2026-08-10 — Operator "Charge this store" UI (branch `feature/pay-ops-ui-charge-store`)
+## 2026-08-10 — Operator "Charge this store" UI (branch `feature/pay-ops-ui-charge-store`) — merged `ec0828f`, CI green
 
 **Founder ask:** after onboarding, be able to **charge the store** and generate/send a Shopify-style
 receipt (routed through approvals). This is the operator-facing front for PAY-TX + PAY3.
@@ -3707,3 +3707,19 @@ passed** (6 files) · `npm run build` ✓ · repo `scripts/guards.py` 0 (industr
 **Security:** operator-only surface; writes gated on `platform.tenants:manage`; no secrets; receipt
 still can't send without the PAY3 approval + a live provider. **Next:** PAY3b — Razorpay webhook
 endpoint (payment confirmation), then OC5–OC12 forecast backlog.
+
+---
+
+## 2026-08-10 — Note · Receipt delivery format (PAY3 clarification, founder Q)
+
+How a receipt is delivered today (see `core/payments/delivery.py`):
+- **Email** → the **branded HTML** receipt (`render_receipt_html`: cream/champagne, serif wordmark,
+  PAID pill, discount row) with a plain-text alternative — the "designed nicely" version.
+- **WhatsApp** → a **formatted plain-text message** (`render_receipt_text` via `MetaClient.send_text`).
+  It is **not a PDF and not an image**.
+
+A PDF/document on WhatsApp is a distinct future enhancement (**PAY4 · receipt PDF**): render the receipt
+to a PDF (needs a PDF library — a **new dependency**, so founder approval per §9) or an image → upload it
+to Meta's media endpoint for a `media_id` → send a `document` (or `image`) message. Not built; awaiting
+founder decision on whether it's wanted and which renderer. **Order stands:** PAY3b next, then PAY4 /
+OC5–OC12 by founder pick.
