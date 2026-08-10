@@ -419,3 +419,41 @@ subscription + social/SEO/campaign billing.
 
 **Status:** VISION CAPTURE ONLY — **not** MVP scope. No boutique/influencer pack is built until it has
 its own approved ticket. Does **not** change MVP-072 (current active ticket) scope.
+
+---
+
+## Addendum 2026-08-09 — Marketing-agent persuasion techniques (capture + implementation ease)
+
+**Founder input (verbatim list preserved).** Techniques the **marketing-agent layer** (vision item 1)
+should be able to apply when composing customer-facing copy / campaigns. Ratings are *implementation
+ease* on our platform: 🟢 mostly a prompt-layer/template pattern with data we have · 🟡 needs some new
+data capture, journey/timing logic, or real grounded figures · 🔴 needs heavier infra or design assets.
+
+> **HARD GUARDRAIL (CLAUDE.md §18 / §10.4):** every technique below is applied **only over approved,
+> grounded business data**, behind **human approval**, via the mediation/approval boundary. The agent
+> must **never fabricate** scarcity, urgency, price, discount, availability, or customer history to
+> manufacture a persuasion effect. Scarcity/urgency/loss-aversion/endowment must resolve from **real**
+> stock, deadlines, the committed-figures ledger, or the live rate — never invented.
+
+| # | Technique (verbatim) | What it is / how it maps here | Ease |
+|---|---|---|---|
+| a | The gold gradient effect | Read as **goal-gradient** (people accelerate as a reward nears — progress nudges "2 away from a gift"); *or* a literal gold-colour brand gradient (visual). **Founder to confirm which.** | 🟡 (progress/loyalty data) / 🟢 if visual |
+| b | Von Restorff effect | Isolation/distinctiveness — make one option stand out (a "featured"/highlighted pick). Prompt + UI emphasis. | 🟢 |
+| c | Framing effect | Present the same true fact in the more favourable frame ("keeps 95% purity" vs …). Prompt-layer. | 🟢 |
+| d | Choice architecture | Structure how options are ordered/defaulted to guide the choice (pairs with our ranked approval_gate). | 🟡 (option-set logic) |
+| e | Information-gaps theory | Curiosity gap — open a loop the reply closes ("one thing about this piece…"). Prompt/template. | 🟢 |
+| f | Endowment effect | Make it feel already theirs — "your piece is reserved / on hold". Needs a real hold/reservation. | 🟡 (reservation data) |
+| g | Peak-end rule ("peak and rule") | Journeys judged by their peak + end — time the close of a conversation on a high note. Journey orchestration. | 🟡 (workflow timing) |
+| h | Choice overload | Fewer options convert better — cap the set (already how approval_gate shows 2–3). Composition rule. | 🟢 |
+| i | The pratfall effect | A small, honest imperfection increases likability — persona/tone nuance. Brand-risk; needs care. | 🟡 (tone, review) |
+| j | Vibe marketing (vibe branding) | Consistent aesthetic/emotional brand voice. Tone = prompt-layer; visual identity assets are heavier. | 🟡 (tone) / 🔴 (visual assets) |
+| k | Commitment & consistency | Small yes → bigger yes; sequence micro-commitments. The workflow engine sequences the touches. | 🟡 (multi-step journey) |
+| l | Loss aversion | Frame around avoiding a real loss ("today's rate holds until …"). Must ground in the real rate/ledger. | 🟢 (over grounded data) |
+| m | Processing fluency | Easy-to-process copy feels truer/nicer — short sentences, clear formatting, the lead's language. | 🟢 |
+| n | The fresh-start effect | Act on temporal landmarks (festival, new year, birthday). Our `calendar.window_opened` triggers help. | 🟡 (date/lifecycle triggers) |
+| o | Scarcity vs Urgency | Limited quantity vs limited time. **Only with REAL stock/deadline data** — never fabricated. | 🟡 (real inventory/deadline) |
+| p | The rule of 7 | ~7 touches before a buy → multi-touch sequencing with touch-cap governance (engine + `touch_cap` guard). | 🟡 (touch tracking) |
+
+**Status:** VISION CAPTURE ONLY — not scope. These become prompt-layer/composition config in the
+marketing-agent framework layer when it gets its own approved ticket; each stays gated-simulated behind
+approval until then. See [[go-revenue-model]] and the marketing-agent framework layer (item 1).
