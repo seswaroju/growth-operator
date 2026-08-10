@@ -1,0 +1,66 @@
+# Reason-conditioned recovery templates (jewelry pack, MVP-073i).
+# Source: docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md.
+# One template per recovery action (keyed by action_id from ghost_reason_taxonomy.yaml).
+#
+# COMMITTED-FIGURES RULE: a template NEVER contains a literal figure. Every rate / making / EMI /
+# price / buyback number is a `{{ledger.*}}` placeholder filled on the send path from the committed
+# ledger; every piece detail is a `{{piece.*}}` placeholder. A template with a bare number is a bug.
+# Copy is illustrative Hyderabad romanized Telugu + English; the composer re-renders to the lead's
+# observed language_profile. Placeholders stay language-neutral.
+
+templates:
+  act_rate_lock:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      {{piece.name}} meeru chusina piece inka available andi. Ee rate lo hold cheyagalanu
+      {{ledger.quote_valid_until}} varaku — rate padipoye varaku wait cheyyakunda lock chedhama?
+      Rate move ayithe ping chesta.
+
+  act_value_reframe:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      {{piece.name}} nachindi kada andi. Same design lo konchem lighter option kuda undi —
+      {{alt_piece.weight_band}}, daily wear ki perfect. Chupinchana?
+
+  act_making_flex:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      Making charge meeda matladocchu andi — {{piece.name}} ki inka konchem adjust cheyagalam.
+      Meeku okasari final number pampana?
+
+  act_differentiator_anchor:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      Compare chestunnaru kada — okka thing andi: maa pieces BIS hallmark + {{ledger.buyback_pct}}
+      buyback tho vastayi, exchange eppudaina. {{piece.name}} meeku reserve chesi unchana?
+
+  act_warm_decision_check:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      Koi jaldi ledu andi. Family tho matladi cheppandi. {{piece.name}} ni
+      {{ledger.quote_valid_until}} varaku meeku hold chesta. Intiki video lo chupinchamante chupista,
+      leda store ki family tho randi.
+
+  act_finance_offer:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      {{piece.name}} ki EMI / gold savings scheme options unnayi andi — advance ichi book chesi,
+      convenient ga pay cheyyocchu. Options pampana? Terms {{ledger.finance_terms}}.
+
+  act_design_pivot:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      Ee design perfect ga match avvaledu anipistondi andi. Mee occasion ({{persona.occasion}}) ki
+      konni kotha pieces vacchayi — different pattern, meeku nachchela. Konni chupinchana?
+
+  act_trust_proof:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      Manchi question andi. {{piece.name}} BIS hallmark {{piece.huid}}, purity certified,
+      {{ledger.buyback_pct}} buyback policy. Okasari store ki vacchi chetitho chudandi — no pressure.
+
+  act_generic_nudge:
+    language_profile: {primary: te-en-roman, register: casual, honorific: andi}
+    body: >-
+      {{piece.name}} gurinchi inka aalochistunnara andi? Emaina questions unte cheppandi — help
+      chesta. Store eppudu convenient anukunte randi.

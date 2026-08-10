@@ -3012,3 +3012,46 @@ ghost-recovery pack** (the 8-reason taxonomy, the frontier diagnosis prompt, the
 templates as declarative `verticals/jewelry/` config + a clean `silent_lead_reactivation` rewrite using
 the sugar) — then item 3, the **eval harness** (offline/synthetic, real-ready via the gate) + the
 **CAPTURE-GAP migrations** for live diagnosis. Then the **synthetic-data demo** (founder request).
+
+---
+
+## 2026-08-09 — MVP-073i: Jewelry ghost-recovery pack (diagnosis item 2)
+
+**Branch:** `feature/mvp-073i-ghost-pack` (off main). **Merge:** `pending`. The L1 declarative pack that
+turns the ghost-recovery thesis into a runnable workflow — no `core/` code (industry nouns live in
+`verticals/`, which the guard does not scan). No migration, no dependency.
+
+**New pack config (`verticals/jewelry/`):**
+- `playbooks/ghost_reason_taxonomy.yaml` — the 8 frozen reasons, each → a distinct recovery action;
+  band-dependent reasons (sticker_shock / comparison_shopping / authenticity_buyback_trust) → high-band
+  `act_sales_handoff`; abstain → `act_abstain_owner_pick`, fallback `act_generic_nudge`.
+- `templates/recovery.yaml` — 9 reason-conditioned templates (romanized Telugu, `language_profile`
+  each). **Committed-figures rule enforced**: no literal figure — every number is a `{{ledger.*}}` /
+  `{{piece.*}}` placeholder.
+- `prompts/ghost_diagnosis.md` — the frontier diagnosis prompt (ranked over the 8, abstain path,
+  evidence spans, never writes a figure).
+- `workflows/silent_lead_reactivation.yaml` v3→**v4**: rewritten to the frozen grammar + Option-A sugar
+  so it **parses, compiles, and seeds** (was skipped as unparseable). diagnose → approval_gate(ranked,
+  reads `diagnose.ranked`, label_sink `lead_diagnoses`) → compose → wait(reply) → branch(reply → emit
+  `lead.reengaged`). Block-style guards keep `touch_cap(3, 30d)` intact. classify_ghost + the 24h
+  post-quote silence window + the sales-handoff branch are deferred to the CAPTURE-GAP migrations.
+
+**Requirement → evidence** (`tests/unit/test_jewelry_ghost_recovery.py`, rigorous corner cases):
+| Criterion | Test | Result |
+|---|---|---|
+| Exactly the 8 frozen reasons; each has an action | `test_taxonomy_has_exactly_the_eight_frozen_reasons`, `test_every_reason_has_an_action` | PASS |
+| Band-dependent reasons hand off at high band (and only those) | `test_band_dependent_reasons_hand_off_at_high_band` | PASS |
+| Every referenced action has a template; no-template actions don't | `test_every_customer_action_has_a_template` | PASS |
+| **No orphan templates** | `test_no_orphan_templates` | PASS |
+| **No literal figure in any template** (committed-figures rule) | `test_no_template_contains_a_literal_figure` | PASS |
+| Prompt names all 8 reasons + abstain + frontier + no-figure | `test_prompt_names_all_eight_reasons_and_the_guardrails` | PASS |
+| v4 workflow parses + routes on `diagnose.*` (ranked gate) | `test_workflow_uses_diagnosis_output_and_ranked_gate`, `test_silent_lead_reactivation_v4_parses_via_the_sugar` | PASS |
+
+**Commands:** ruff clean · `mypy core` **164** · **guards 0** · **434** unit+isolation (+14) · **467**
+integ+e2e+contract · pack installer + jewelry/kirana e2e green (v4 now seeds). No migration/dep.
+
+**Next recommended action:** merge + push + record hash + verify CI, then item 3 — the **eval harness**
+(offline/synthetic ghost set → the gated-simulated diagnosis, would-fire / confusion, real-ready via
+`llm_provider_enabled`) + the **CAPTURE-GAP migrations** (quoted_catalog_item_id, is_price_reveal,
+first_customer_response, last_outbound_msg_at/direction, `lead_diagnoses`) for live diagnosis. Then the
+**synthetic-data demo** (founder request).

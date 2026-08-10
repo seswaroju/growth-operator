@@ -1,47 +1,56 @@
-# PROPOSED — FOUNDER APPROVAL REQUIRED. v2 -> v3: inserts diagnosis-first + reason-conditioned recovery.
-# See 32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md and 10-agents/ghost-diagnosis-prompt.md.
-# CAPTURE-GAPs 01-06 (recovery spec) must land before this runs live; today's schema lacks several inputs.
+# Silent-lead (ghost) recovery — diagnosis-first (jewelry pack, MVP-073i).
+# v3 (PROPOSED shorthand) -> v4: rewritten to the frozen grammar + Option-A sugar (DECISIONS
+# 2026-08-09), so it PARSES, COMPILES, and RUNS gated-simulated. See
+# docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md + 10-agents/ghost-diagnosis-prompt.md.
+#
+# Deferred to the CAPTURE-GAP migrations (needs data today's schema lacks; then re-enable):
+#   - classify_ghost (ghost vs shop-stopped-replying) — needs last_outbound_msg_at (CAPTURE-GAP-04);
+#   - the 24h post-quote silence window in the trigger — needs last_customer_msg_at (GAP-05);
+#   - the sales-handoff branch + writing the owner's pick to lead_diagnoses (GAP-06).
+# The diagnosis + reason-conditioned recovery + approval gate all run today.
 workflow: silent_lead_reactivation
-version: 3
+version: 4
 trigger:
-  # CAPTURE-GAP-05: corrected stage 'engaged' -> 'quoted' (recovery fires on POST-QUOTE silence).
-  # Window moved 72h -> 24h: diagnosis is cheap + early; the SEND still respects within_send_window.
-  event: {type: lead.stage.changed, condition: "payload.stage == 'quoted' && duration_since(payload.last_customer_msg_at) > duration('24h')"}
-guards: [consent_valid(marketing), not_suppressed, within_send_window, touch_cap(3, 30d)]
+  event: {type: lead.stage.changed, condition: "payload.stage == 'quoted'"}
+# Block style so YAML does not split the comma inside touch_cap(3, 30d).
+guards:
+  - consent_valid(marketing)
+  - not_suppressed
+  - within_send_window
+  - touch_cap(3, 30d)
 concurrency: {key: "subject.lead_id", policy: drop}
 steps:
-  # 1. Ghost vs shop-stopped-replying (A1.3). Only LEAD-INITIATED silence proceeds.
-  #    CAPTURE-GAP-04: needs last_outbound_msg_at / last_message_direction — ghost = our msg was last, no customer reply.
-  - classify_ghost: {input_map: {last_customer_msg_at: "subject.last_customer_msg_at",
-                                 last_outbound_msg_at: "subject.last_outbound_msg_at"},
-                     on_shop_stopped: end}
-  # 2. Diagnosis (frontier tier). Reads pre-silence thread + SKU + agent price response + Tier-1 persona only.
-  #    CAPTURE-GAP-01/02/03: quoted_catalog_item_id, price-reveal message, first_customer_response.
-  - diagnose: {archetype: nurture, task: ghost_diagnosis, tier: frontier, timeout: 30s,
-               input_map: {thread: "conversation.pre_silence",
-                           sku: "subject.quoted_catalog_item",
-                           agent_price_response: "subject.price_reveal_message",
-                           persona: "crm.lead.thread_inferable"},          # Tier-1 ONLY; Tier-2 CRM stripped
-               output: {top_reason, ranked, abstain, confidence_top, recommended_action_id, evidence_spans},
-               on_timeout: {set: {abstain: true}}}
-  # 3. Approval gate (MVP-024, audit-before-act). NOTHING sends autonomously.
-  #    confident -> 1 recommended action; abstain/low-confidence -> 2-3 ranked options + "none, I'll handle it".
-  #    The owner's pick/override is written back as the ground-truth label (CAPTURE-GAP-06: lead_diagnoses).
-  - approval_gate: {mode: "diagnose.abstain ? multi_option : single_recommended",
-                    options_from: "diagnose.ranked", recommended: "diagnose.recommended_action_id",
-                    allow_owner_handle: true, on_owner_handle: end,
-                    label_sink: lead_diagnoses}
-  # 4. Compose the reason-conditioned template; {{ledger.*}} placeholders filled on the SEND PATH (committed-figures rule).
-  #    act_sales_handoff creates a human sales task instead of sending a customer message.
-  - compose: {archetype: nurture, task: reason_conditioned_recovery, timeout: 2m,
-              input_map: {action_id: "approval_gate.chosen_action", reason: "diagnose.top_reason",
-                          lead: subject, language_profile: "crm.lead.thread_inferable.language_profile"},
-              on_action: {act_sales_handoff: {create_task: sales_team}},
-              on_timeout: end}
+  # Diagnosis (frontier tier) — ranked distribution over the 8 reasons + abstain. Output binds under
+  # `diagnose` so the gate + composer read `diagnose.ranked` / `diagnose.top_reason`.
+  - diagnose:
+      archetype: nurture
+      task: ghost_diagnosis
+      tier: frontier
+      timeout: 30s
+      input_map: {thread: "subject.pre_silence_thread", sku: "subject.quoted_catalog_item"}
+      output: [top_reason, ranked, abstain, confidence_top, recommended_action_id]
+  # Nothing sends autonomously (audit-before-act): confident -> the recommended action; abstain ->
+  # the owner picks from the ranked options, or declines. The pick becomes the ground-truth label.
+  - approval_gate:
+      options_from: "diagnose.ranked"
+      recommended: "diagnose.recommended_action_id"
+      allow_owner_handle: true
+      label_sink: lead_diagnoses
+  # Compose the reason-conditioned template; {{ledger.*}} placeholders fill on the send path.
+  - compose:
+      archetype: nurture
+      task: reason_conditioned_recovery
+      timeout: 2m
+      input_map: {action: "diagnose.recommended_action_id", reason: "diagnose.top_reason"}
   - wait: {for: reply, timeout: 96h}
   - branch:
       cases:
         - when: "wait.result == 'reply'"
-          steps: [{emit: {event: lead.reengaged, payload_map: {lead_id: subject.lead_id, diagnosed_reason: "diagnose.top_reason", action: "approval_gate.chosen_action"}}}]
-      default: []            # touch_cap guard governs re-entry; no explicit loop
-compensation: {on_failure: [{emit: {event: lead.nurture_failed, payload_map: {lead_id: subject.lead_id}}}], alert: ops_digest}
+          steps:
+            - emit: {event: lead.reengaged,
+                     payload_map: {lead_id: "subject.lead_id", reason: "diagnose.top_reason"}}
+      default: []   # touch_cap governs re-entry; no explicit loop
+compensation:
+  on_failure:
+    - set: {vars: {recovery_failed: true}}
+  alert: ops_digest
