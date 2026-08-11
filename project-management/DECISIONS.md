@@ -1072,3 +1072,16 @@ PDF/image document. Rationale established in the same discussion:
 **Effect:** no code change — the shipped behaviour already sends the detailed text on WhatsApp and the
 **branded HTML on email**. The previously-noted **PAY4 · receipt PDF on WhatsApp is dropped** (revisit
 only if a founder later wants a formal PDF artefact). **Decided by:** Founder (2026-08-10).
+
+---
+
+## 2026-08-11 — Approval rules are scoped per active pack (vertical), then per store owner
+
+**Decision (founder):** the tier engine must separate approval rules **per active vertical pack**, and
+under that **per store owner** — *"per active pack separation right now… separate per vertical and
+under that per store owner."* Anticipates a second vertical (Boutique) + more store owners.
+
+**Effect:** `core/approvals/engine.py::_contributors` now scopes the `approval_policies` lookup — `core`
+rules apply platform-wide; `pack` rules apply only to orgs that have that pack **installed** (active);
+`tenant` rules apply only to that org. One vertical's rules can never govern another's runs. Resolves
+BLOCKER #22. **Decided by:** Founder (2026-08-11).

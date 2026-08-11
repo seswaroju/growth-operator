@@ -4490,3 +4490,28 @@ store. New/updated founder decisions to record in DECISIONS: WhatsApp receipt = 
 waiver, per-gram labor on top of making, two-step reply, approval by owner value-limit. Open founder
 policy calls: **BLOCKER #22** (multi-pack tier scoping + local-DB pollution), **#23** (CRM tables vault
 reconciliation), **#24** (DPDP erasure retention exception).
+
+---
+
+## 2026-08-11 — #22 · Per-vertical + per-store-owner approval-rule scoping (branch `feature/mvp-105-per-pack-tier-scoping`)
+
+Founder-requested (build now): the tier engine must keep approval rules separated **per active pack
+(vertical)** and, under that, **per store owner** — ahead of a second vertical (Boutique) + more stores.
+
+- **`core/approvals/engine.py::_contributors`**: the `approval_policies` lookup is now org-scoped —
+  `core` rules apply platform-wide; `pack` rules apply **only if the org installed that pack** (active
+  `pack_installations`); `tenant` rules apply only to that org. One vertical's rules can never govern
+  another's runs; a store owner's rules stay theirs. (`baseline_tier`, used only to validate tenant-rule
+  *writes*, keeps the conservative all-packs max — a follow-on only if it ever over-restricts.)
+- **Tests:** new `test_approval_engine.py::test_pack_rules_scoped_to_the_installed_pack` — a
+  non-installed pack's tier-4 rule does **not** apply (falls back to the default unknown tier). Four
+  fixtures that seeded pack rules without installing the pack (`test_send_loop`,
+  `test_tool_action_bridge_tiers`, `test_approval_engine`, `test_approval_service`) now create an active
+  `pack_installation` (more realistic). This **also removes** the old test-isolation coupling.
+
+**Migrations/APIs/events/frontend:** none (query change). **Commands:** ruff `All checks passed!` ·
+guards 0 · `mypy core` 189 · **tests/unit 498** · tier/autonomy/send/e2e cluster **540 passed** (full
+integration: only the pre-existing #22b local-pollution errors remain, unrelated). Resolves BLOCKER #22;
+recorded in DECISIONS.
+
+**Next recommended action:** (a) DPDP soft-erase (anonymize + platform-only archive) + (d) MVP-071 anchoring.

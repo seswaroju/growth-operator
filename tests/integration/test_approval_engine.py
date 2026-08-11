@@ -88,6 +88,10 @@ async def scene() -> AsyncIterator[Scene]:
             "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
             f"p{org.hex[:8]}",
         )
+        # Install the pack for the org so its pack-scoped rules apply (per-pack scoping, #22).
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
+            org, pack_id)
     finally:
         await conn.close()
     yield Scene(org, pack_id)
@@ -176,3 +180,31 @@ async def test_tenant_rule_tightens_over_pack(scene: Scene) -> None:
     await scene.policy("tenant", "messages.send", 3, tenant=True)  # this org tightened
     tier, _ = await _tier(scene, "messages.send")
     assert tier == 3
+
+
+async def test_pack_rules_scoped_to_the_installed_pack(scene: Scene) -> None:
+    # BLOCKER #22 — per-vertical separation. `scene.org` installed `scene.pack`. A DIFFERENT pack's
+    # tier-4 rule for a novel action must NOT govern this org (it never installed that pack) — the
+    # action falls back to the default unknown tier, not tier 4. Rules stay inside their vertical.
+    conn = await asyncpg.connect(_dsn())
+    try:
+        other = await conn.fetchval(
+            "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
+            "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
+            f"oth{scene.org.hex[:8]}")
+        await conn.execute(
+            "INSERT INTO approval_policies "
+            "(scope, pack_id, action_type, tier, cel_expr, description) "
+            "VALUES ('pack',$1,'action.novel.thing',4,'true','other-pack')", other)
+    finally:
+        await conn.close()
+    try:
+        tier, _ = await _tier(scene, "action.novel.thing")
+        assert tier == engine.DEFAULT_UNKNOWN_TIER  # 2 — the other pack's tier-4 rule did NOT leak
+    finally:
+        conn = await asyncpg.connect(_dsn())
+        try:
+            await conn.execute("DELETE FROM approval_policies WHERE pack_id=$1", other)
+            await conn.execute("DELETE FROM packs WHERE id=$1", other)
+        finally:
+            await conn.close()

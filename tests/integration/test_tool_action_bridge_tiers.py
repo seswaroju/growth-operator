@@ -66,6 +66,9 @@ async def scene() -> AsyncIterator[Scene]:
             "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
             "status) VALUES ('jewelry',$1,'>=1','{}'::jsonb,'u','s','published') RETURNING id",
             f"tb{org.hex[:8]}")
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
+            org, pack_id)  # install so the pack's rules apply (per-pack scoping, #22)
     finally:
         await conn.close()
     async with org_scoped_session(org) as s:  # seed the jewelry pack tier rules (global)

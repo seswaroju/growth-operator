@@ -98,6 +98,9 @@ async def scene() -> AsyncIterator[Scene]:
             "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
             "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
             f"sl{org.hex[:8]}")
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
+            org, pack)  # install so the pack's reply-tier rule applies (per-pack scoping, #22)
         arch = await conn.fetchval("SELECT id FROM agent_archetypes WHERE slug='concierge'")
         binding = await conn.fetchval(
             "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "

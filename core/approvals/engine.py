@@ -109,13 +109,22 @@ async def _contributors(
         contributors.append((NEVER_AUTONOMOUS_TIER, "core:tier4", [], None, "cancel", None))
         matched.append("core:tier4")
 
+    # Scope rules to THIS org (BLOCKER #22 — per-vertical, then per-store-owner): a `core` rule is
+    # platform-wide; a `pack` rule applies only if the org has that pack installed (active),
+    # so one vertical's rules never govern another's runs; a `tenant` rule applies only to that org.
     rows = (
         await session.execute(
             text(
-                "SELECT id, tier, cel_expr, approver_chain, timeout_s, on_timeout, confirm_kind "
-                "FROM approval_policies WHERE action_type = :at"
+                "SELECT p.id, p.tier, p.cel_expr, p.approver_chain, p.timeout_s, p.on_timeout, "
+                "       p.confirm_kind "
+                "FROM approval_policies p WHERE p.action_type = :at AND ("
+                "  p.scope = 'core' "
+                "  OR (p.scope = 'pack' AND p.pack_id IN ("
+                "        SELECT pi.pack_id FROM pack_installations pi "
+                "        WHERE pi.org_id = :org AND pi.status = 'active')) "
+                "  OR (p.scope = 'tenant' AND p.org_id = :org))"
             ),
-            {"at": action_type},
+            {"at": action_type, "org": str(org_id)},
         )
     ).mappings().all()
     for r in rows:
