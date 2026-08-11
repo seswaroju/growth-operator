@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## A2 · E2E front + tail: the full §1 loop end-to-end — **COMPLETE — awaiting founder review** (2026-08-11)
+## A2 · E2E front + tail: the full §1 loop end-to-end — **COMPLETE — merged `f1a4a96`, CI green** (2026-08-11)
 
 Branch `feature/mvp-097c-e2e-front-tail`. Test-only extension of the A1 journey — one cohesive E2E now
 covers §1 steps 5→11. **Front:** raw webhook → `normalizer.normalize_pending` (contact/conversation/
