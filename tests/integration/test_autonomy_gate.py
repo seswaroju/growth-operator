@@ -116,6 +116,32 @@ async def test_priced_reply_uses_pricing_capability(org: uuid.UUID) -> None:
     ) == engine.AUTONOMY_REVIEW_TIER
 
 
+# ---- per-capability value threshold (C1) ------------------------------------
+
+async def test_value_threshold_forces_review_at_or_above(org: uuid.UUID) -> None:
+    # Pricing stays auto; the owner dials a ₹500 (50000 minor) threshold. A quote below it still
+    # auto-sends; at or above it is forced to review — "auto under ₹X, ask above".
+    await _set(org, "autonomy.pricing.threshold_minor", 50000)
+    assert await _floor(org, "messages.send", {"body": "Quote", "amount_minor": 49999}) == 0
+    assert await _floor(
+        org, "messages.send", {"body": "Quote", "amount_minor": 50000}
+    ) == engine.AUTONOMY_REVIEW_TIER  # exactly at the threshold → review
+    assert await _floor(
+        org, "messages.send", {"body": "Quote", "amount_minor": 80000}
+    ) == engine.AUTONOMY_REVIEW_TIER
+
+
+async def test_value_threshold_default_zero_is_noop(org: uuid.UUID) -> None:
+    # Default threshold 0 → no effect even for a large amount (the pack/tier rules still apply).
+    assert await _floor(org, "messages.send", {"body": "Q", "amount_minor": 10_000_000}) == 0
+
+
+async def test_value_threshold_ignored_when_no_amount(org: uuid.UUID) -> None:
+    # A plain reply carries no amount → the threshold never triggers, even when dialled low.
+    await _set(org, "autonomy.messaging.threshold_minor", 100)
+    assert await _floor(org, "messages.send", {"body": "Namaste"}) == 0
+
+
 # ---- the money floor is immovable, and free-dial works ----------------------
 
 async def test_tier4_floor_immovable_at_every_knob_position(org: uuid.UUID) -> None:

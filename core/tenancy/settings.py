@@ -78,6 +78,13 @@ PLATFORM_DEFAULTS: dict[str, PlatformDefault] = {
     "autonomy.campaigns": PlatformDefault("auto", schema_ref="core.autonomy"),
     # Global "pause all autonomy" panic switch — on ⇒ every capability forces approval.
     "autonomy.paused": PlatformDefault(False, schema_ref="core.bool"),
+    # Per-capability value threshold (C1): even when a capability is on `auto`, an action whose
+    # amount (a quote total / a priced reply) is **at or above** this many minor units is forced to
+    # review — "auto under ₹X, ask above". 0 (default) = no threshold, so it changes nothing until
+    # an owner dials it. Free-dial (not tighten-only); the overlay still only ever RAISES a tier.
+    "autonomy.messaging.threshold_minor": PlatformDefault(0, schema_ref="core.money_minor"),
+    "autonomy.pricing.threshold_minor": PlatformDefault(0, schema_ref="core.money_minor"),
+    "autonomy.campaigns.threshold_minor": PlatformDefault(0, schema_ref="core.money_minor"),
     # The owner's real per-message send cost (integer minor units) — feeds campaign ROI (A3.2).
     "campaign.cost_per_message_minor": PlatformDefault(50, schema_ref="core.money_minor"),
 }
