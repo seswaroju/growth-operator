@@ -62,6 +62,9 @@ async def scene() -> AsyncIterator[Scene]:
             "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
             f"ap{org.hex[:8]}",
         )
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
+            org, pack)  # install so the pack's rules apply (per-pack scoping, #22)
         # discount.apply: tier 2 by default, tier 3 for big discounts (so an edit can escalate)
         await conn.execute(
             "INSERT INTO approval_policies (scope, pack_id, action_type, tier, description) "
