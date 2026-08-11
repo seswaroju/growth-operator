@@ -9,6 +9,17 @@ selects and approves the next ticket.
 
 ---
 
+## A3 · Wire the E2E CI gate — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-097d-e2e-ci-gate`. The A1/A2 journey was green locally but not gated in CI. A3
+adds a `redis:7-alpine` service to the `migrate` job and runs the whole `tests/e2e` suite (as `app_rw`,
+with `GROWTH_OPERATOR_REDIS_URL`) — so the full journey (webhook→normalizer→planner→concierge→
+catalog.search→pricing.compute→park→approve→gated send→order→ROI) runs on every push/PR. Faithful gate:
+local `database_url` default is already `app_rw`, so local runs exercise the CI role; verified the exact
+CI command `uv run pytest tests/e2e -v` → **5 passed**. **Out of scope:** the `evals` job stays stubbed
+— running eval suites needs a fake-provider harness (MVP-095/096); §18 forbids real providers in CI.
+**Gate:** ruff · guards 0 · mypy 184 · unit 487 · e2e 5 · CI YAML validated.
+
 ## A2 · E2E front + tail: the full §1 loop end-to-end — **COMPLETE — merged `f1a4a96`, CI green** (2026-08-11)
 
 Branch `feature/mvp-097c-e2e-front-tail`. Test-only extension of the A1 journey — one cohesive E2E now
