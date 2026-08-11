@@ -56,6 +56,13 @@ class CustomerOrder(BaseModel):
     created_at: datetime
 
 
+class TimelineEntry(BaseModel):
+    kind: str  # message | quote | order | lead | campaign_touch
+    occurred_at: datetime
+    ref_id: UUID
+    detail: dict[str, Any]
+
+
 class CustomerDetail(BaseModel):
     id: UUID
     full_name: str | None
@@ -100,3 +107,21 @@ async def get_customer(
         conversations=[CustomerConversation(**c) for c in row["conversations"]],
         orders=[CustomerOrder(**o) for o in row["orders"]],
     )
+
+
+@router.get(
+    "/{contact_id}/timeline", response_model=list[TimelineEntry],
+    summary="Customer activity timeline")
+async def customer_timeline(
+    contact_id: UUID,
+    limit: int = 100,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[TimelineEntry]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    rows = await service.customer_timeline(
+        session, current.org_id, contact_id, limit=min(max(limit, 1), 500))
+    if rows is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    return [TimelineEntry(**r) for r in rows]

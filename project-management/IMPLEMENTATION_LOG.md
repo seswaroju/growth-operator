@@ -4362,3 +4362,34 @@ BLOCKER #22 pollution failures remain; confirmed not C2-caused). The CI e2e jour
 clock, so C2 is safe for the CI gate.
 
 **Next recommended action:** Track D — CRM depth (D1 activity timeline, D2 notes+tags, D3 DPDP export/delete).
+
+**Merge/push:** branch `feature/mvp-101-quiet-hours-overlay` merged `--no-ff` into `main` as `27e4b70`
+and pushed 2026-08-11. **GitHub CI green** (migrate/journey job included — quiet-hours confirmed safe
+for the CI e2e). Track C (C1 + C2) complete.
+
+---
+
+## 2026-08-11 — D1 · CRM activity timeline (branch `feature/mvp-102-customer-timeline`)
+
+Track D #1. A read-only **unified activity feed** for a customer — the CRM read-model previously
+returned leads/conversations/orders as separate lists; D1 merges a contact's events into one
+chronological timeline.
+
+- **`core/customers/service.py`**: `customer_timeline(session, org, contact, *, limit=100)` — a single
+  `UNION ALL` over **messages · quotes · orders · leads · campaign_touches**, each projected as a typed
+  `{kind, occurred_at, ref_id, detail}` (detail is a `jsonb_build_object` — e.g. a message's
+  direction/status/preview, an order's total/status), ordered newest-first. Returns `None` when the
+  contact isn't the org's (→ 404). Org-scoped two ways (RLS `set_org_context` + explicit `org_id` on
+  every branch).
+- **`core/customers/api.py`**: `GET /v1/customers/{contact_id}/timeline` (gated `customers:read`,
+  `limit` clamped 1..500), new `TimelineEntry` response model.
+
+**Tests (`tests/integration/test_customer_timeline.py`, NEW):** the feed merges four seeded event kinds
+newest-first with typed detail carried through; **cross-org isolation** — asking org A for org B's
+contact returns `None` (never B's rows); an unknown contact returns `None`.
+
+**Migrations/APIs/events/frontend:** no migration (pure aggregation). API: one new read route.
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 187 · **tests/unit 498** · CRM integ 5.
+
+**Next recommended action:** D2 — customer notes + tags (needs a small migration: a notes table + a
+tags column/table, RLS + isolation tests).
