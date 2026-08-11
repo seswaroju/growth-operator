@@ -9,7 +9,18 @@ selects and approves the next ticket.
 
 ---
 
-## B1 · Gated Instagram content-publishing adapter — **COMPLETE — awaiting founder review** (2026-08-11)
+## B2 · Gated Google Ads campaign adapter — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-099-google-ads-adapter`. Track B #2. `core/channels/google_ads/`
+`GoogleAdsClient.create_campaign(name, daily_budget_minor)` — **simulated by default** (`gads.SIM-…`,
+no network), same shape as B1. Live requires `google_ads_live_enabled` + wiring (`provider_unavailable`
+if unwired) and runs the REST two-step (`campaignBudgets:mutate` → `campaigns:mutate`) over httpx;
+budget minor→micros (×10 000); the campaign is created **PAUSED** (never serves until a human resumes —
+a separate approved action); tokens in headers, never logged. Config: `google_ads_live_enabled` (False),
+`google_ads_customer_id`, `google_ads_developer_token` + `google_ads_access_token` (secrets). **Gate:**
+ruff · guards 0 · mypy 186 · unit 495 (+4). No migration.
+
+## B1 · Gated Instagram content-publishing adapter — **COMPLETE — merged `4242a80`, CI green** (2026-08-11)
 
 Branch `feature/mvp-098-instagram-adapter`. Track B (multi-channel/ads) #1. `core/channels/instagram/`
 `InstagramClient.publish(image_url, caption)` — **simulated by default** (`ig.SIM-…`, no network), like

@@ -4259,3 +4259,35 @@ the container step returns a failed result and never attempts the publish.
 **Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 185 · **tests/unit 491** (+4).
 
 **Next recommended action:** B2 — the gated Google Ads adapter (same simulated-by-default shape).
+
+**Merge/push:** branch `feature/mvp-098-instagram-adapter` merged `--no-ff` into `main` as `4242a80`
+and pushed 2026-08-11. **GitHub CI green.**
+
+---
+
+## 2026-08-11 — B2 · Gated Google Ads campaign adapter (branch `feature/mvp-099-google-ads-adapter`)
+
+Track B #2. A gated Google Ads adapter so a store can run a search promo — **simulated by default**,
+same shape as B1. No real spend is possible yet (§10.4): the real REST path exists but is off until
+API access lands **and** an approved action drives it, and even then the campaign is created **PAUSED**.
+
+- **`core/channels/google_ads/__init__.py`** (NEW): `GoogleAdsClient.create_campaign(name,
+  daily_budget_minor)`. `simulated = not google_ads_live_enabled` → a fake `gads.SIM-…` resource name,
+  **no network**. Live requires wiring (`_require_wired` → `provider_unavailable` if enabled without
+  customer id / developer token / OAuth token) and runs the Google Ads REST **two-step**
+  (`campaignBudgets:mutate` → `campaigns:mutate`) over httpx. Budget minor units → micros (×10 000).
+  The campaign is created **`PAUSED`** — it never serves until a human resumes it (a separate,
+  explicitly-approved action). REST/network errors surface as a failed `AdsResult`; tokens travel in
+  headers and are never logged.
+- **`core/common/config.py`**: `google_ads_live_enabled` (default **False**), `google_ads_customer_id`,
+  `google_ads_developer_token` (secret), `google_ads_access_token` (secret OAuth token).
+
+**Tests (`tests/unit/test_google_ads_client.py`, NEW):** simulated-by-default touches no network;
+live-but-unwired → `provider_unavailable`; live+wired pins the two-step shapes (budget `amountMicros`
+`500000000` for ₹500, campaign `status=PAUSED` referencing the budget resource); a 400 on the budget
+step returns a failed result and never creates the campaign.
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 186 · **tests/unit 495** (+4).
+
+**Next recommended action:** Track C — the autonomy volume-knob (C1 per-action-type + threshold).
