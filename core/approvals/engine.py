@@ -196,6 +196,8 @@ _CAPABILITY_BY_ACTION: dict[str, str] = {
     "action.quote.send": "pricing",
     "action.campaign.execute": "campaigns",
 }
+# Capabilities whose actions go OUT to a customer — the ones quiet hours (C2) apply to.
+_CUSTOMER_FACING_CAPS: frozenset[str] = frozenset({"messaging", "campaigns"})
 
 
 def _action_amount_minor(tool: str, params: dict[str, Any]) -> int | None:
@@ -231,6 +233,12 @@ async def _autonomy_floor(
             await tenant_settings.resolve(session, org_id, f"autonomy.{cap}.threshold_minor")
         ).value
         if threshold and amount is not None and amount >= int(threshold):
+            return AUTONOMY_REVIEW_TIER
+    # Quiet-hours draft-only (C2): a customer-bound send inside the org's quiet window parks for the
+    # owner rather than going out on its own — even a capability left on `auto`.
+    if capabilities & _CUSTOMER_FACING_CAPS:
+        from core.tenancy import quiet_hours  # lazy: avoids an import cycle
+        if await quiet_hours.is_quiet_now(session, org_id):
             return AUTONOMY_REVIEW_TIER
     return 0
 

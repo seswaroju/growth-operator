@@ -80,6 +80,11 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'SL')", org)
+        # Disable quiet hours (empty window) so the auto-send path is exercised regardless of clock.
+        await conn.execute(
+            "INSERT INTO tenant_settings (org_id, key, value, schema_ref, version) VALUES "
+            "($1,'quiet_hours.start','\"00:00\"'::jsonb,'core.time',1),"
+            "($1,'quiet_hours.end','\"00:00\"'::jsonb,'core.time',1)", org)
         channel_id = await conn.fetchval(
             "INSERT INTO channels (org_id, type, external_id, credentials_ref) "
             "VALUES ($1,'whatsapp',$2,'channel_credentials') RETURNING id", org, pnid)
