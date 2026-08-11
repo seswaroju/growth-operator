@@ -125,6 +125,28 @@ export function getInsightsSummary(token: string): Promise<MetricSummary[]> {
   return authed<MetricSummary[]>("/v1/insights/summary", token);
 }
 
+// ---- Transparency statement (/v1/insights/transparency, insights:read) ------
+// Your own spend by channel + revenue + ROAS for a month. Never exposes Growth Operator's cost.
+
+export interface ChannelSpend {
+  channel: string;
+  amount_minor: number;
+}
+
+export interface Transparency {
+  period_month: string; // "YYYY-MM"
+  spend_by_channel: ChannelSpend[];
+  total_spend_minor: number;
+  revenue_minor: number;
+  roas: number | null;
+  roi_pct: number | null;
+}
+
+export function getTransparency(token: string, month?: string): Promise<Transparency> {
+  const q = month ? `?month=${encodeURIComponent(month)}` : "";
+  return authed<Transparency>(`/v1/insights/transparency${q}`, token);
+}
+
 // ---- Approvals (/v1/approvals, approvals:read / approvals:resolve) ----------
 
 export interface Approval {

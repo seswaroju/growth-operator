@@ -14,6 +14,7 @@ the operator console (Phase 4). See `project-management/DECISIONS.md` (2026-08-0
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import text
@@ -58,3 +59,13 @@ async def dashboard_overview(session: AsyncSession, org_id: UUID) -> DashboardOv
         catalog_items=int(row["catalog_items"]),
         open_tickets=int(row["open_tickets"]),
     )
+
+
+async def monthly_revenue(session: AsyncSession, org_id: UUID, period_month: date) -> int:
+    """The org's total order revenue (minor units) for a calendar month — tenant-scoped (OC6)."""
+    await set_org_context(session, org_id)
+    total = (await session.execute(
+        text("SELECT COALESCE(SUM(total_minor), 0) FROM orders WHERE org_id = :o "
+             "AND date_trunc('month', created_at) = date_trunc('month', CAST(:pm AS date))"),
+        {"o": str(org_id), "pm": period_month})).scalar_one()
+    return int(total)

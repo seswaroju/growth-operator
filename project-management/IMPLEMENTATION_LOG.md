@@ -3795,3 +3795,31 @@ open-tickets fallback; clamp-to-100 + factors sorted desc; singular grammar.
 `test_customer_health_admin.py` 4 (additive fields didn't break it) · web-ops oxlint clean · tsc 0 ·
 vitest 28 · build ✓. **Security:** aggregate store-health only (no PII); operator-plane read; no new
 external actions. **Next:** OC6 — client-facing transparency report (owner's spend-by-channel + ROI).
+
+---
+
+## 2026-08-10 — OC6 · Client-facing transparency statement (branch `feature/oc6-transparency-report`)
+
+Second of the OC5–OC12 backlog. The **store owner** now sees their **own** spend by channel + the
+month's revenue + ROAS in the owner app — transparency into what they pay Growth Operator and what the
+store earned. **Tenant-scoped (RLS)**, owner-only. **Privacy-critical:** GO's internal `cost_minor` /
+margin is **never** exposed — the owner sees `amount_minor` (what they pay) only. **No migration.**
+
+- **`core/billing/service.monthly_spend_by_channel(org, month)`** — SUM(amount_minor) grouped by
+  channel for the month, biggest first; **amount only, no cost**. RLS via `set_org_context`.
+- **`core/insights/service.monthly_revenue(org, month)`** — SUM(orders.total_minor) for the month.
+- **`GET /v1/insights/transparency?month=YYYY-MM`** (`insights:read`, org from token, default current
+  month, 400 on bad month) → `{period_month, spend_by_channel[], total_spend_minor, revenue_minor,
+  roas, roi_pct}`; ROAS/ROI via `campaigns.analytics.roi(revenue, spend)`.
+- **web/**: `TransparencyStatement` card at the top of Insights (invested · store revenue · return +
+  per-channel bars, with an honest "simple ratio, not a causal claim" note); `lib/transparency.ts`
+  (+ test) — channel labels, ROAS format, spend share, month label; `api.ts` `getTransparency`.
+
+**Requirement → evidence:** `tests/integration/test_transparency.py` (5) — groups+sums by channel
+(desc) / **cost & margin never in the response** / month filter / org-B isolation / bad-month 400 +
+401 no-token + 400 no-org. `web/src/lib/transparency.test.ts` (4).
+
+**Commands:** ruff `All checks passed!` · guards 0 (industry-nouns scans web/ — clean) · `mypy core`
+181 · **tests/unit 476** · new integ **5** · billing+dashboard integ 21 (no regressions) · web oxlint
+(only pre-existing warnings) · tsc 0 · vitest **65** (+4) · build ✓. **Security:** owner-only, RLS-
+scoped; **no cost/margin leak**; no new external actions. **Next:** OC7 — per-channel budgets & caps.

@@ -7,7 +7,7 @@ This is the container the later Phase-3 sections plug into; the counts come from
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -15,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.billing import service as billing_service
+from core.campaigns.analytics import roi
 from core.insights import agents, metrics, reports, service, thread
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
@@ -80,6 +82,57 @@ async def weekly_summary(
                          last_week=r.last_week, delta_pct=r.delta_pct)
         for r in rows
     ]
+
+
+# ---- Transparency statement (OC6): the owner's own spend-by-channel + results ----------------
+
+class ChannelSpendOut(BaseModel):
+    channel: str
+    amount_minor: int
+
+
+class TransparencyOut(BaseModel):
+    period_month: str  # "YYYY-MM"
+    spend_by_channel: list[ChannelSpendOut]
+    total_spend_minor: int  # what the owner paid Growth Operator this month (never GO's cost)
+    revenue_minor: int  # the store's own order revenue this month
+    roas: float | None  # revenue ÷ spend (None when there was no spend)
+    roi_pct: float | None
+
+
+def _parse_month(month: str | None) -> date:
+    """A `YYYY-MM` string to the first of that month; defaults to the current month. 400 if bad."""
+    if not month:
+        return date.today().replace(day=1)
+    try:
+        return datetime.strptime(month, "%Y-%m").date().replace(day=1)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month must be YYYY-MM") from exc
+
+
+@insights_router.get(
+    "/transparency", response_model=TransparencyOut,
+    summary="Your monthly spend by channel + results (owner-facing transparency)",
+)
+async def transparency(
+    month: str | None = None,
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> TransparencyOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    period = _parse_month(month)
+    spend = await billing_service.monthly_spend_by_channel(session, current.org_id, period)
+    total_spend = sum(int(s["amount_minor"]) for s in spend)
+    revenue = await service.monthly_revenue(session, current.org_id, period)
+    r = roi(revenue, total_spend)
+    return TransparencyOut(
+        period_month=period.strftime("%Y-%m"),
+        spend_by_channel=[
+            ChannelSpendOut(channel=s["charge_type"], amount_minor=int(s["amount_minor"]))
+            for s in spend],
+        total_spend_minor=total_spend, revenue_minor=revenue,
+        roas=r.roas, roi_pct=r.roi_pct)
 
 
 # ---- Insight records / agent reports (A4.1) --------------------------------

@@ -114,6 +114,24 @@ async def list_charges(session: AsyncSession, org_id: UUID) -> list[dict[str, An
     return [dict(r) for r in rows]
 
 
+async def monthly_spend_by_channel(
+    session: AsyncSession, org_id: UUID, period_month: date
+) -> list[dict[str, Any]]:
+    """The org's own spend grouped by channel for a month, biggest first (OC6, owner-facing).
+
+    **AMOUNT only** — never `cost_minor`: that's GO's internal cost/margin and must never reach the
+    store owner. RLS-scoped to the caller's org.
+    """
+    await set_org_context(session, org_id)
+    rows = (await session.execute(
+        text("SELECT charge_type, COALESCE(SUM(amount_minor), 0) AS amount_minor "
+             "FROM billing_charges WHERE org_id = :o "
+             "AND date_trunc('month', period_month) = date_trunc('month', CAST(:pm AS date)) "
+             "GROUP BY charge_type ORDER BY amount_minor DESC"),
+        {"o": str(org_id), "pm": period_month})).mappings().all()
+    return [dict(r) for r in rows]
+
+
 # ---- Cross-client aggregate for the Financial dashboard (SECDEF) -------------------------------
 
 async def billing_rollup(session: AsyncSession) -> dict[str, Any]:

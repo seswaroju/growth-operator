@@ -12,6 +12,7 @@ import {
 } from "../lib/insights";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { BarChart } from "./icons";
+import TransparencyStatement from "./TransparencyStatement";
 import { Card, EmptyState, PageHeader } from "./ui";
 
 const TONE_DOT: Record<Tone, string> = {
@@ -312,6 +313,8 @@ export default function InsightsSection() {
         title="Insights"
         subtitle="What worked, why, and the numbers behind it — grounded in your own store data."
       />
+
+      <TransparencyStatement />
 
       {reportsQ.isLoading && (
         <div className="h-40 animate-pulse rounded-2xl border border-line bg-surface" />
