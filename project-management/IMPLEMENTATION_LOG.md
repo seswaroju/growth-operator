@@ -4231,3 +4231,31 @@ calling real model providers in CI, so wiring evals is a separate ticket, not A3
 **Merge/push:** branch `feature/mvp-097d-e2e-ci-gate` (commit `8ced07a`) merged `--no-ff` into `main`
 as `91b4bc1` and pushed 2026-08-11. **GitHub CI green** (run 31511688973 — the `migrate` job now runs
 the full jewelry journey e2e under `app_rw` + Redis on a fresh DB). **Track A (A0–A3) complete.**
+
+---
+
+## 2026-08-11 — B1 · Gated Instagram content-publishing adapter (branch `feature/mvp-098-instagram-adapter`)
+
+Track B (multi-channel / ads), first item. A gated Instagram adapter so a store can publish a catalog
+piece / promo to its feed — **simulated by default**, exactly like the WhatsApp Meta client and the
+email adapter. No real post is possible yet (§10.4): the real Graph-API path exists but is switched
+off until Meta access lands **and** an approved action drives it.
+
+- **`core/channels/instagram/__init__.py`** (NEW): `InstagramClient.publish(image_url, caption)`.
+  `simulated = not instagram_live_enabled` → returns a fake `ig.SIM-…` media id with **no network**.
+  Live requires wiring (`_require_wired` → `provider_unavailable` if enabled without ig_user_id/token)
+  and runs the Instagram Graph API **two-step** (create media container → `media_publish`) over httpx;
+  a Graph error or network failure surfaces as a failed `PublishResult`, never a crash. Token travels
+  in the request body and is never logged. Same `GRAPH_BASE` + gating shape as `meta_client`.
+- **`core/common/config.py`**: `instagram_live_enabled` (default **False**), `instagram_ig_user_id`,
+  `instagram_access_token` (secret — SOPS in prod, never in code).
+
+**Tests (`tests/unit/test_instagram_client.py`, NEW):** simulated-by-default touches no network
+(monkeypatched `post` blows up if called); live-but-unwired → `provider_unavailable`; live+wired pins
+the two-step request shapes (`/{ig}/media` then `/{ig}/media_publish`, creation_id threaded); a 400 on
+the container step returns a failed result and never attempts the publish.
+
+**Migrations/APIs/events/frontend:** none (standalone client, like the email adapter).
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 185 · **tests/unit 491** (+4).
+
+**Next recommended action:** B2 — the gated Google Ads adapter (same simulated-by-default shape).
