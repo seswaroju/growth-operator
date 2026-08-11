@@ -11,13 +11,14 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.customers import annotations as crm_annotations
 from core.customers import service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import CUSTOMERS_READ
+from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/customers", tags=["customers"])
@@ -125,3 +126,98 @@ async def customer_timeline(
     if rows is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
     return [TimelineEntry(**r) for r in rows]
+
+
+# ---- notes + tags (D2) ------------------------------------------------------
+
+class NoteCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
+
+
+class Note(BaseModel):
+    id: UUID
+    author_user_id: UUID | None
+    body: str
+    created_at: datetime
+
+
+class TagCreate(BaseModel):
+    tag: str = Field(..., min_length=1, max_length=40)
+
+
+def _require_org(current: CurrentAuth) -> UUID:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    return current.org_id
+
+
+@router.get("/{contact_id}/notes", response_model=list[Note], summary="List customer notes")
+async def list_notes(
+    contact_id: UUID,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[Note]:
+    rows = await crm_annotations.list_notes(session, _require_org(current), contact_id)
+    if rows is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    return [Note(**r) for r in rows]
+
+
+@router.post(
+    "/{contact_id}/notes", response_model=Note, status_code=status.HTTP_201_CREATED,
+    summary="Add a customer note")
+async def add_note(
+    contact_id: UUID,
+    body: NoteCreate,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> Note:
+    row = await crm_annotations.add_note(
+        session, _require_org(current), contact_id,
+        author_user_id=current.user_id, body=body.body)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    await session.commit()
+    return Note(**row)
+
+
+@router.get("/{contact_id}/tags", response_model=list[str], summary="List customer tags")
+async def list_tags(
+    contact_id: UUID,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[str]:
+    tags = await crm_annotations.list_tags(session, _require_org(current), contact_id)
+    if tags is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    return tags
+
+
+@router.post(
+    "/{contact_id}/tags", status_code=status.HTTP_204_NO_CONTENT, summary="Add a customer tag")
+async def add_tag(
+    contact_id: UUID,
+    body: TagCreate,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    added = await crm_annotations.add_tag(
+        session, _require_org(current), contact_id, tag=body.tag, created_by=current.user_id)
+    if added is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    await session.commit()
+
+
+@router.delete(
+    "/{contact_id}/tags/{tag}", status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a customer tag")
+async def remove_tag(
+    contact_id: UUID,
+    tag: str,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    removed = await crm_annotations.remove_tag(session, _require_org(current), contact_id, tag=tag)
+    if removed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    await session.commit()

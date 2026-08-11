@@ -133,6 +133,10 @@ async def customer_timeline(
                   SELECT 'campaign_touch', ct.occurred_at, ct.id,
                          jsonb_build_object('campaign_id', ct.campaign_id::text)
                   FROM campaign_touches ct WHERE ct.contact_id = :c AND ct.org_id = :o
+                  UNION ALL
+                  SELECT 'note', n.created_at, n.id,
+                         jsonb_build_object('preview', left(n.body, 140))
+                  FROM customer_notes n WHERE n.contact_id = :c AND n.org_id = :o
                 ) tl
                 ORDER BY occurred_at DESC, kind
                 LIMIT :lim

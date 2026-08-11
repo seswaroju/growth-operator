@@ -9,7 +9,18 @@ selects and approves the next ticket.
 
 ---
 
-## D1 · CRM activity timeline — **COMPLETE — awaiting founder review** (2026-08-11)
+## D2 · CRM customer notes + tags — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-103-customer-notes-tags`. Track D #2 (first Track-D migration). **Migration 040**:
+`customer_notes` + `contact_tags`, org-scoped + RLS + `ON DELETE CASCADE` (contacts & orgs); up/down/
+re-up verified. `core/customers/annotations.py`: add/list notes, idempotent add/remove tags, each
+ownership-checked (→404) + org-scoped two ways. Notes also surface in the D1 timeline. Routes:
+`GET/POST /v1/customers/{id}/notes|tags` + `DELETE .../tags/{tag}` (read=customers:read,
+write=customers:write). **Gate:** ruff · guards 0 · mypy 188 · unit 498 · alembic up/down/up · CRM
+integ 10, incl. a §21.3 **RLS isolation** test (org A sees 0 of org B's notes on an unfiltered read).
+Doc reconciliation → BLOCKER #23.
+
+## D1 · CRM activity timeline — **COMPLETE — merged `f5c72c2`, CI green** (2026-08-11)
 
 Branch `feature/mvp-102-customer-timeline`. Track D #1. Read-only unified activity feed:
 `service.customer_timeline` UNIONs messages/quotes/orders/leads/campaign_touches into one typed

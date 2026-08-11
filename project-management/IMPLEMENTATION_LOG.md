@@ -4393,3 +4393,39 @@ contact returns `None` (never B's rows); an unknown contact returns `None`.
 
 **Next recommended action:** D2 — customer notes + tags (needs a small migration: a notes table + a
 tags column/table, RLS + isolation tests).
+
+**Merge/push:** branch `feature/mvp-102-customer-timeline` merged `--no-ff` into `main` as `f5c72c2`
+and pushed 2026-08-11. **GitHub CI green.**
+
+---
+
+## 2026-08-11 — D2 · CRM customer notes + tags (branch `feature/mvp-103-customer-notes-tags`)
+
+Track D #2 — the first Track-D migration. An owner/manager can attach free-text **notes** and short
+**tags** to a customer.
+
+- **Migration 040** (`d23eb327d376`): two org-scoped, RLS-enabled tables — `customer_notes`
+  (id, org_id, contact_id, author_user_id, body, created_at; index on (org_id, contact_id, created_at
+  DESC)) and `contact_tags` (PK (org_id, contact_id, tag), tag CHECK 1..40 chars). Both `ON DELETE
+  CASCADE` from `organizations` **and** `contacts` (so a DPDP erase / org delete removes them).
+  Verified: upgrade → both tables + `relrowsecurity=true`; downgrade → both dropped; re-upgrade clean.
+- **`core/customers/annotations.py`** (NEW): `add_note` / `list_notes` / `add_tag` (idempotent
+  `ON CONFLICT DO NOTHING` → True/False) / `remove_tag` / `list_tags`. Every op first verifies the
+  contact is the caller's org (→ `None` = 404), org-scoped two ways (RLS + explicit `org_id`).
+- **`core/customers/service.py`**: the D1 timeline now also unions a `note` kind (notes show in the
+  activity feed).
+- **`core/customers/api.py`**: `GET/POST /v1/customers/{id}/notes`, `GET/POST /v1/customers/{id}/tags`,
+  `DELETE /v1/customers/{id}/tags/{tag}` — reads gated `customers:read`, writes `customers:write`.
+
+**Tests (`tests/integration/test_customer_annotations.py`, NEW):** add/list notes (newest-first across
+separate txns), idempotent tag add + remove, a note surfaces in the timeline, every op is org-scoped
+(→ None for a foreign contact), and — §21.3 — a **direct RLS isolation** check: after seeding a note
+for org B, an *unfiltered* read under org A's context sees **0** rows.
+
+**Migrations/APIs/events/frontend:** migration 040 (2 tables, RLS); 5 new customer routes; no events;
+no frontend. **Doc reconciliation:** BLOCKER #23 (tables land outside the vault, like support-tickets).
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 188 · **tests/unit 498** ·
+alembic up/down/up verified · CRM integ 10 (5 annotations · 3 timeline · 2 schema).
+
+**Next recommended action:** D3 — DPDP export (a customer's full data as JSON) + delete (erase a
+customer, cascading their PII), the last CRM-depth item.
