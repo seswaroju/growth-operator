@@ -17,7 +17,7 @@ from core.events import scheduler as sched
 
 EXPECTED_JOBS = {"approval_ladder", "trust_ledger_settle", "embeddings_batch",
                  "business_metrics_rollup", "campaign_fanout", "import_batch_reaper",
-                 "workflow_wait_sweep", "dedupe_prune"}
+                 "workflow_wait_sweep", "razorpay_webhook_sweep", "dedupe_prune"}
 
 
 class FakeRedis:
@@ -62,10 +62,10 @@ async def test_installed_jobs_fire_once_under_the_lock() -> None:
     ran_second = await sched.run_due(redis, now=now)  # a 2nd scheduler this minute
 
     assert set(ran_first) == {"approval_ladder", "trust_ledger_settle", "embeddings_batch",
-                              "workflow_wait_sweep"}
+                              "workflow_wait_sweep", "razorpay_webhook_sweep"}
     assert ran_second == []  # the lock blocked a second fire this minute
     assert counts == {"approval_ladder": 1, "trust_ledger_settle": 1, "embeddings_batch": 1,
-                      "workflow_wait_sweep": 1}
+                      "workflow_wait_sweep": 1, "razorpay_webhook_sweep": 1}
 
 
 async def test_run_scheduler_process_installs_and_stops_gracefully() -> None:

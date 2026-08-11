@@ -40,6 +40,7 @@ def _install_jobs() -> None:
     from core.catalog import embed
     from core.ingestion import load as ingestion_load
     from core.insights import rollup
+    from core.payments import reconcile as payments_reconcile
     from core.workflows import waits as workflow_waits
 
     sched.clear()
@@ -50,6 +51,7 @@ def _install_jobs() -> None:
     campaign_send.register_jobs()  # campaign_fanout — hourly (staggered broadcast resume)
     ingestion_load.register_jobs()  # import_batch_reaper — daily 03:45 UTC (free staging data)
     workflow_waits.register_jobs()  # workflow_wait_sweep — every minute (duration fire + timeout)
+    payments_reconcile.register_jobs()  # razorpay_webhook_sweep — every minute (confirm captures)
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 

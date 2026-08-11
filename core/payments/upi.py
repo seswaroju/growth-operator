@@ -30,8 +30,10 @@ class UpiIntentProvider:
     async def create_payment_request(
         self, *, amount_minor: int, description: str,
         contact_email: str | None = None, contact_phone: str | None = None,
-        reference_id: str | None = None,
+        reference_id: str | None = None, notes: dict[str, str] | None = None,
     ) -> PaymentRequest:
+        # `notes` (org/tx mapping) is unused here: a bare UPI intent has no capture webhook to echo
+        # them — confirmation is manual reconciliation (auto_confirm=False).
         vpa = self.settings.upi_vpa or "demo@upi"
         payee = self.settings.upi_payee_name or "Growth Operator"
         ref = reference_id or uuid.uuid4().hex[:16]

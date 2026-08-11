@@ -35,7 +35,7 @@ class PaymentProvider(Protocol):
     async def create_payment_request(
         self, *, amount_minor: int, description: str,
         contact_email: str | None = None, contact_phone: str | None = None,
-        reference_id: str | None = None,
+        reference_id: str | None = None, notes: dict[str, str] | None = None,
     ) -> PaymentRequest: ...
 
     def verify_webhook_signature(self, body: bytes, signature: str | None) -> bool: ...

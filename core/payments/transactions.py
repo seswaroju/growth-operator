@@ -97,6 +97,16 @@ async def get_transaction(
     return dict(row) if row is not None else None
 
 
+async def set_provider_ref(
+    session: AsyncSession, org_id: UUID, tx_id: UUID, *, provider: str, provider_ref: str | None,
+) -> None:
+    """Record which payment provider + link/reference a transaction was billed through (PAY3b)."""
+    await set_org_context(session, org_id)
+    await session.execute(
+        text("UPDATE transactions SET provider=:p, provider_ref=:ref WHERE id=:id AND org_id=:o"),
+        {"p": provider, "ref": provider_ref, "id": tx_id, "o": org_id})
+
+
 def to_receipt(row: dict[str, Any], *, seller_name: str, buyer_name: str) -> Receipt:
     """Build a Receipt (PAY2) from a stored transaction, incl. the discount line."""
     label = "Discount"

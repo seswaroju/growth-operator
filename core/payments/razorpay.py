@@ -54,12 +54,13 @@ class RazorpayClient:
     async def create_payment_request(
         self, *, amount_minor: int, description: str,
         contact_email: str | None = None, contact_phone: str | None = None,
-        reference_id: str | None = None,
+        reference_id: str | None = None, notes: dict[str, str] | None = None,
     ) -> PaymentRequest:
         """Provider-agnostic entry point (PAY1b) — wraps the Razorpay payment link."""
         link = await self.create_payment_link(
             amount_minor=amount_minor, description=description,
-            contact_email=contact_email, contact_phone=contact_phone, reference_id=reference_id)
+            contact_email=contact_email, contact_phone=contact_phone,
+            reference_id=reference_id, notes=notes)
         return PaymentRequest(
             ok=link.ok, provider=self.name, auto_confirm=self.auto_confirm, id=link.id,
             pay_url=link.short_url, qr_payload=link.short_url, status=link.status,
@@ -82,7 +83,7 @@ class RazorpayClient:
     async def create_payment_link(
         self, *, amount_minor: int, description: str,
         contact_email: str | None = None, contact_phone: str | None = None,
-        reference_id: str | None = None,
+        reference_id: str | None = None, notes: dict[str, str] | None = None,
     ) -> PaymentLink:
         """Create a Razorpay payment link. Simulated (no network, no charge) unless live + wired."""
         if self.simulated:
@@ -97,6 +98,8 @@ class RazorpayClient:
             "description": description[:255],
             "reference_id": reference_id or uuid.uuid4().hex,
         }
+        if notes:  # echoed back in the capture webhook — carries our org_id/tx_id for mapping
+            payload["notes"] = notes
         customer: dict[str, str] = {}
         if contact_email:
             customer["email"] = contact_email
