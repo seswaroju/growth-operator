@@ -9,7 +9,24 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC11 — Onboarding checklist (owner-facing) — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC12 — Invoices/statements from charges — **Completed — awaiting founder review** (2026-08-10) — **OC5–OC12 TRACK COMPLETE**
+
+Branch `feature/oc12-invoices`. A **monthly invoice per store** generated on the fly from recorded
+`billing_charges` — one immutable statement per store-month, **deterministic number** `{STORE}-INV-{YYMM}`,
+line items by channel that sum to the total. **Amount only — GO's cost/margin never on a client
+invoice.** **No migration** (reuses OC6's amount-only aggregation).
+
+- `core/billing/invoices.py` (NEW): `monthly_invoice` (statement) + `list_invoices` (one per month with
+  charges, newest first). RLS-scoped; reuses `service.monthly_spend_by_channel`.
+- Admin API: `GET /v1/admin/billing/tenants/{org}/invoices` + `…/invoices/{YYYY-MM}` (READ; 404 no
+  charges / 400 bad month; audited).
+- web-ops: `StoreInvoicesSection` on the store-360 (expandable statements).
+
+**Gate:** ruff · guards 0 · mypy 183 · tests/unit 476 · new integ `test_invoices.py` **6** (numbering ·
+sums · **cost-never-exposed** · isolation · 404/400/403) · billing integ 10 · web-ops tsc 0 · vitest
+41 · build ✓. **OC5–OC12 forecast backlog fully delivered.** Remaining: JWL-EST-01 (ready to build).
+
+## Operator V2 forecast · OC11 — Onboarding checklist (owner-facing) — **Merged `fdcc031`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc11-onboarding-checklist`. A **setup checklist on the owner Home**: Connect WhatsApp ·
 Add catalog · Invite team · Run first campaign — each ticked from the store's own data; a progress bar;
