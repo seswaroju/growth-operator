@@ -154,6 +154,13 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Next action:** when a second production pack is approved, scope the policy query to the org's installed pack(s) (join `pack_installations` / the run's binding→`pack_id`); add a two-pack isolation test proving pack A's policy does not govern pack B's runs.
 - **Local-only note:** the shared local test DB has accumulated orphaned install rows from iterative dev (leftover `rate_sources` / `pricing_strategies` / `prompt_layers` / `pack_installations`), which makes `test_rate_ingestion` + `test_prompt_activation` fail locally on fresh-state assumptions (`NOT EXISTS`/`ON CONFLICT` guards silently skip re-seeding). **CI is unaffected** (fresh Postgres per run; these suites are not in the CI `test` job). A founder-approved local DB reset (`make down` → `make dev` → `make migrate`) clears it — deferred (destructive; needs approval).
 
+### 23. CRM-depth tables land outside the vault (migration 040 — reconciliation)
+
+- **Severity:** Low — documentation/reconciliation only; the DB is correct, migrated (up/down verified), RLS-enforced and isolation-tested. No runtime impact.
+- **Owner:** Founder (vault reconciliation) on the next pass.
+- **Description:** D2 (CRM notes + tags) adds two org-scoped tables — `customer_notes` + `contact_tags` (**migration 040**) — and a new module `core/customers/annotations.py`, none of which are in the vault `docs/06-database/schema.sql`, the migration-order doc, or the core module map (same posture as `incidents` / support-tickets, BLOCKER #21). Both tables are RLS-enabled (`apply_rls`) with `ON DELETE CASCADE` from `organizations` and `contacts`.
+- **Next action:** on the next vault pass, add the two tables to `schema.sql`, note migration 040 in the order doc, and add `core/customers/annotations` to the module map.
+
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
 - **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.
