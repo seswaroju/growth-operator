@@ -126,12 +126,37 @@ async def compute_quote(
         )
     ).scalar_one()
 
-    await ledger.write(
-        session, org_id,
-        ledger.figures_from_breakdown(quote.breakdown, quote.total_minor),
-        source_ref=quote_id, expires_at=valid_until,
-    )
+    figures = ledger.figures_from_breakdown(quote.breakdown, quote.total_minor)
+    rate_minor = _per_gram_rate_minor(inputs, quote.breakdown)
+    if rate_minor is not None:
+        # The itemized breakdown shows the metal line's per-gram rate (whole rupees). Ledger exactly
+        # what is displayed — (rate_minor // 100) * 100 — so that figure passes the send-path gate
+        # (MVP-054) like every other line; an un-ledgered rate would block the two-step breakdown.
+        figures.append(
+            ledger.Figure(figure_type="metal_rate", amount_minor=(rate_minor // 100) * 100)
+        )
+    await ledger.write(session, org_id, figures, source_ref=quote_id, expires_at=valid_until)
     return quote_id
+
+
+def _per_gram_rate_minor(
+    inputs: dict[str, Any], breakdown: list[dict[str, Any]]
+) -> int | None:
+    """The metal line's per-gram rate in minor units, back-derived as `metal_value ÷ net_weight_g`.
+    The **single** derivation shared by the breakdown label (display) and the committed-figures
+    ledger, so the rate the customer sees is always a ledgered figure. Returns `None` when the quote
+    has no metal line or usable weight (a non-metal strategy)."""
+    metal = next((r for r in breakdown if str(r["id"]) == "metal_value"), None)
+    weight = inputs.get("net_weight_g")
+    if metal is None or weight is None:
+        return None
+    try:
+        grams = Decimal(str(weight))
+        if grams <= 0:
+            return None
+        return int(Decimal(int(metal["amount_minor"])) / grams)
+    except (ArithmeticError, ValueError):
+        return None
 
 
 def _label_context(inputs: dict[str, Any], breakdown: list[dict[str, Any]]) -> dict[str, str]:
@@ -141,16 +166,9 @@ def _label_context(inputs: dict[str, Any], breakdown: list[dict[str, Any]]) -> d
     ctx: dict[str, str] = {
         k: str(v) for k, v in inputs.items() if not isinstance(v, (list, dict))
     }
-    metal = next((r for r in breakdown if str(r["id"]) == "metal_value"), None)
-    weight = inputs.get("net_weight_g")
-    if metal is not None and weight is not None:
-        try:
-            grams = Decimal(str(weight))
-            if grams > 0:
-                rate_minor = int(Decimal(int(metal["amount_minor"])) / grams)
-                ctx["rate"] = f"{rate_minor // 100:,}"  # per-gram rate in whole units, grouped
-        except (ArithmeticError, ValueError):
-            pass
+    rate_minor = _per_gram_rate_minor(inputs, breakdown)
+    if rate_minor is not None:
+        ctx["rate"] = f"{rate_minor // 100:,}"  # per-gram rate in whole units, grouped
     return ctx
 
 

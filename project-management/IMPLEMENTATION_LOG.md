@@ -4132,3 +4132,33 @@ suites not in the CI `test` job). Both confirmed pre-existing (reproduced with a
 **Merge/push:** branch `feature/mvp-097-e2e-jewelry-journey` (commit `cf471b3`) merged `--no-ff` into
 `main` as `64f5dea` and pushed 2026-08-11. **GitHub CI green** (run 31508375771 — test · lint · migrate ·
 secret-scan · evals all success).
+
+---
+
+## 2026-08-11 — A1b · Ledger the breakdown's per-gram rate so the two-step breakdown can send (branch `feature/mvp-097b-breakdown-rate-ledger`)
+
+Closes the gap A1 flagged. The itemized breakdown's metal line embeds the per-gram rate
+(`22K · 12.4g × ₹7,320/g: ₹90,768.00`). The send-path figure gate (MVP-054) extracts **every** rupee
+amount in a customer-bound message and requires each to match an unexpired ledger row — but only the
+line **totals** were ledgered (`figures_from_breakdown`), so the embedded `₹7,320` was an
+`unledgered_figure` and the whole second-step breakdown would be **refused** at send.
+
+**Fix (contained — `core/pricing/service.py` only):**
+- Factored `_per_gram_rate_minor(inputs, breakdown)` — the **single** back-derivation
+  (`metal_value ÷ net_weight_g`) now shared by the breakdown label (display) and the ledger, so the
+  rate the customer sees can never diverge from a ledgered figure. Returns `None` for a non-metal
+  strategy (no rate line, no rate figure).
+- `compute_quote` now ledgers **exactly what is displayed** — `(rate_minor // 100) * 100` (the metal
+  line shows the rate in whole rupees) — as a `metal_rate` figure alongside the breakdown figures, in
+  the same atomic write. No strategy.yaml or render change; the display is unchanged.
+
+**Tests (`tests/integration/test_pricing_service.py`):** ledger-row count 6 → 7 (+`metal_rate`) with a
+new `ledger.match(…, 732000)` assertion; **new** `test_every_breakdown_text_figure_is_ledgered` —
+extracts every figure from the rendered `breakdown_text` and asserts each matches the ledger (the exact
+predicate the send gate applies), proving the whole two-step breakdown can now go out.
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 184 · **tests/unit 487** · pricing-service integ **8** (+1) · send+mediation+e2e sweep 25.
+
+**Next recommended action:** A2 — extend the E2E to the **front** (webhook → normalizer →
+`msg.received` → planner routes to concierge) and the **tail** (order → ROI/attribution).
