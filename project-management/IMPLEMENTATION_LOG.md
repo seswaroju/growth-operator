@@ -4053,3 +4053,26 @@ integ 8 (+1) · mediation integ 10 (no regressions). **Testing honesty:** the de
 tool result are CI-tested; the LLM's two-step *conversational* behavior is specified in the pack eval
 suite (rubric/LLM — not CI-deterministic, per §18). **JWL-EST-01 essentially complete;** optional
 polish: fill the metal-line label with grams/karat (the concierge already narrates those from catalog).
+
+---
+
+## 2026-08-10 — JWL-EST-01 metal-line polish (branch `feature/jwl-est-02b-metal-line`) — TICKET COMPLETE
+
+The founder's finishing touch: the itemized breakdown's metal line now shows **karat + grams + the
+per-gram rate** — `22K · 12.4g × ₹7,320/g: ₹90,768` — instead of a plain "Metal value". Generic
+implementation (no domain nouns in core): the strategy's templated label
+`{purity} {metal} · {net_weight_g}g × ₹{rate}/g` is filled from the quote's stored inputs, with the
+per-gram rate derived as `metal_value ÷ net_weight_g`; unknown placeholders (e.g. `{metal}`, which the
+pricing inputs don't carry) drop out and whitespace collapses.
+
+- **`core/pricing/render.py`**: `line_label(id, labels, context=None)` fills a templated label via a
+  drop-missing `format_map`; `render_breakdown(..., label_context=…)` threads it through. Pure.
+- **`core/pricing/service.quote_presentation`**: `_label_context` builds the fill values from
+  `q.inputs.inputs` + the derived rate (Decimal division, integer minor units), passed to the render.
+
+**Requirement → evidence:** `test_pricing_render.py::test_templated_label_filled_from_context_dropping_unknowns`
+(22K · 12.4g × ₹7,320/g, `{metal}` dropped); `test_pricing_service.py::…two_step_and_grounded` now
+asserts the filled metal line `22K · 12.4g × ₹7,320/g: ₹90,768` end-to-end.
+
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 184 · **tests/unit 487** (+1) ·
+mediation+pricing integ 18. **JWL-EST-01 is complete** — nothing outstanding.

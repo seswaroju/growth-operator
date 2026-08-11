@@ -35,8 +35,13 @@ def test_money_formats_whole_rupees() -> None:
 def test_line_label_uses_config_but_humanizes_templates() -> None:
     assert line_label("making", _LABELS) == "Making charges"
     assert line_label("cgst", _LABELS) == "CGST (1.5%)"
-    assert line_label("metal_value", _LABELS) == "Metal value"   # templated → humanized
+    assert line_label("metal_value", _LABELS) == "Metal value"   # templated, no context → humanized
     assert line_label("subtotal", {}) == "Subtotal"             # missing → humanized
+
+
+def test_templated_label_filled_from_context_dropping_unknowns() -> None:
+    ctx = {"purity": "22K", "net_weight_g": "12.4", "rate": "7,320"}  # no {metal} supplied
+    assert line_label("metal_value", _LABELS, ctx) == "22K · 12.4g × ₹7,320/g"
 
 
 def test_price_line_is_total_plus_validity() -> None:
