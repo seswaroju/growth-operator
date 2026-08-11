@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { adminCustomerHealth, type StoreHealth } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { tagClasses, type Tone } from "../lib/ui";
 import { Card } from "./ui";
 
 function activity(days: number | null): string {
@@ -12,27 +13,30 @@ function activity(days: number | null): string {
   return `${days} days ago`;
 }
 
-// Why is this store at-risk? Surface the reason(s) so the operator knows what to do.
-function reasons(s: StoreHealth): string[] {
-  const out: string[] = [];
-  if (s.paused) out.push("paused");
-  if (s.urgent_tickets > 0) out.push(`${s.urgent_tickets} urgent`);
-  if (s.days_since_activity === null || s.days_since_activity > 14) out.push("inactive");
-  if (s.revenue_prev_7d > 0 && s.revenue_7d < s.revenue_prev_7d / 2) out.push("revenue drop");
-  return out;
-}
+const BAND_TONE: Record<StoreHealth["churn_band"], Tone> = {
+  high: "danger", medium: "warn", low: "good",
+};
+const BAND_DOT: Record<StoreHealth["churn_band"], string> = {
+  high: "bg-danger", medium: "bg-warn", low: "bg-good",
+};
 
 function HealthRow({ s }: { s: StoreHealth }) {
+  const factors = s.churn_factors.slice(0, 3).join(" · ");
   return (
-    <tr className={`border-t border-line-2 ${s.at_risk ? "bg-danger-soft" : ""}`}>
+    <tr className={`border-t border-line-2 ${s.churn_band === "high" ? "bg-danger-soft" : ""}`}>
       <td className="py-2 pr-3">
         <div className="flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${s.at_risk ? "bg-danger" : "bg-good"}`} />
+          <span className={`h-2 w-2 rounded-full ${BAND_DOT[s.churn_band]}`} />
           <span className="text-sm font-medium text-ink">{s.name}</span>
         </div>
-        {s.at_risk && (
-          <div className="mt-0.5 pl-4 text-[11px] text-danger">{reasons(s).join(" · ")}</div>
+        {factors && (
+          <div className="mt-0.5 pl-4 text-[11px] text-muted">{factors}</div>
         )}
+      </td>
+      <td className="px-3">
+        <span className={tagClasses(BAND_TONE[s.churn_band])}>
+          {s.churn_score} · {s.churn_band}
+        </span>
       </td>
       <td className="px-3 text-xs text-ink-2">{activity(s.days_since_activity)}</td>
       <td className="px-3 text-right tnum text-sm">
@@ -68,16 +72,16 @@ export default function CustomerSuccessSection() {
   }
 
   const stores = data ?? [];
-  const atRisk = stores.filter((s) => s.at_risk).length;
+  const highRisk = stores.filter((s) => s.churn_band === "high").length;
+  const medRisk = stores.filter((s) => s.churn_band === "medium").length;
   const openTickets = stores.reduce((n, s) => n + s.open_tickets, 0);
-  const resolved7d = stores.reduce((n, s) => n + s.resolved_7d, 0);
 
   return (
     <Card className="p-5">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-ink">Customer success · store health</h2>
+        <h2 className="text-sm font-semibold text-ink">Customer success · churn risk</h2>
         <span className="text-xs text-muted">
-          {atRisk} at-risk · {openTickets} open tickets · {resolved7d} resolved (7d)
+          {highRisk} high · {medRisk} medium · {openTickets} open tickets
         </span>
       </div>
 
@@ -92,7 +96,8 @@ export default function CustomerSuccessSection() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left text-[11px] font-medium uppercase tracking-wide text-muted">
-                <th className="pb-2 pr-3">Store · risk</th>
+                <th className="pb-2 pr-3">Store · why</th>
+                <th className="px-3 pb-2">Churn risk</th>
                 <th className="px-3 pb-2">Last activity</th>
                 <th className="px-3 pb-2 text-right">Open</th>
                 <th className="px-3 pb-2 text-right">Resolved 7d</th>
@@ -105,8 +110,9 @@ export default function CustomerSuccessSection() {
         </div>
       )}
       <p className="mt-3 text-[11px] text-muted">
-        NPS (needs a survey) and upsell signals (need per-client billing, P4.6) aren't shown yet.
-        Rows are aggregate store health — no customer data.
+        Churn risk is a 0–100 composite of inactivity, revenue trend, pauses and support load
+        (highest first) — a transparent heuristic, not a prediction model. Rows are aggregate store
+        health — no customer data.
       </p>
     </Card>
   );

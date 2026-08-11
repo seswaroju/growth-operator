@@ -217,6 +217,9 @@ export interface StoreHealth {
   revenue_7d: number;
   revenue_prev_7d: number;
   at_risk: boolean;
+  churn_score: number; // 0–100 composite (OC5); higher = more likely to churn
+  churn_band: "low" | "medium" | "high";
+  churn_factors: string[]; // plain-language reasons, highest-weight first
 }
 
 export function adminCustomerHealth(token: string): Promise<StoreHealth[]> {

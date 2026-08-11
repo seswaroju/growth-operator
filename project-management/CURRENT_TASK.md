@@ -9,7 +9,24 @@ selects and approves the next ticket.
 
 ---
 
-## Operator payments track · PAY3b — Razorpay payment-confirmation webhook — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC5 — Churn-risk score + early alerts — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc5-churn-risk-score`. Turns the Customer Success boolean `at_risk` into a **0–100
+composite churn-risk score** with plain-language **factors** (why), computed server-side and sorted
+worst-first. **Transparent heuristic** (weighted signals: inactivity, WoW revenue trend, pauses,
+support load) — not an ML model (no churn labels yet), so every point is explainable. **No migration**
+(computed in Python over the existing `platform_customer_health()` rows; additive API fields).
+
+- `core/insights/churn.py` (NEW, pure): `churn_risk(...) -> ChurnRisk(score, band, factors)` —
+  reusable server-side by OC9 (alert feed) + OC10 (benchmarking).
+- `core/tenancy/customer_health_admin.py`: `StoreHealth` gains `churn_score`/`churn_band`/
+  `churn_factors`; endpoint computes per row + returns worst-first. Additive (back-compatible).
+- web-ops `CustomerSuccessSection`: churn column (band-toned chip), factors inline, high/medium counts.
+
+**Gate:** ruff · guards 0 · mypy 181 · **tests/unit 476** (+9 scorer: bands/factors/caps/edges) ·
+health integ 4 · web-ops oxlint · tsc 0 · vitest 28 · build ✓. **Next:** OC6 transparency report.
+
+## Operator payments track · PAY3b — Razorpay payment-confirmation webhook — **Merged `b2da164`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/pay3b-razorpay-webhook`. Closes the loop: a **payment link** ties a charge to a
 transaction; when the store owner pays, a **signed capture webhook** confirms it and auto-drafts the

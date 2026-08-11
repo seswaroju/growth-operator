@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.insights.churn import churn_risk
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
@@ -50,6 +51,9 @@ class StoreHealth(BaseModel):
     revenue_7d: int
     revenue_prev_7d: int
     at_risk: bool
+    churn_score: int  # 0–100 composite (OC5); higher = more likely to churn
+    churn_band: str  # low | medium | high
+    churn_factors: list[str]  # plain-language reasons, highest-weight first
 
 
 @router.get(
@@ -67,4 +71,14 @@ async def customer_health(
         session, actor_user_id=current.user_id, action="customer_health.read",
         detail={"count": len(rows)},
     )
-    return [StoreHealth(**r) for r in rows]
+    out: list[StoreHealth] = []
+    for r in rows:
+        risk = churn_risk(
+            paused=r["paused"], open_tickets=r["open_tickets"],
+            urgent_tickets=r["urgent_tickets"], days_since_activity=r["days_since_activity"],
+            revenue_7d=r["revenue_7d"], revenue_prev_7d=r["revenue_prev_7d"])
+        out.append(StoreHealth(
+            **r, churn_score=risk.score, churn_band=risk.band, churn_factors=risk.factors))
+    # Highest churn risk first — the operator's worklist.
+    out.sort(key=lambda s: s.churn_score, reverse=True)
+    return out
