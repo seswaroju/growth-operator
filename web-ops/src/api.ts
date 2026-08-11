@@ -158,6 +158,23 @@ export function adminListTenants(token: string): Promise<TenantRosterRow[]> {
   return authed<TenantRosterRow[]>("/v1/admin/tenants", token);
 }
 
+export interface StoreCreated {
+  org_id: string;
+  owner_id: string;
+  owner_existed: boolean;
+  plan_id: string;
+}
+
+// Provision a store: creates the org + owner + subscription and emails the owner a setup link (CP-2).
+export function adminCreateStore(
+  token: string, input: { name: string; owner_email: string; plan_id: string },
+): Promise<StoreCreated> {
+  return authed<StoreCreated>("/v1/admin/tenants", token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ---- Operational health (/v1/admin/ops/health, platform.tenants:read) -------
 // Platform-wide "what's breaking / delayed" COUNTS only — never any store's rows. Error DETAIL lives
 // in the self-hosted GlitchTip (security S2), not here.

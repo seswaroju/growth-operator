@@ -1,10 +1,60 @@
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { adminListTenants, type TenantRosterRow } from "../api";
+import { adminCreateStore, adminListPlans, adminListTenants, type TenantRosterRow } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
+import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Card } from "./ui";
+
+function NewStoreForm({ token }: { token: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [planId, setPlanId] = useState("");
+  const plans = useQuery({
+    queryKey: ["billing-plans"], queryFn: () => adminListPlans(token), enabled: open,
+  });
+  const active = (plans.data ?? []).filter((p) => p.active);
+  const create = useMutation({
+    mutationFn: () => adminCreateStore(token, { name: name.trim(), owner_email: email.trim(), plan_id: planId }),
+    onSuccess: () => {
+      setOpen(false); setName(""); setEmail(""); setPlanId("");
+      qc.invalidateQueries({ queryKey: ["admin-tenants"] });
+    },
+  });
+  const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const ready = name.trim().length > 0 && emailOk && planId.length > 0;
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className={buttonClasses("primary", "sm")}>New store</button>
+    );
+  }
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); if (ready) create.mutate(); }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Store name"
+        className={fieldClasses("w-40 py-1.5 text-xs")} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Owner email"
+        inputMode="email" className={fieldClasses("w-52 py-1.5 text-xs")} />
+      <select value={planId} onChange={(e) => setPlanId(e.target.value)}
+        className={fieldClasses("w-40 py-1.5 text-xs")}>
+        <option value="">Choose plan…</option>
+        {active.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      <button type="submit" disabled={!ready || create.isPending} className={buttonClasses("primary", "sm")}>
+        {create.isPending ? "Creating…" : "Create"}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className={buttonClasses("ghost", "sm")}>Cancel</button>
+      {create.isError && <span className="text-xs text-danger">{(create.error as Error).message}</span>}
+    </form>
+  );
+}
 
 function fmtDate(ts: string): string {
   return new Date(ts).toLocaleDateString(undefined, { dateStyle: "medium" });
@@ -52,6 +102,7 @@ export default function StoresSection() {
   const { token, me } = useAuth();
   const permissions = me?.permissions ?? [];
   const canRead = hasPerm(permissions, "platform.tenants:read");
+  const canManage = hasPerm(permissions, "platform.tenants:manage");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["admin-tenants"],
@@ -76,11 +127,14 @@ export default function StoresSection() {
 
   return (
     <Card className="p-5">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold text-ink">Stores · all tenants</h2>
-        <span className="text-xs text-muted">
-          {stores.length} stores · {paused} paused · {openTickets} open tickets
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted">
+            {stores.length} stores · {paused} paused · {openTickets} open tickets
+          </span>
+          {canManage && token && <NewStoreForm token={token} />}
+        </div>
       </div>
 
       {isLoading ? (
