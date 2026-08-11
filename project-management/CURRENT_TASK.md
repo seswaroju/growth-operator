@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## A1b · Ledger the breakdown's per-gram rate (two-step breakdown can send) — **COMPLETE — awaiting founder review** (2026-08-11)
+## A1b · Ledger the breakdown's per-gram rate (two-step breakdown can send) — **COMPLETE — merged `1304059`, CI green** (2026-08-11)
 
 Branch `feature/mvp-097b-breakdown-rate-ledger`. Closes the gap A1 flagged: the itemized breakdown's
 metal line embeds the per-gram rate (`× ₹7,320/g`), which the send-path figure gate extracts but was
