@@ -4429,3 +4429,39 @@ alembic up/down/up verified · CRM integ 10 (5 annotations · 3 timeline · 2 sc
 
 **Next recommended action:** D3 — DPDP export (a customer's full data as JSON) + delete (erase a
 customer, cascading their PII), the last CRM-depth item.
+
+**Merge/push:** branch `feature/mvp-103-customer-notes-tags` merged `--no-ff` into `main` as `a0561d9`
+and pushed 2026-08-11. **GitHub CI green** (migration 040 applied cleanly in the migrate job on a
+fresh DB; the e2e journey after it still passed).
+
+---
+
+## 2026-08-11 — D3 · DPDP export + erase (branch `feature/mvp-104-customer-dpdp`)
+
+Track D #3 (final CRM-depth item). The two DPDP data-subject rights for a customer. No migration.
+
+- **`core/customers/dpdp.py`** (NEW):
+  - `export_customer` — **right to access**: a contact's complete record (profile + leads +
+    conversations + messages + orders + quotes + notes + tags + campaign touches) as one JSON.
+    Read-only.
+  - `erase_customer` — **right to erasure**: audits a fulfilled DSR **first** (`dsr.fulfilled`, no PII
+    in the payload — log-then-act, the org-scoped audit row survives the delete), then hard-deletes
+    the contact; every `contact_id` FK is `ON DELETE CASCADE`, so all linked rows go with it.
+  - Both verify the contact is the caller's org (→ `None` = 404) and are org-scoped two ways.
+- **`core/customers/api.py`**: `GET /v1/customers/{id}/export` (gated `customers:read`) and
+  `DELETE /v1/customers/{id}` (gated `org:manage` — **owner only**, irreversible).
+
+**Tests (`tests/integration/test_customer_dpdp.py`, NEW):** export returns one of each linked kind with
+the real PII; erase removes the contact **and** every cascade-linked row (contacts, conversations,
+messages, orders, leads, notes, tags all 0) and writes a `dsr.fulfilled` audit **with no PII**; export
++ erase are org-scoped (a foreign contact → `None`, and org B's data is untouched).
+
+**Retention caveat (founder decision):** erasure deletes orders/leads too — the retain-but-anonymise
+legal-retention exception is **BLOCKER #24**.
+
+**Migrations/APIs/events/frontend:** no migration; 2 new customer routes. **Commands:** ruff
+`All checks passed!` · guards 0 · `mypy core` 189 · **tests/unit 498** · customer integ 13
+(3 timeline · 5 annotations · 3 dpdp · 2 schema). **Track D (D1–D3) complete.**
+
+**Next recommended action:** G1 — MVP-071 audit anchoring (periodic external anchoring of the audit
+hash-chain head), the last item on the plan.

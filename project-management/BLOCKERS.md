@@ -161,6 +161,13 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** D2 (CRM notes + tags) adds two org-scoped tables — `customer_notes` + `contact_tags` (**migration 040**) — and a new module `core/customers/annotations.py`, none of which are in the vault `docs/06-database/schema.sql`, the migration-order doc, or the core module map (same posture as `incidents` / support-tickets, BLOCKER #21). Both tables are RLS-enabled (`apply_rls`) with `ON DELETE CASCADE` from `organizations` and `contacts`.
 - **Next action:** on the next vault pass, add the two tables to `schema.sql`, note migration 040 in the order doc, and add `core/customers/annotations` to the module map.
 
+### 24. DPDP erasure deletes financial/analytics rows — retention-exception policy is a founder decision
+
+- **Severity:** Low for the pilot (erasure requests are rare and the behaviour is explicit + audited), but a real compliance/analytics tradeoff before scale.
+- **Owner:** Founder (+ counsel) — a product/legal policy decision.
+- **Description:** D3 `erase_customer` hard-deletes the contact, and every `contact_id` FK is `ON DELETE CASCADE`, so the erasure also removes the customer's **orders and leads** (financial + revenue/ROI records). DPDP (like GDPR) allows a **legal-retention exception** — a business may keep financial records even after an erasure request, typically by *anonymising* the contact (nulling PII) while retaining the order rows. The current default is maximal erasure (delete everything).
+- **Next action:** founder decides the policy — (a) keep maximal hard-delete, or (b) switch erasure to *anonymise-and-retain* orders/leads (null the contact's `full_name`/`phone`/`email`/`attributes`, delete conversations/messages/notes/tags, keep orders linked to the anonymised contact). If (b), record it in DECISIONS and change `erase_customer` accordingly. Every erasure is already audited (`dsr.fulfilled`, no PII), so the choice is reversible-forward.
+
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
 - **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.
