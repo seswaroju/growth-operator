@@ -4227,3 +4227,7 @@ calling real model providers in CI, so wiring evals is a separate ticket, not A3
 `mypy core` 184 · **tests/unit 487** · **tests/e2e 5 passed** · CI YAML validated (jobs + services parse).
 
 **Next recommended action:** Track B — the gated Instagram + Google Ads adapters (B1/B2).
+
+**Merge/push:** branch `feature/mvp-097d-e2e-ci-gate` (commit `8ced07a`) merged `--no-ff` into `main`
+as `91b4bc1` and pushed 2026-08-11. **GitHub CI green** (run 31511688973 — the `migrate` job now runs
+the full jewelry journey e2e under `app_rw` + Redis on a fresh DB). **Track A (A0–A3) complete.**

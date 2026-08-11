@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## A3 · Wire the E2E CI gate — **COMPLETE — awaiting founder review** (2026-08-11)
+## A3 · Wire the E2E CI gate — **COMPLETE — merged `91b4bc1`, CI green** (2026-08-11)
 
 Branch `feature/mvp-097d-e2e-ci-gate`. The A1/A2 journey was green locally but not gated in CI. A3
 adds a `redis:7-alpine` service to the `migrate` job and runs the whole `tests/e2e` suite (as `app_rw`,
