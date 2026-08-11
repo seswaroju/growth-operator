@@ -4197,3 +4197,6 @@ prove the analytics/attribution tail over it.
 planner unit 11.
 
 **Next recommended action:** A3 — wire the eval/e2e CI gate (≈MVP-095/096) so these journeys run in CI.
+
+**Merge/push:** branch `feature/mvp-097c-e2e-front-tail` (commit `a22a00e`) merged `--no-ff` into
+`main` as `f1a4a96` and pushed 2026-08-11. **GitHub CI green** (run 31511029459).
