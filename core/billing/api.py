@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.billing import service
+from core.billing import budgets, service
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
@@ -231,3 +231,69 @@ async def record_charge(
         target_org_id=org_id,
         detail={"type": body.charge_type, "amount_minor": body.amount_minor})
     return ChargeOut(**charge)
+
+
+# ---- Per-channel budgets & caps (OC7) -------------------------------------------------------
+
+class BudgetSet(BaseModel):
+    budget_minor: int = Field(..., ge=0)
+    enforce: bool = False  # true = pause (block over-cap charges); false = alert-only
+
+
+class BudgetOut(BaseModel):
+    charge_type: str
+    budget_minor: int
+    enforce: bool
+
+
+class BudgetStatusOut(BudgetOut):
+    spent_minor: int  # month-to-date spend on this channel
+    remaining_minor: int
+    pct: float | None
+    over: bool
+
+
+@router.get("/tenants/{org_id}/budgets", response_model=list[BudgetStatusOut],
+            summary="A client's per-channel budgets + month-to-date spend")
+async def list_budgets(
+    org_id: UUID,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> list[BudgetStatusOut]:
+    rows = await budgets.budget_status(session, org_id)
+    await log_platform_access(session, actor_user_id=current.user_id, action="billing.budgets.read",
+                              target_org_id=org_id, detail={"count": len(rows)})
+    return [BudgetStatusOut(**r) for r in rows]
+
+
+@router.put("/tenants/{org_id}/budgets/{channel}", response_model=BudgetOut,
+            summary="Set a channel's monthly budget + cap behaviour")
+async def set_budget(
+    org_id: UUID,
+    channel: ChargeType,
+    body: BudgetSet,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> BudgetOut:
+    row = await budgets.set_budget(
+        session, org_id, charge_type=channel, budget_minor=body.budget_minor, enforce=body.enforce)
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.budget.set", target_org_id=org_id,
+        detail={"channel": channel, "budget_minor": body.budget_minor, "enforce": body.enforce})
+    return BudgetOut(**row)
+
+
+@router.delete("/tenants/{org_id}/budgets/{channel}", status_code=status.HTTP_204_NO_CONTENT,
+               summary="Remove a channel's budget")
+async def delete_budget(
+    org_id: UUID,
+    channel: ChargeType,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> None:
+    deleted = await budgets.delete_budget(session, org_id, channel)
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no budget for that channel")
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.budget.deleted",
+        target_org_id=org_id, detail={"channel": channel})

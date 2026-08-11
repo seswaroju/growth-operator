@@ -9,7 +9,27 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC6 — Client-facing transparency statement — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC7 — Per-channel budgets & caps — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc7-channel-budgets`. A **monthly budget per channel per store** vs **month-to-date
+spend**; when a budget is **enforced**, a charge that would exceed the cap is **blocked** with the
+canonical `budget_exceeded` (429), otherwise **alert-only** (flagged `over`). Wires the existing
+guard. **Migration `a0531351fe2a`** (`channel_budgets`, RLS; up/down/up verified).
+
+- `core/billing/budgets.py` (NEW): `set_budget`/`delete_budget`/`budget_status` (MTD spend, remaining,
+  %, over) / `check_and_enforce` (raises `budget_exceeded` in enforce mode). `record_charge` now calls
+  it pre-insert.
+- Admin API: `GET/PUT/DELETE /v1/admin/billing/tenants/{org}/budgets[/{channel}]`
+  (READ list+status / MANAGE set+delete; audited).
+- web-ops: `StoreBudgetsSection` on the store-360 (per-channel spent/budget bar, over/enforced/alert
+  chip, set-budget form + enforce toggle); `api.ts` +3 fns.
+
+**Gate:** ruff · guards 0 · mypy 182 · migration up/down/up + RLS · **tests/unit 476** · new integ
+`test_channel_budgets.py` **6** (set/status · **enforced 429 blocks** · alert allows+flags · no-budget
+· isolation · delete) · billing integ 10 · isolation 23 · web-ops tsc 0 · vitest 28 · build ✓.
+**Next:** jewelry-estimation ticket (founder), then OC8 — SLA-by-plan board.
+
+## Operator V2 forecast · OC6 — Client-facing transparency statement — **Merged `cdcf391`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc6-transparency-report`. The **store owner** sees their own **spend by channel** +
 **revenue + ROAS** for a month, in the owner app (`web/` Insights). **Tenant-scoped (RLS)**, owner-only;
