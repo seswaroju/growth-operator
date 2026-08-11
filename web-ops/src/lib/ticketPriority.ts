@@ -94,3 +94,44 @@ export function rankTickets(
     return new Date(a.ticket.created_at).getTime() - new Date(b.ticket.created_at).getTime();
   });
 }
+
+// ---- SLA-by-plan board (OC8) ---------------------------------------------------------------
+
+export type SlaBucketName = "breached" | "at_risk" | "on_track";
+
+// Which board bucket an open ticket falls in. "at_risk" (about to breach) = not yet breached but
+// within `atRiskFraction` of the SLA window remaining. Closed/no-SLA tickets aren't on the board.
+export function slaBucket(r: RankedTicket, atRiskFraction = 0.25): SlaBucketName | null {
+  if (!r.open || !r.sla) return null;
+  if (r.sla.breached) return "breached";
+  const windowMs = slaHoursForTier(r.tier) * 3_600_000;
+  return r.sla.ms <= windowMs * atRiskFraction ? "at_risk" : "on_track";
+}
+
+export interface SlaBoard {
+  breached: RankedTicket[];
+  at_risk: RankedTicket[];
+  on_track: RankedTicket[];
+}
+
+// Partition ranked tickets into the three SLA buckets (each keeps rankTickets' worst-first order).
+export function slaBoard(ranked: RankedTicket[], atRiskFraction = 0.25): SlaBoard {
+  const board: SlaBoard = { breached: [], at_risk: [], on_track: [] };
+  for (const r of ranked) {
+    const bucket = slaBucket(r, atRiskFraction);
+    if (bucket) board[bucket].push(r);
+  }
+  return board;
+}
+
+export interface SlaTarget {
+  plan: string;
+  hours: number;
+}
+
+// The response-time target per plan tier, for the board legend (top tier first + a no-plan fallback).
+export function slaTargets(tierOrder: string[]): SlaTarget[] {
+  const targets = tierOrder.map((plan, i) => ({ plan, hours: slaHoursForTier(i) }));
+  targets.push({ plan: "no plan", hours: slaHoursForTier(tierOrder.length) });
+  return targets;
+}
