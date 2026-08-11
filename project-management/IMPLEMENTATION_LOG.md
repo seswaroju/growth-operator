@@ -4166,3 +4166,34 @@ predicate the send gate applies), proving the whole two-step breakdown can now g
 **Merge/push:** branch `feature/mvp-097b-breakdown-rate-ledger` (commit `6bb2c0f`) merged `--no-ff`
 into `main` as `1304059` and pushed 2026-08-11. **GitHub CI green** (run 31509955394 — test · lint ·
 migrate · isolation · evals · secret-scan all success).
+
+---
+
+## 2026-08-11 — A2 · E2E front + tail: the full §1 loop end-to-end (branch `feature/mvp-097c-e2e-front-tail`)
+
+Extends the A1 journey (`tests/e2e/test_jewelry_journey.py`) with the **front** and **tail** of the §1
+loop, so one cohesive E2E now covers steps 5→11. Test-only — the plumbing (ingress → normalizer →
+planner; orders → ROI/attribution) already existed and is individually tested; A2 proves it **stitches
+end-to-end** (the same stitching that surfaced 5 real bugs in A1).
+
+- **Front** (`test_front_inbound_webhook_routes_to_concierge`): a raw Meta inbound webhook is dropped
+  into `webhook_events` → `normalizer.normalize_pending()` records the contact/conversation/message and
+  emits `msg.received.v1` → `planner._handle` classifies the intent and routes it to **this org's
+  active concierge**, capturing the run it would start (`trigger='msg.received'`, the conversation, the
+  body) — verified it targets `journey.instance`, not re-running A1's middle.
+- **Tail** (`test_tail_won_order_attributes_revenue_and_roi`): a campaign touches the contact, then a
+  won order is recorded → `insights.service.monthly_revenue` reflects the sale **and**
+  `campaigns.attribution.campaign_funnel` first-touch-attributes the sale + revenue to the campaign
+  (`reached=1, sales=1, revenue_minor=₹1,00,970.32`).
+- Fixture now exposes the `contact` id (front/tail need it); the front test cleans its own
+  `webhook_events` row (not org-scoped, so not cascaded by the org delete).
+
+**Note (gap, not A2 scope):** there is **no production order-writer** yet — orders are recorded
+externally/seeded. Recording lead outcome → order (§1.10) is a future ticket; A2 seeds the order to
+prove the analytics/attribution tail over it.
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 184 · **tests/unit 487** · **journey e2e 3 passed** (A1 + front + tail) · CI e2e 2 ·
+planner unit 11.
+
+**Next recommended action:** A3 — wire the eval/e2e CI gate (≈MVP-095/096) so these journeys run in CI.

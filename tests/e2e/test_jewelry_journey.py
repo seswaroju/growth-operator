@@ -14,6 +14,7 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +22,17 @@ import asyncpg
 import pytest
 import yaml
 
+from core.campaigns import attribution
 from core.catalog.crud import ItemInput, create_item
+from core.channels.whatsapp import normalizer
 from core.channels.whatsapp.credentials import store_credentials
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.insights import service as insights_service
 from core.mediation import manifest as manifest_mod
 from core.packs.installer import install
 from core.pricing import ledger, registry
+from core.runtime import planner
 from core.runtime.executor import resume_after_approval, start_run
 from core.runtime.model import ModelResult, ToolCall
 from core.tenancy.middleware import org_scoped_session
@@ -67,6 +72,7 @@ class Journey:
     org: uuid.UUID
     instance: uuid.UUID
     conversation: uuid.UUID
+    contact: uuid.UUID
 
 
 @pytest.fixture()
@@ -148,7 +154,7 @@ async def journey() -> AsyncIterator[Journey]:
                                   "gross_weight_g": 13.0, "net_weight_g": 12.4}),
             actor_id=actor)
 
-    yield Journey(org, instance, conversation)
+    yield Journey(org, instance, conversation, contact)
 
     conn = await asyncpg.connect(_dsn())
     try:
@@ -248,3 +254,101 @@ async def test_full_journey_quote_park_approve_send(journey: Journey) -> None:
         await conn.close()
     assert sent is not None and "1,00,970.32" in sent["body"]  # the grounded figure went out
     assert sent["status"] == "sent" and sent["provider_message_id"]  # (simulated) wamid, sent once
+
+
+def _webhook(pnid: str, wamid: str, phone: str, body: str) -> str:
+    """A minimal Meta inbound-message webhook payload (one text message)."""
+    return json.dumps(
+        {"entry": [{"changes": [{"value": {
+            "metadata": {"phone_number_id": pnid},
+            "messages": [{"id": wamid, "from": phone, "type": "text", "text": {"body": body}}],
+        }}]}]}
+    )
+
+
+async def test_front_inbound_webhook_routes_to_concierge(journey: Journey) -> None:
+    """FRONT of the loop (§1.5–6): a raw WhatsApp webhook → the normalizer records the
+    contact/conversation/message and emits `msg.received.v1`; the planner classifies the intent and
+    routes it to THIS org's active concierge, starting a run against it."""
+    pnid = f"pn-{journey.org.hex[:8]}"  # the fixture channel's external_id (resolve_channel finds)
+    wamid = f"wamid.{uuid.uuid4().hex}"
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute(
+            "INSERT INTO webhook_events (provider, external_id, payload) "
+            "VALUES ('whatsapp', $1, $2::jsonb)",
+            wamid, _webhook(pnid, wamid, "+919000000000", "What is the price of this 22K chain?"))
+    finally:
+        await conn.close()
+
+    assert await normalizer.normalize_pending() >= 1
+
+    conn = await asyncpg.connect(_dsn())
+    try:
+        msg = await conn.fetchrow(
+            "SELECT direction, body FROM messages WHERE provider_message_id=$1", wamid)
+        emitted = await conn.fetchrow(
+            "SELECT payload FROM event_outbox WHERE org_id=$1 AND type='msg.received.v1' "
+            "ORDER BY created_at DESC LIMIT 1", journey.org)
+    finally:
+        await conn.close()
+    assert msg is not None and msg["direction"] == "inbound"  # the inbound message was recorded
+    assert emitted is not None, "the normalizer must emit msg.received.v1"
+    data = json.loads(emitted["payload"])
+
+    # The planner consumes msg.received — capture the run it would start (don't re-run A1's middle).
+    captured: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    async def _capture_start(*args: Any, **kwargs: Any) -> None:
+        captured.append((args, kwargs))
+
+    outcome = await planner._handle(
+        {"subject": str(journey.org), "data": data}, start_run_fn=_capture_start)
+    assert outcome == "enqueued", f"planner did not route the inbound message ({outcome})"
+    (_org_arg, instance_arg), kw = captured[0]
+    assert instance_arg == journey.instance  # routed to THIS org's active concierge instance
+    assert kw["trigger"] == "msg.received"
+    assert kw["conversation_id"] is not None and "price" in kw["input"]["body"].lower()
+
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute("DELETE FROM webhook_events WHERE external_id=$1", wamid)
+    finally:
+        await conn.close()
+
+
+async def test_tail_won_order_attributes_revenue_and_roi(journey: Journey) -> None:
+    """TAIL of the loop (§1.10–11): a campaign touches the contact, then the lead converts to an
+    order. The order's revenue is first-touch-attributed to the campaign and shows in the owner's
+    monthly revenue — the measurable business value the whole loop exists to produce."""
+    order_minor = EXPECTED_TOTAL  # the ₹1,00,970.32 quote became a sale
+    conn = await asyncpg.connect(_dsn())
+    try:
+        campaign = await conn.fetchval(
+            "INSERT INTO campaigns (org_id, name, sent_count) VALUES ($1,'Wedding Season',1) "
+            "RETURNING id", journey.org)
+    finally:
+        await conn.close()
+
+    # The touch precedes the order (first-touch attribution, within the default window).
+    async with org_scoped_session(journey.org) as s:
+        await attribution.record_touch(
+            s, journey.org, campaign, journey.contact,
+            occurred_at=datetime.now(UTC) - timedelta(days=1))
+        await s.commit()
+
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute(
+            "INSERT INTO orders (org_id, contact_id, items, total_minor) "
+            "VALUES ($1,$2,'[]'::jsonb,$3)", journey.org, journey.contact, order_minor)
+    finally:
+        await conn.close()
+
+    async with org_scoped_session(journey.org) as s:
+        revenue = await insights_service.monthly_revenue(
+            s, journey.org, datetime.now(UTC).date())
+        funnel = await attribution.campaign_funnel(s, journey.org, campaign)
+    assert revenue == order_minor  # the owner's monthly revenue reflects the sale
+    assert funnel["reached"] == 1  # the campaign touched one contact
+    assert funnel["sales"] == 1 and funnel["revenue_minor"] == order_minor  # attributed to it
