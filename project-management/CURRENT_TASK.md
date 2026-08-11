@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## D3 · DPDP export + erase — **COMPLETE — awaiting founder review** (2026-08-11)
+## D3 · DPDP export + erase — **COMPLETE — merged `4e628e6`, CI green** (2026-08-11)
 
 Branch `feature/mvp-104-customer-dpdp`. Track D #3 (final CRM item). `core/customers/dpdp.py`:
 `export_customer` (full record JSON — right to access, read-only) + `erase_customer` (right to erasure

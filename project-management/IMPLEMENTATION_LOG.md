@@ -4465,3 +4465,28 @@ legal-retention exception is **BLOCKER #24**.
 
 **Next recommended action:** G1 — MVP-071 audit anchoring (periodic external anchoring of the audit
 hash-chain head), the last item on the plan.
+
+**Merge/push:** branch `feature/mvp-104-customer-dpdp` merged `--no-ff` into `main` as `4e628e6`
+and pushed 2026-08-11. **GitHub CI green.**
+
+---
+
+## 2026-08-11 — Session summary: the founder's 4-track "by morning" plan is complete (A–D)
+
+All four tracks the founder listed (E2E journey → multi-channel/ads → autonomy volume-knob → CRM
+depth), plus the E2E CI gate, are **merged to `main` and GitHub-CI-green**:
+
+- **A** (`64f5dea`, `1304059`, `f1a4a96`, `91b4bc1`) — the full §1 loop end-to-end (front→middle→tail),
+  now a CI gate; surfaced + fixed **5 real production bugs** while building it.
+- **B** (`4242a80`, `258d0d7`) — gated Instagram + Google Ads adapters (simulated by default, §10.4).
+- **C** (`e442b59`, `27e4b70`) — autonomy per-capability value threshold + quiet-hours draft-only.
+- **D** (`f5c72c2`, `a0561d9`, `4e628e6`) — CRM activity timeline, notes + tags (migration 040, RLS),
+  DPDP export + erase.
+
+**Remaining:** G1 (MVP-071 audit anchoring) — **not started**; it is a distinct MVP ticket beyond the
+4-track plan, so it needs the mandatory task protocol + a founder decision on the external anchoring
+store. New/updated founder decisions to record in DECISIONS: WhatsApp receipt = **text not PDF**
+(PAY4 dropped); JWL-EST-01 tax = **CGST+SGST only (no IGST)**, per-product `tax_applicable` + owner
+waiver, per-gram labor on top of making, two-step reply, approval by owner value-limit. Open founder
+policy calls: **BLOCKER #22** (multi-pack tier scoping + local-DB pollution), **#23** (CRM tables vault
+reconciliation), **#24** (DPDP erasure retention exception).
