@@ -466,3 +466,36 @@ export function adminRequestReceipt(
   return authed<ReceiptRequestResult>(
     `/v1/admin/tenants/${orgId}/transactions/${txId}/request-receipt`, token, { method: "POST" });
 }
+
+// ---- Per-channel budgets & caps (/v1/admin/billing/tenants/{org}/budgets, OC7) ----------------
+// A monthly budget per channel with month-to-date spend + over flag; enforce=true pauses over-cap
+// charges (429 budget_exceeded). Writes need platform.tenants:manage; audited server-side.
+
+export interface BudgetStatus {
+  charge_type: string;
+  budget_minor: number;
+  enforce: boolean;
+  spent_minor: number;
+  remaining_minor: number;
+  pct: number | null;
+  over: boolean;
+}
+
+export function adminListBudgets(token: string, orgId: string): Promise<BudgetStatus[]> {
+  return authed<BudgetStatus[]>(`/v1/admin/billing/tenants/${orgId}/budgets`, token);
+}
+
+export function adminSetBudget(
+  token: string, orgId: string, channel: string, budgetMinor: number, enforce: boolean,
+): Promise<{ charge_type: string; budget_minor: number; enforce: boolean }> {
+  return authed(`/v1/admin/billing/tenants/${orgId}/budgets/${channel}`, token, {
+    method: "PUT",
+    body: JSON.stringify({ budget_minor: budgetMinor, enforce }),
+  });
+}
+
+export function adminDeleteBudget(token: string, orgId: string, channel: string): Promise<void> {
+  return authed<void>(`/v1/admin/billing/tenants/${orgId}/budgets/${channel}`, token, {
+    method: "DELETE",
+  });
+}

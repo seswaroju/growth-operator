@@ -3823,3 +3823,35 @@ margin is **never** exposed — the owner sees `amount_minor` (what they pay) on
 181 · **tests/unit 476** · new integ **5** · billing+dashboard integ 21 (no regressions) · web oxlint
 (only pre-existing warnings) · tsc 0 · vitest **65** (+4) · build ✓. **Security:** owner-only, RLS-
 scoped; **no cost/margin leak**; no new external actions. **Next:** OC7 — per-channel budgets & caps.
+
+---
+
+## 2026-08-10 — OC7 · Per-channel budgets & caps (branch `feature/oc7-channel-budgets`)
+
+Third of OC5–OC12. A **monthly budget per channel per store**, measured against **month-to-date**
+spend in `billing_charges`. When a budget is **enforced**, a charge that would exceed the cap is
+**blocked** with the canonical `budget_exceeded` (429); otherwise **alert-only** (allowed, flagged
+`over`). Wires the existing guard rather than inventing a code.
+
+- **Migration `a0531351fe2a`** (on head `8508f4155753`): `channel_budgets` (org_id, charge_type,
+  budget_minor, enforce, timestamps; UNIQUE(org_id,charge_type); **RLS**). **Up/down/up verified**,
+  RLS confirmed on.
+- **`core/billing/budgets.py`** (NEW): `set_budget` (upsert), `delete_budget`, `budget_status`
+  (per-channel MTD spend / remaining / pct / over), `check_and_enforce` (raises `budget_exceeded`
+  in enforce mode when projected spend exceeds the cap). `service.record_charge` calls it pre-insert
+  (so an over-cap charge in enforce mode never persists).
+- **Admin API** (`core/billing/api.py`): `GET /v1/admin/billing/tenants/{org}/budgets` (status),
+  `PUT …/budgets/{channel}` (set), `DELETE …/budgets/{channel}` — READ list, MANAGE writes; audited.
+- **web-ops**: `StoreBudgetsSection` on the store-360 (per-channel spent/budget bar with over/warn
+  tones, over/enforced/alert chip, set-budget form + enforce toggle, delete); `api.ts` +3 fns.
+
+**Requirement → evidence:** `tests/integration/test_channel_budgets.py` (6) — set + list status with
+MTD spend; **enforced cap returns 429 `budget_exceeded` and the charge doesn't persist**; alert-only
+allows the charge but flags `over` (negative remaining); a channel with no budget is unaffected;
+budgets are org-isolated; delete works (then over-cap charge succeeds; second delete 404).
+
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 182 + migrations 3 · migration
+up/down/up + RLS · **tests/unit 476** · new integ **6** · billing integ 10 · isolation 23 (no
+regressions) · web-ops oxlint clean · tsc 0 · vitest 28 · build ✓. **Security:** operator-plane
+(READ/MANAGE); RLS-scoped; enforcement fails safe (blocks before insert); no secrets/external actions.
+**Next:** create the founder's jewelry-estimation ticket, then OC8 — SLA-by-plan board.

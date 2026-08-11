@@ -16,6 +16,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.billing import budgets
 from core.tenancy.repository import set_org_context
 
 _PLAN_COLS = "id, name, price_minor, active, description, features, created_at"
@@ -95,6 +96,8 @@ async def record_charge(
     amount_minor: int, cost_minor: int, note: str | None, created_by: UUID | None,
 ) -> dict[str, Any]:
     await set_org_context(session, org_id)
+    # OC7: block the charge if it would push this channel over an enforced monthly cap.
+    await budgets.check_and_enforce(session, org_id, charge_type, amount_minor, on=period_month)
     row = (await session.execute(
         text("INSERT INTO billing_charges "
              "(org_id, period_month, charge_type, amount_minor, cost_minor, note, created_by) "

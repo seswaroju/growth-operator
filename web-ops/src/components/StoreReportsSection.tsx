@@ -12,6 +12,7 @@ import { rupees, wowDelta } from "../lib/analytics";
 import { hasPerm } from "../lib/roles";
 import { channelLabel, spendByChannel } from "../lib/spend";
 import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
+import StoreBudgetsSection from "./StoreBudgetsSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
 
@@ -244,6 +245,13 @@ export default function StoreReportsSection() {
             </span>
           </div>
         </Card>
+      )}
+
+      {/* Budgets & caps by channel (OC7) */}
+      {canTenants && (
+        <StoreBudgetsSection
+          token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
+        />
       )}
 
       {/* Payments — charge this store + receipts (PAY-TX / PAY3) */}
