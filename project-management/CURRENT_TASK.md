@@ -9,6 +9,17 @@ selects and approves the next ticket.
 
 ---
 
+## (a) DPDP soft-erase + platform archive — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-106-dpdp-soft-erase`. Founder decision (supersedes D3 hard-delete): erase now
+**anonymises + retains** business records, and the Growth Operator keeps the original. Migration 041:
+`contacts.erased_at` + `erased_customer_archive` (split RLS — store-owner INSERT, operator-only SELECT).
+`erase_customer` soft-erases (archive → audit → delete messages/notes/tags → anonymise contact, keep
+orders/leads); customer list excludes erased; `GET /v1/admin/erased-customers/{id}` (operator) retrieves
+the archive. **Gate:** ruff · guards 0 · mypy 189 · unit 498 · alembic up/down/up · customer integ 12
+(incl. RLS split: store owner blocked, operator allowed) · sweep 533 (only #22b pollution). Resolves
+BLOCKER #24; in DECISIONS. Auto-purge deferred (indefinite retention for pilot).
+
 ## D3 · DPDP export + erase — **COMPLETE — merged `4e628e6`, CI green** (2026-08-11)
 
 Branch `feature/mvp-104-customer-dpdp`. Track D #3 (final CRM item). `core/customers/dpdp.py`:

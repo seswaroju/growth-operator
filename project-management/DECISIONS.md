@@ -1085,3 +1085,19 @@ under that per store owner."* Anticipates a second vertical (Boutique) + more st
 rules apply platform-wide; `pack` rules apply only to orgs that have that pack **installed** (active);
 `tenant` rules apply only to that org. One vertical's rules can never govern another's runs. Resolves
 BLOCKER #22. **Decided by:** Founder (2026-08-11).
+
+---
+
+## 2026-08-11 — DPDP erasure = soft-erase (anonymise + retain) with a platform-only archive
+
+**Decision (founder):** a store owner's "erase customer" **anonymises** the customer (removes their
+PII + content from the owner's view) but **retains the business records** (orders, leads) so revenue/
+ROI history survives — and the **Growth Operator** super-admin keeps the full original in a
+platform-only archive to fulfil a data request. *"Growth operator has ultimate powers … who can read
+the history (even deleted ones) but not store owner … keep indefinitely, add auto-purge later."*
+
+**Effect (migration 041):** `contacts.erased_at` tombstone + `erased_customer_archive` (split RLS —
+store-owner INSERT only, operator-plane SELECT only). `core/customers/dpdp.erase_customer` soft-erases;
+`GET /v1/admin/erased-customers/{id}` (operator, `platform.tenants:manage`) retrieves the archive.
+Retained **indefinitely** for the pilot; auto-purge after a window is a later ticket. Resolves BLOCKER
+#24. **Decided by:** Founder (2026-08-11).

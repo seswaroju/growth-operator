@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from core.common import db as dbmod
 from core.common.config import get_settings
 from core.customers import dpdp
 from core.tenancy.middleware import org_scoped_session
+from core.tenancy.platform_admin import admin_scoped_session
 
 
 def _dsn() -> str:
@@ -113,33 +115,57 @@ async def test_export_returns_full_record(scene: Scene) -> None:
     assert data["tags"][0]["tag"] == "vip"
 
 
-async def test_erase_deletes_contact_and_cascades_and_audits(scene: Scene) -> None:
+async def test_erase_soft_anonymizes_retains_business_and_archives(scene: Scene) -> None:
     async with org_scoped_session(scene.org) as s:
-        ok = await dpdp.erase_customer(s, scene.org, scene.contact, actor_id=scene.user)
+        ok = await dpdp.erase_customer(
+            s, scene.org, scene.contact, actor_id=scene.user, reason="customer request")
         await s.commit()
     assert ok is True
     conn = await asyncpg.connect(_dsn())
     try:
-        # The contact and every cascade-linked row are gone.
-        for tbl, col, val in (
-            ("contacts", "id", scene.contact),
-            ("conversations", "contact_id", scene.contact),
-            ("messages", "conversation_id", scene.conversation),
-            ("orders", "contact_id", scene.contact),
-            ("leads", "contact_id", scene.contact),
-            ("customer_notes", "contact_id", scene.contact),
-            ("contact_tags", "contact_id", scene.contact),
-        ):
-            n = await conn.fetchval(f"SELECT count(*) FROM {tbl} WHERE {col}=$1", val)
-            assert n == 0, f"{tbl} still has rows for the erased contact"
-        # The erasure was audited as a fulfilled DSR (org-scoped row survives the delete), no PII.
+        # The contact ROW stays, but is anonymised + tombstoned (drops off the owner's list).
+        row = await conn.fetchrow(
+            "SELECT phone, full_name, email, erased_at FROM contacts WHERE id=$1", scene.contact)
+        assert row is not None  # not hard-deleted
+        assert row["phone"] is None and row["full_name"] is None and row["email"] is None
+        assert row["erased_at"] is not None
+        # PII/content is gone: message bodies, notes, tags.
+        assert await conn.fetchval(
+            "SELECT count(*) FROM messages WHERE conversation_id=$1", scene.conversation) == 0
+        assert await conn.fetchval(
+            "SELECT count(*) FROM customer_notes WHERE contact_id=$1", scene.contact) == 0
+        assert await conn.fetchval(
+            "SELECT count(*) FROM contact_tags WHERE contact_id=$1", scene.contact) == 0
+        # Business records are RETAINED (anonymised) — revenue/ROI history survives.
+        assert await conn.fetchval(
+            "SELECT count(*) FROM orders WHERE contact_id=$1", scene.contact) == 1
+        assert await conn.fetchval(
+            "SELECT count(*) FROM leads WHERE contact_id=$1", scene.contact) == 1
+        # Audited as a fulfilled DSR (no PII in the payload).
         audit = await conn.fetchrow(
-            "SELECT action, payload FROM audit_log WHERE org_id=$1 AND action='dsr.fulfilled'",
-            scene.org)
-        assert audit is not None
-        assert "phone" not in str(audit["payload"]) and "+9191" not in str(audit["payload"])
+            "SELECT payload FROM audit_log WHERE org_id=$1 AND action='dsr.fulfilled'", scene.org)
+        assert audit is not None and "+9191" not in str(audit["payload"])
+        # The original is retained in the platform archive (captured the real PII).
+        arch = await conn.fetchrow(
+            "SELECT reason, data FROM erased_customer_archive WHERE contact_id=$1", scene.contact)
+        assert arch is not None and arch["reason"] == "customer request"
+        assert "+919111111111" in str(arch["data"])  # the original phone is in the archived record
     finally:
         await conn.close()
+
+
+async def test_store_owner_cannot_read_archive_but_operator_can(scene: Scene) -> None:
+    async with org_scoped_session(scene.org) as s:
+        await dpdp.erase_customer(s, scene.org, scene.contact, actor_id=scene.user, reason="req")
+        await s.commit()
+    # Store owner (org context, no admin flag) → RLS returns nothing.
+    async with org_scoped_session(scene.org) as s:
+        assert await dpdp.get_erased_archive(s, scene.contact) is None
+    # Growth Operator (app.platform_admin='on') → can retrieve the original for a data request.
+    async with admin_scoped_session() as s:
+        rec = await dpdp.get_erased_archive(s, scene.contact)
+    assert rec is not None and str(rec["contact_id"]) == str(scene.contact)
+    assert "+919111111111" in json.dumps(rec["data"], default=str)  # original PII kept for the GO
 
 
 async def test_export_and_erase_are_org_scoped(scene: Scene) -> None:
