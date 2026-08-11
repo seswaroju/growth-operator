@@ -167,6 +167,13 @@ class Settings(BaseSettings):
     instagram_live_enabled: bool = Field(default=False)
     instagram_ig_user_id: str | None = Field(default=None)
     instagram_access_token: str | None = Field(default=None)  # secret — never commit
+    # Google Ads campaign management (B2, §10.4 advertising). OFF until API access lands; while
+    # false the client SIMULATES (no network). Enabled needs the developer token + customer id +
+    # an OAuth access token (secrets → SOPS in prod); a real campaign also needs an approved action.
+    google_ads_live_enabled: bool = Field(default=False)
+    google_ads_customer_id: str | None = Field(default=None)  # e.g. "1234567890" (no dashes)
+    google_ads_developer_token: str | None = Field(default=None)  # secret — never commit
+    google_ads_access_token: str | None = Field(default=None)  # secret OAuth token — never commit
     # Fernet key used to encrypt channel credentials (WABA access token) at rest.
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
     # ed25519 seed (base64, 32 bytes) that signs execution tokens (MVP-066). Prod via SOPS.
