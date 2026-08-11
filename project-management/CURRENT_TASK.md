@@ -9,7 +9,23 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC5 — Churn-risk score + early alerts — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC6 — Client-facing transparency statement — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc6-transparency-report`. The **store owner** sees their own **spend by channel** +
+**revenue + ROAS** for a month, in the owner app (`web/` Insights). **Tenant-scoped (RLS)**, owner-only;
+**GO's internal `cost_minor`/margin is never exposed** (amount only). No migration.
+
+- `GET /v1/insights/transparency?month=YYYY-MM` (insights:read, org from token) → spend-by-channel
+  (biggest first), total spend, month revenue, ROAS/ROI (`campaigns.analytics.roi`). 400 on bad month.
+- `core/billing/service.monthly_spend_by_channel` (amount only) + `core/insights/service.monthly_revenue`.
+- web/: `TransparencyStatement` card atop Insights (invested · revenue · return + per-channel bars);
+  `lib/transparency.ts` (+test) labels/ROAS/share/month.
+
+**Gate:** ruff · guards 0 · mypy 181 · tests/unit 476 · new integ `test_transparency.py` **5**
+(grouping · month filter · **cost-never-exposed** · isolation · 400/401) · billing+dashboard integ 21 ·
+web tsc 0 · vitest **65** (+4) · build ✓. **Next:** OC7 — per-channel budgets & caps.
+
+## Operator V2 forecast · OC5 — Churn-risk score + early alerts — **Merged `32412f3`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc5-churn-risk-score`. Turns the Customer Success boolean `at_risk` into a **0–100
 composite churn-risk score** with plain-language **factors** (why), computed server-side and sorted
