@@ -4128,3 +4128,7 @@ suites not in the CI `test` job). Both confirmed pre-existing (reproduced with a
 
 **Next recommended action:** A1b — reconcile the itemized `breakdown_text` per-gram rate line with Gate 5
 (it is not independently ledgered) so the two-step breakdown can also send; then A2 (E2E front + tail).
+
+**Merge/push:** branch `feature/mvp-097-e2e-jewelry-journey` (commit `cf471b3`) merged `--no-ff` into
+`main` as `64f5dea` and pushed 2026-08-11. **GitHub CI green** (run 31508375771 — test · lint · migrate ·
+secret-scan · evals all success).

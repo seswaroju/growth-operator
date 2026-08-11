@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## A1 · End-to-end jewelry journey (≈MVP-097) — **COMPLETE — awaiting founder review** (2026-08-11)
+## A1 · End-to-end jewelry journey (≈MVP-097) — **COMPLETE — merged `64f5dea`, CI green** (2026-08-11)
 
 First item of the founder's 4-track plan (E2E journey → multi-channel/ads → autonomy volume-knob →
 CRM depth). Branch `feature/mvp-097-e2e-jewelry-journey`. The first full **§1-loop** test over the
