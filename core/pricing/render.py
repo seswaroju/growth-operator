@@ -25,9 +25,11 @@ class _SafeMap(dict):
 
 
 def money(minor: int, currency: str = "INR") -> str:
-    """Format integer minor units for display, to whole units."""
+    """Format integer minor units for display, **exact to the paise** — a customer-bound figure must
+    equal a ledger row to the minor unit (the send-path figure gate, MVP-054), so a rounded display
+    would be blocked as `unledgered_figure`. Matches the receipt formatter + the money extractor."""
     major = minor / 100  # display only; the authoritative value stays integer minor units
-    return ("₹" + f"{major:,.0f}") if currency == "INR" else f"{major:,.0f} {currency}"
+    return ("₹" + f"{major:,.2f}") if currency == "INR" else f"{major:,.2f} {currency}"
 
 
 def line_label(
