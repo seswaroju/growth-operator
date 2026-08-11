@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { getInsightsSummary, getOverview, type Overview } from "../api";
+import OnboardingCard from "./OnboardingCard";
 import { useAuth } from "../auth";
 import { delta, formatValue } from "../lib/insights";
 import { buttonClasses } from "../lib/ui";
@@ -164,6 +165,8 @@ export default function HomeSection() {
   return (
     <div>
       <PageHeader title="Welcome back" subtitle={subtitle} />
+
+      <OnboardingCard />
 
       {isLoading && <DashboardSkeleton />}
       {isError && (

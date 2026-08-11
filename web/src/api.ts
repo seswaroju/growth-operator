@@ -114,6 +114,19 @@ export function getOverview(token: string): Promise<Overview> {
   return authed<Overview>("/v1/dashboard/overview", token);
 }
 
+// ---- Onboarding checklist (/v1/dashboard/onboarding, insights:read) ---------
+
+export interface Onboarding {
+  whatsapp_connected: boolean;
+  catalog_items: number;
+  campaigns: number;
+  team_members: number;
+}
+
+export function getOnboarding(token: string): Promise<Onboarding> {
+  return authed<Onboarding>("/v1/dashboard/onboarding", token);
+}
+
 export interface MetricSummary {
   metric_key: string;
   this_week: number;

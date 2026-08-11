@@ -69,3 +69,35 @@ async def monthly_revenue(session: AsyncSession, org_id: UUID, period_month: dat
              "AND date_trunc('month', created_at) = date_trunc('month', CAST(:pm AS date))"),
         {"o": str(org_id), "pm": period_month})).scalar_one()
     return int(total)
+
+
+@dataclass
+class OnboardingStatus:
+    whatsapp_connected: bool
+    catalog_items: int
+    campaigns: int
+    team_members: int
+
+
+_ONBOARDING_SQL = text(
+    """
+    SELECT
+      EXISTS(SELECT 1 FROM channels
+        WHERE org_id = :o AND type = 'whatsapp' AND status = 'active')  AS whatsapp_connected,
+      (SELECT count(*) FROM catalog_items
+        WHERE org_id = :o AND status = 'active')                        AS catalog_items,
+      (SELECT count(*) FROM campaigns WHERE org_id = :o)                AS campaigns,
+      (SELECT count(*) FROM user_orgs WHERE org_id = :o)                AS team_members
+    """
+)
+
+
+async def onboarding_status(session: AsyncSession, org_id: UUID) -> OnboardingStatus:
+    """Setup-completion signals for the owner's onboarding checklist (OC11) — tenant-scoped."""
+    await set_org_context(session, org_id)
+    row = (await session.execute(_ONBOARDING_SQL, {"o": str(org_id)})).mappings().one()
+    return OnboardingStatus(
+        whatsapp_connected=bool(row["whatsapp_connected"]),
+        catalog_items=int(row["catalog_items"]),
+        campaigns=int(row["campaigns"]),
+        team_members=int(row["team_members"]))
