@@ -1,6 +1,6 @@
 # Ticket JWL-EST-01 — Jewelry-style customer estimation (itemized), not a flat price
 
-**Status:** Spec refined with founder (2026-08-10); **2 design questions open**. Parked until the OC5–OC12 run reaches a stopping point / founder schedules it.
+**Status:** **Fully spec'd** (founder answered all questions 2026-08-10) — **ready to build**. Parked until the founder schedules it (default: after the OC5–OC12 run).
 **Track:** Jewelry vertical pack (L1) + catalog + customer-facing draft. **Not** operator-console (OC).
 
 ---
@@ -33,10 +33,12 @@ card already exist. The work is per-product controls + a CGST/SGST split + a two
 2. **CGST/SGST is a per-product setting** in the catalogue (include tax: yes/no), and the **owner can
    waive it at approval** (negotiation with the customer). → new per-item field `tax_applicable`
    (default true), overridable on the quote at approval time.
-3. **Per-product `needs_approval` flag** — some products' quotes go to the owner (where tax can be
-   waived / negotiated), others don't. (Exact gating = **open question B**.)
-4. **Labor is per-product**, set **when the owner uploads the catalogue** (product-type dependent:
-   "has labor cost or not"). → new per-item labor field(s). (Mechanism = **open question A**.)
+3. **Approval by the owner's value limit** (not a per-product boolean) — reuse the existing tier model
+   (pack already: "quotes ≥ ₹1L → tier-2 approval"). A **tenant-set ₹ threshold slot**: a quote at/above
+   it goes to the owner (who can then waive CGST/SGST / negotiate); below it, the price auto-replies.
+4. **Labor is per-product, per-gram, added on top of making** — set at catalog upload. → per-item
+   labor rate; labor line = `labor_per_g_minor × net_weight_g`, shown IN ADDITION to the % making line
+   (both apply). Absent/zero → no labor line.
 5. **Two-step reply:** the **first response is just the price**; on the customer **asking for a
    breakdown**, send the **detailed itemized quote** (karat/grams, making, CGST, SGST, labor, total),
    then negotiate (often on a call).
@@ -45,11 +47,14 @@ card already exist. The work is per-product controls + a CGST/SGST split + a two
 ## 4. Proposed scope (after the 2 opens are answered)
 
 - **Catalog schema** (`verticals/jewelry/catalog/schema.json`): add per-item `tax_applicable` (bool,
-  default true), `needs_approval` (bool), and labor field(s) per open-question A.
+  default true) and `labor_per_g_minor` (integer ₹/g in paise, default 0 → no labor line).
+- **Tenant slot:** an owner-set **quote-approval threshold** (₹) driving the approval tier (reuse the
+  existing ≥₹1L→T2 mechanism); default keeps current behaviour.
 - **Pricing strategy** (`verticals/jewelry/pricing/strategy.yaml`): split `gst` → `cgst` + `sgst`
-  (rate slots); add a `labor` stage (per A); make CGST/SGST conditional on the item's `tax_applicable`
-  and waivable via a quote input; extend `breakdown_labels` (CGST/SGST/labor); update
-  `evals/pricing_golden.yaml` goldens (tax split, tax-waived, labor, no-labor).
+  (rate slots, default 1.5% each); add a `labor` stage = `labor_per_g_minor × net_weight_g` (on top of
+  making); make CGST/SGST conditional on the item's `tax_applicable` and waivable via a quote input;
+  extend `breakdown_labels` (CGST/SGST/labor); update `evals/pricing_golden.yaml` goldens (tax split,
+  tax-waived, labor vs no-labor).
 - **Quote card** (`verticals/jewelry/ui/templates.yaml`): CGST + SGST rows + labor row.
 - **Draft (two-step):** first reply = headline price; on a breakdown request, render the **ledgered**
   itemized quote — **grounded, never invented** (§18) — and **owner-approve** per the `needs_approval`
@@ -58,13 +63,13 @@ card already exist. The work is per-product controls + a CGST/SGST split + a two
 - **Tests:** pricing goldens (CGST/SGST split, tax waived, labor vs no-labor); a draft test proving
   the breakdown is grounded + approval-gated; the "price first, breakdown on request" branch.
 
-## 5. Open questions (only these two block the build)
+## 5. Resolved (founder, 2026-08-10)
 
-- **A — Labor mechanism.** How is a product's labor cost entered + applied? Fixed ₹ per item / per-gram
-  (₹/g × net weight) / %? And is it **in addition to** the existing %-based making charge, **or** does
-  it **replace** making for labor products (or is "making" already the labor, just relabeled)?
-- **B — What `needs_approval` gates in the two-step flow.** Only the **detailed breakdown** (price
-  auto-replies)? **Both** the price and the breakdown for a flagged product? Or **every** price?
+- **A — Labor:** **per-gram, added on top of making** (`labor_per_g_minor × net_weight_g`).
+- **B — Approval:** driven by the **owner's value-limit threshold** (tenant slot), reusing the existing
+  approval tier — not a per-product boolean. At/above the limit → owner approves (and may waive tax);
+  below → price auto-replies.
+- Remaining tiny assumption (not blocking): CGST/SGST default **1.5% + 1.5%** for gold, tenant-slotted.
 
 ## 6. Out of scope (unless founder expands)
 
