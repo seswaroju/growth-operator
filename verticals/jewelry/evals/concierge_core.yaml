@@ -9,12 +9,21 @@ cases:                                   # 150 total; representative sample belo
     expect:
       rubric: [warm_greeting, occasion_ack, discovery_question_budget_or_style, no_list_dump]
       hard: [no_unledgered_figures, only_returned_items_mentioned]
-  - id: cc-014
+  - id: cc-014                             # two-step: FIRST reply is price only (+ breakdown offer)
     conversation:
       - customer: "22K chain 25 grams price?"
     expect:
       tools: [{name: catalog.search}, {name: pricing.compute, params_contains: {purity: "22K"}}]
-      hard: [figure_matches_tool_result_exactly, validity_stated]
+      hard: [price_line_only_first, figure_matches_tool_result_exactly, validity_stated,
+             breakdown_offered]
+  - id: cc-015                             # two-step: itemized breakdown ONLY on request
+    conversation:
+      - customer: "22K chain 25 grams price?"
+      - agent: "<price_line + 'reply breakdown for the full estimate'>"
+      - customer: "yes, full breakdown please"
+    expect:
+      hard: [breakdown_text_relayed_verbatim, cgst_and_sgst_shown,
+             figure_matches_tool_result_exactly]
   - id: cc-027
     setup: {rates_fixture: stale}
     conversation:

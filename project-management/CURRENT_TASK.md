@@ -9,7 +9,28 @@ selects and approves the next ticket.
 
 ---
 
-## JWL-EST-01 · Jewelry estimation — **Phase 1 (pricing config) COMPLETE — awaiting founder review** (2026-08-10)
+## JWL-EST-01 · Jewelry estimation — **Phase 2 (two-step grounded draft) COMPLETE — awaiting founder review** (2026-08-10)
+
+Branch `feature/jwl-est-02-two-step-draft`. The concierge now delivers the estimate in **two steps**,
+relaying **exact ledgered figures** (not invented ones). **Key find:** `pricing.compute` returned only
+`{quote_id}` — the concierge had no figures to present. Fixed by returning a **deterministic
+presentation**.
+
+- `core/pricing/render.py` (NEW, pure, generic — labels from config, no industry nouns):
+  `render_price_line` (total + validity) + `render_breakdown` (labelled lines, zero lines hidden,
+  discount shown negative). `core/pricing/service.quote_presentation` reads the stored quote +
+  strategy labels → `{price_line, breakdown_text, total_minor, currency}`.
+- `core/mediation/tools._pricing_compute` now returns that presentation (the concierge relays verbatim).
+- `verticals/jewelry/prompts/concierge.md`: quote layer → **two-step** (price only first + breakdown
+  offer; itemized `breakdown_text` on request; never restate a figure). Eval spec `concierge_core.yaml`
+  cc-014/cc-015 updated.
+
+**Gate:** ruff · guards 0 (fixed a Rule-Zero "jewelry" noun in a core docstring) · mypy 184 ·
+**tests/unit 486** (+6 render: price line, itemized, hide-zero, CGST/SGST, discount-negative, waiver) ·
+pricing-service integ +1 (two-step, exact figures) · mediation integ 10. Grounding hardened: the LLM
+now relays tool text; figures stay ledgered + approval-gated (value-limit tier). **Ticket ~complete.**
+
+## JWL-EST-01 · Jewelry estimation — **Phase 1 (pricing config) — Merged `f325c86`, CI green** (2026-08-10)
 
 Branch `feature/jwl-est-01-pricing-config`. The declarative, golden-tested half of the jewelry
 itemized estimate. **No engine rewrite** (the DSL already supports ternaries + `inputs.get(default)`).

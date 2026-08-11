@@ -19,7 +19,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.pricing import ledger, registry
+from core.pricing import ledger, registry, render
 from core.pricing.engine import Quote, compute
 from core.pricing.functions import PricingError
 from core.tenancy import repository
@@ -131,6 +131,40 @@ async def compute_quote(
         source_ref=quote_id, expires_at=valid_until,
     )
     return quote_id
+
+
+async def quote_presentation(
+    session: AsyncSession, org_id: UUID, quote_id: UUID
+) -> dict[str, Any]:
+    """Two-step customer presentation of a stored quote (JWL-EST-01 phase 2): a `price_line` for the
+    first reply and an itemized `breakdown_text` on request — both from the ledgered figures + the
+    strategy's labels, so the concierge relays exact numbers, never invented ones."""
+    await repository.set_org_context(session, org_id)
+    row = (
+        await session.execute(
+            text(
+                "SELECT q.breakdown, q.total_minor, q.currency, q.valid_until, s.rules AS strat "
+                "FROM quotes q JOIN pricing_strategies s ON s.id = q.strategy_id "
+                "WHERE q.id = :id AND q.org_id = :o"
+            ),
+            {"id": str(quote_id), "o": str(org_id)},
+        )
+    ).mappings().first()
+    if row is None:
+        raise PricingError("config_schema_violation", "unknown quote")
+    labels = (dict(row["strat"] or {}).get("rules") or {}).get("breakdown_labels", {})
+    currency = str(row["currency"])
+    valid_label = row["valid_until"].strftime("%d %b %Y") if row["valid_until"] else None
+    total = int(row["total_minor"])
+    breakdown = list(row["breakdown"])
+    return {
+        "quote_id": str(quote_id),
+        "total_minor": total,
+        "currency": currency,
+        "price_line": render.render_price_line(total, currency=currency, valid_label=valid_label),
+        "breakdown_text": render.render_breakdown(
+            breakdown, labels, currency=currency, valid_label=valid_label),
+    }
 
 
 async def replay_quote(session: AsyncSession, org_id: UUID, quote_id: UUID) -> ReplayReport:
