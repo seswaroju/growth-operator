@@ -14,17 +14,25 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.common.errors import GrowthOperatorError
+from core.tenancy import provisioning
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
     require_admin_plane_enabled,
     require_platform,
 )
-from core.tenancy.platform_permissions import PLATFORM_INSIGHTS_READ, PLATFORM_TENANTS_READ
+from core.tenancy.platform_permissions import (
+    PLATFORM_INSIGHTS_READ,
+    PLATFORM_TENANTS_MANAGE,
+    PLATFORM_TENANTS_READ,
+)
+
+_EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"  # basic email shape (no email-validator dependency)
 
 router = APIRouter(
     prefix="/v1/admin/tenants",
@@ -47,6 +55,48 @@ class TenantRosterRow(BaseModel):
     paused: bool
     open_tickets: int
     member_count: int
+
+
+class StoreCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    owner_email: str = Field(..., pattern=_EMAIL_RE)
+    plan_id: UUID
+    vertical: str | None = None  # None → org.vertical column default (Rule Zero: no literal)
+    country: str = Field(default="IN", min_length=2, max_length=2)
+    timezone: str = Field(default="Asia/Kolkata", min_length=1)
+
+
+class StoreCreated(BaseModel):
+    org_id: UUID
+    owner_id: UUID
+    owner_existed: bool
+    plan_id: UUID
+
+
+@router.post(
+    "", response_model=StoreCreated, status_code=status.HTTP_201_CREATED,
+    summary="Provision a store (org + owner + plan) and email the owner a setup link")
+async def create_store(
+    body: StoreCreate,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> StoreCreated:
+    try:
+        result = await provisioning.provision_store(
+            session, name=body.name.strip(), owner_email=body.owner_email.strip().lower(),
+            plan_id=body.plan_id, vertical=body.vertical, country=body.country,
+            timezone=body.timezone)
+    except GrowthOperatorError as exc:  # unknown/inactive plan → dep rolls back (nothing created)
+        raise HTTPException(status.HTTP_404_NOT_FOUND, exc.detail) from exc
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="store.provisioned",
+        detail={"org_id": str(result.org_id), "plan_id": str(body.plan_id),
+                "owner_existed": result.owner_existed})
+    # Best-effort welcome email (gated adapter → simulated until live); never fails the provision.
+    await provisioning.send_welcome_email(body.owner_email.strip().lower(), body.name.strip())
+    return StoreCreated(
+        org_id=result.org_id, owner_id=result.owner_id,
+        owner_existed=result.owner_existed, plan_id=result.plan_id)
 
 
 @router.get(

@@ -174,6 +174,9 @@ class Settings(BaseSettings):
     google_ads_customer_id: str | None = Field(default=None)  # e.g. "1234567890" (no dashes)
     google_ads_developer_token: str | None = Field(default=None)  # secret — never commit
     google_ads_access_token: str | None = Field(default=None)  # secret OAuth token — never commit
+    # The store-owner web app URL, put into the welcome/setup email when a store is provisioned
+    # (CP-2). Unset → the email omits the link. Set it to the customer app's real URL at go-live.
+    owner_app_url: str | None = Field(default=None)
     # Audit-chain anchoring (MVP-071). The daily scheduler snapshots each org's audit-chain head to
     # this append-only file; point it at a checkout of a SEPARATE private git repo (trust isolation
     # from the app) and have a cron `git commit && push` it. Unset (default) → anchoring is a no-op.

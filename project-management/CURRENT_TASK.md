@@ -9,6 +9,17 @@ selects and approves the next ticket.
 
 ---
 
+## CP-2 · Store provisioning — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-2-store-provisioning`. `POST /v1/admin/tenants` (operator-gated) atomically creates
+org + owner + owner membership + active subscription, reuses an existing owner (multi-store), and emails
+the owner a setup link (gated adapter). `core/tenancy/provisioning.py` (Rule Zero: vertical is a param,
+no literal). web-ops StoresSection gains a **New store** form (name/email/plan dropdown). **Gate:** ruff
+· guards 0 · mypy 191 · unit+prov+billing 520 · admin suites 17 · web-ops tsc+lint+vitest 42+build.
+8 corner cases: happy path, owner-reuse, multi-store, unknown-plan-404-atomic, inactive-plan, 422, 403,
+plane-off. Next: CP-3 seat enforcement.
+
+
 ## CP-1 · Plan builder (editable plans + seats + config) — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-1-plan-builder`. First control-plane ticket. Migration 042: `billing_plans` gains

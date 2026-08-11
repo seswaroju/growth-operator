@@ -4629,3 +4629,35 @@ round-trips seats + config); web-ops `plans.test.ts` (+CSV helpers); fixed a `Bi
 web-ops **tsc + oxlint + vitest 42 + build** all green.
 
 **Next:** CP-2 — store provisioning (create store + owner + subscription + email setup link).
+
+---
+
+## 2026-08-11 — CP-2 · Store provisioning (branch `feature/cp-2-store-provisioning`)
+
+The operator creates a store from web-ops: one **atomic** provision — org + owner + owner membership +
+active plan subscription — then a best-effort welcome/setup email to the owner.
+
+- **`core/tenancy/provisioning.py`** (NEW): `provision_store(name, owner_email, plan_id, vertical?, …)`
+  → validates the plan is **active** (checked first, so an invalid plan writes nothing), creates the
+  org (no RLS), **reuses the owner user if the email already has an account** (a multi-store owner) via
+  `get_or_create_user`, sets `app.org_id` for the FORCE-RLS `user_orgs` insert (owner role), and
+  assigns the subscription. Rule Zero: the vertical is a param / column default — **never a literal**.
+  `send_welcome_email` (gated `EmailClient`, simulated until live) is best-effort and never raises.
+- **`core/tenancy/tenants_admin.py`**: `POST /v1/admin/tenants` (gated `platform.tenants:manage`) —
+  validates input (email shape via a Field pattern, no `email-validator` dep), audits `store.provisioned`
+  to `platform_access_log`, and on an unknown/inactive plan returns 404 while the operator dep **rolls
+  back** (atomic). New `owner_app_url` config → the setup link in the email.
+- **web-ops** (`StoresSection.tsx` + `api.ts`): a **New store** form (name, owner email, plan dropdown of
+  active plans) gated on `platform.tenants:manage`; `adminCreateStore` + refresh the roster on success.
+
+**Tests (`tests/integration/test_store_provisioning.py`, NEW — 8 corner cases):** happy path (org +
+owner + `owner` membership + active subscription); **reuses** an existing owner (no dup user); **one
+owner → many stores** (1 user, 2 owner memberships); **unknown plan → 404 and creates nothing**
+(atomicity asserted); inactive plan → 404; invalid email / empty name → 422; non-operator → 403; plane
+disabled → 404.
+
+**Migrations/APIs/events/frontend:** no migration (existing tables); 1 new operator route + web-ops form.
+**Commands:** ruff · guards 0 (no vertical noun) · `mypy core` 191 · **tests/unit + provisioning +
+billing 520** · admin-plane suites 17 · web-ops **tsc + oxlint + vitest 42 + build**. No admin regressions.
+
+**Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
