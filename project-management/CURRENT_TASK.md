@@ -9,7 +9,23 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC10 — Cohort benchmarking — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC11 — Onboarding checklist (owner-facing) — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc11-onboarding-checklist`. A **setup checklist on the owner Home**: Connect WhatsApp ·
+Add catalog · Invite team · Run first campaign — each ticked from the store's own data; a progress bar;
+**vanishes once complete**. Built **owner-facing** (RLS-scoped, no migration/SECDEF) per the founder's
+"easier/cleaner" steer; an operator cross-tenant onboarding roster could be a later follow-up.
+
+- `GET /v1/dashboard/onboarding` (insights:read, org from token) → `{whatsapp_connected, catalog_items,
+  campaigns, team_members}` via `insights.service.onboarding_status` (EXISTS/COUNT over channels /
+  catalog_items / campaigns / user_orgs, RLS-scoped).
+- web/: `lib/onboarding.ts` (+tests: steps/progress/isComplete), `OnboardingCard` on `HomeSection`.
+
+**Gate:** ruff · guards 0 · mypy 182 · tests/unit 476 · new integ `test_onboarding.py` **4**
+(signals reflect data · empty=zero · org-scoped · 401/400) · dashboard integ 6 · web tsc 0 · vitest
+**69** (+4) · build ✓. **Next:** OC12 — invoices/statements from charges (final OC; likely a migration).
+
+## Operator V2 forecast · OC10 — Cohort benchmarking — **Merged `6ffacc7`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc10-cohort-benchmarking`. On the store-360, a **Benchmarks vs peers** card: the
 store's revenue/orders/leads/quotes vs the **average of the other active stores** (rollup sums ÷ peer

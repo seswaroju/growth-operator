@@ -3926,3 +3926,31 @@ on-par); `worstGap` picks the most-behind metric + `advice` explains it; null wh
 **Commands:** web-ops oxlint clean · tsc 0 · **vitest 41** (+5) · build ✓ · repo `guards.py` 0 ·
 `ruff .` clean. **Security:** operator-plane read-only over existing aggregates (no PII); no new
 endpoints/external actions. **Next:** OC11 — per-tenant onboarding checklist.
+
+---
+
+## 2026-08-10 — OC11 · Onboarding checklist (owner-facing) (branch `feature/oc11-onboarding-checklist`)
+
+Seventh of OC5–OC12. A **setup-completion checklist on the owner Home** — Connect WhatsApp · Add
+catalog · Invite team · Run first campaign — each ticked from the store's own data, with a progress bar
+that **vanishes once complete**. Built **owner-facing** (RLS-scoped tenant reads, **no migration / no
+SECDEF**) per the founder's "whatever is easier / faster / rigorous / CI-clean" steer. (An operator
+cross-tenant onboarding roster — which would need a SECDEF + endpoint — is a possible later follow-up.)
+
+- **`core/insights/service.onboarding_status(org)`** → `whatsapp_connected` (EXISTS active whatsapp
+  channel), `catalog_items` (active count), `campaigns` (count), `team_members` (`user_orgs` count).
+  RLS-scoped via `set_org_context`.
+- **`GET /v1/dashboard/onboarding`** (`insights:read`, org from token) → the four signals. 400 no org.
+- **web/**: `lib/onboarding.ts` (+ test) — `onboardingSteps` (signal → step + copy), `progress`,
+  `isComplete`; `OnboardingCard` on `HomeSection` (progress bar + ticked steps; hidden when complete);
+  `api.ts` `getOnboarding`.
+
+**Requirement → evidence:** `tests/integration/test_onboarding.py` (4) — a configured store reports
+whatsapp/catalog=2/campaigns=1/team=2; an empty store reads all-zero (team=1 owner only); scoped to
+the caller's org; 401 no-token / 400 no-org. `web/src/lib/onboarding.test.ts` (4) — step done-flags,
+team needs >owner, progress %, isComplete only when all done.
+
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 182 · **tests/unit 476** · new integ
+**4** · dashboard integ 6 (no regressions) · web oxlint clean · tsc 0 · vitest **69** (+4) · build ✓.
+**Security:** owner-only, RLS-scoped signals (no PII, no cross-tenant); no external actions. **Next:**
+OC12 — invoices/statements from recorded charges (final OC).

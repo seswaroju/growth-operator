@@ -60,6 +60,26 @@ async def overview(
     )
 
 
+class OnboardingOut(BaseModel):
+    whatsapp_connected: bool
+    catalog_items: int
+    campaigns: int
+    team_members: int
+
+
+@router.get("/onboarding", response_model=OnboardingOut, summary="Owner setup-completion signals")
+async def onboarding(
+    current: CurrentAuth = Depends(requires(INSIGHTS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> OnboardingOut:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    s = await service.onboarding_status(session, current.org_id)
+    return OnboardingOut(
+        whatsapp_connected=s.whatsapp_connected, catalog_items=s.catalog_items,
+        campaigns=s.campaigns, team_members=s.team_members)
+
+
 class MetricSummaryOut(BaseModel):
     metric_key: str
     this_week: int
