@@ -19,13 +19,13 @@ Owner-operated stores 1–5 locations, ≥10 WhatsApp inquiries/wk; job: "when a
 `{purity: enum[24K,22K,18K,14K], gross_weight_g, net_weight_g, stone_details[{type,carat,price_mode}], huid: string(6), category: enum[ring,chain,necklace,bangle,earring,bracelet,coin], gender, occasion[]}` — search projection: category, purity, occasion, price band; identity key: huid|sku.
 
 ## 4. Pricing
-`formula_weight_rate_v1`: net_weight × rate(purity) + making(% of metal | flat) + stone value + GST 3%. Rate sources: `ibja_gold`, `ibja_silver`, staleness_max 24h. Tenant slots: making %, wastage %, discount ceiling.
+`formula_weight_rate_v1`: net_weight × rate(purity) + making(% of metal | flat) + per-gram labor + stone value + CGST 1.5% + SGST 1.5% (per-item tax_applicable; owner may waive at approval). Rate sources: `ibja_gold`, `ibja_silver`, staleness_max 24h. Tenant slots: making %, wastage %, discount ceiling.
 
 ## 5. Workflows
 `silent_lead_reactivation` (72h trigger, 3-touch cap) · `festival_campaign` (calendar-pack triggered, T3) · `visit_reminder` (T-1 day) · `post_visit_followup` (48h) · `rate_alert_hold` (stale rate → pause quoting).
 
 ## 6. Compliance
-DPDP consent script (first-contact, per language) · hallmark/HUID disclosure line on quotes (BIS norms) · GST 3% on invoiceable quotes · blocked: investment-return claims about gold, purity claims without hallmark data · retention: platform defaults.
+DPDP consent script (first-contact, per language) · hallmark/HUID disclosure line on quotes (BIS norms) · CGST 1.5% + SGST 1.5% on invoiceable quotes (waivable at approval) · blocked: investment-return claims about gold, purity claims without hallmark data · retention: platform defaults.
 
 ## 7. Prompt pack
 Vertical layers: `concierge.jewelry.v3` (hallmark talk-track, occasion probing, never state untooled prices — inherits base money rule), `nurture.jewelry.v3`, `campaigner.jewelry.v2`, few-shots from 400 curated Srila transcripts (anonymized). Full texts: [prompt library](../../09-prompts/prompt-library.md) — being re-cut into layers per [M3](../../21-platform/migration-versioning.md).
@@ -37,7 +37,7 @@ end-to-end handled ≥70% · first response <60s · quote provenance 100% · ove
 go-whatsapp (WABA) · go-calendar (Google) · Razorpay payment links · IBJA rate feed (fetch_spec in pack) · Instagram catalog scrape (ingestion source).
 
 ## 10. Onboarding & UI
-Wizard: WABA → profile → **rates & making %** (pack step) → catalog seed 10 items (photo-first, weight-tag extraction hints) → policies → test conversation. Quote card render template (breakdown rows: metal/making/stones/GST). Calendar pack: Indian festivals (Dhanteras, Akshaya Tritiya, wedding seasons).
+Wizard: WABA → profile → **rates & making %** (pack step) → catalog seed 10 items (photo-first, weight-tag extraction hints) → policies → test conversation. Quote card render template (breakdown rows: metal/making/labor/stones/CGST/SGST). Calendar pack: Indian festivals (Dhanteras, Akshaya Tritiya, wedding seasons).
 
 ---
 ## v3: this pack is now real files

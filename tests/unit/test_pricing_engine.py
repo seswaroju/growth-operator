@@ -49,11 +49,49 @@ def test_pg001_full_breakdown_exact() -> None:
                   "requested_discount_minor": 0})
     d = _lines(q)
     assert d["metal_value"] == 9076800 and d["making"] == 726144
-    assert d["gst"] == 294088 and q.total_minor == 10097032
+    assert d["labor"] == 0  # no labor on this item
+    # GST split into CGST + SGST (1.5% each) — together the old 3%; total unchanged.
+    assert d["cgst"] == 147044 and d["sgst"] == 147044
+    assert q.total_minor == 10097032
     # residue: components sum to the total exactly
-    assert d["metal_value"] + d["wastage"] + d["making"] + d["stones"] - d["discount"] + d["gst"] \
-        == q.total_minor
+    assert d["metal_value"] + d["wastage"] + d["making"] + d["labor"] + d["stones"] \
+        - d["discount"] + d["cgst"] + d["sgst"] == q.total_minor
     assert _SNAP in q.rate_snapshot_ids  # provenance pinned
+
+
+# ---- JWL-EST-01 phase 1: labor + CGST/SGST split + tax waiver -------------------------
+
+
+def test_labor_per_gram_added_on_top_of_making() -> None:
+    base = _jewelry({"purity": "22K", "net_weight_g": "10.0", "stones": [],
+                     "requested_discount_minor": 0})
+    withlabor = _jewelry({"purity": "22K", "net_weight_g": "10.0", "stones": [],
+                          "requested_discount_minor": 0, "labor_per_g_minor": 30000})  # ₹300/g
+    b, w = _lines(base), _lines(withlabor)
+    assert b["labor"] == 0 and w["labor"] == 300000       # 10g × ₹300/g
+    assert w["making"] == b["making"]                     # on top of making, not instead of it
+    assert w["subtotal"] == b["subtotal"] + 300000
+    assert withlabor.total_minor > base.total_minor       # tax recomputed on the higher subtotal
+
+
+def test_cgst_equals_sgst() -> None:
+    d = _lines(_jewelry({"purity": "22K", "net_weight_g": "10.0", "stones": [],
+                         "requested_discount_minor": 0}))
+    assert d["cgst"] == d["sgst"]                          # 1.5% each
+
+
+def test_tax_not_applicable_item_has_no_gst() -> None:
+    d = _lines(_jewelry({"purity": "22K", "net_weight_g": "10.0", "stones": [],
+                         "requested_discount_minor": 0, "tax_applicable": False}))
+    assert d["cgst"] == 0 and d["sgst"] == 0
+    assert d["total"] == d["subtotal"] - d["discount"]     # no tax added
+
+
+def test_owner_can_waive_tax_at_quote_time() -> None:
+    d = _lines(_jewelry({"purity": "22K", "net_weight_g": "10.0", "stones": [],
+                         "requested_discount_minor": 0, "apply_tax": False}))
+    assert d["cgst"] == 0 and d["sgst"] == 0               # waived in negotiation
+    assert d["total"] == d["subtotal"] - d["discount"]
 
 
 def test_pg002_making_min_floor() -> None:

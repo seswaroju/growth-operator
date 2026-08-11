@@ -28,6 +28,8 @@ def _strategy(pack: str) -> dict:
 def test_jewelry_price_input_deps_are_the_priced_attributes() -> None:
     assert price_input_deps(_strategy("jewelry")) == {
         "net_weight_g", "purity", "stones", "requested_discount_minor",
+        # JWL-EST-01: per-gram labor + the tax flags are price inputs too (read via inputs.get).
+        "labor_per_g_minor", "tax_applicable", "apply_tax",
     }
 
 
@@ -37,7 +39,9 @@ def test_jewelry_extractor_per_stage() -> None:
     assert stages["stones"] == {"stones"}
     assert stages["discount"] == {"requested_discount_minor"}
     assert stages["making"] == set()   # reads earlier stages + params, no catalog input
-    assert stages["gst"] == set()
+    assert stages["labor"] == {"net_weight_g", "labor_per_g_minor"}
+    assert stages["cgst"] == {"tax_applicable", "apply_tax"}
+    assert stages["sgst"] == {"tax_applicable", "apply_tax"}
     assert stages["total"] == set()
 
 

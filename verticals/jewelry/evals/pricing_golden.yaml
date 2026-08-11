@@ -4,9 +4,16 @@ fixtures: {rates: {ibja_gold: {"22K": 732000, "18K": 599000}, ibja_silver: {"925
            params: {making_pct: 8, making_min_minor: 50000, wastage_pct: 0, discount_ceiling_pct: 5}}
 cases:
   - {id: pg-001, inputs: {purity: "22K", net_weight_g: 12.4, stones: []},
-     expect: {metal_value: 9076800, making: 726144, gst: 294088, total: 10097032}}
+     expect: {metal_value: 9076800, making: 726144, labor: 0,
+              cgst: 147044, sgst: 147044, total: 10097032}}   # GST split CGST+SGST (1.5% each)
   - {id: pg-002, inputs: {purity: "22K", net_weight_g: 0.5},
      expect: {making: 50000, note: "making_min floor applies"}}
+  - {id: pg-060, inputs: {purity: "22K", net_weight_g: 10.0, labor_per_g_minor: 30000, stones: []},
+     expect: {labor: 300000, note: "per-gram labor on top of making"}}
+  - {id: pg-061, inputs: {purity: "22K", net_weight_g: 10.0, tax_applicable: false, stones: []},
+     expect: {cgst: 0, sgst: 0, note: "non-taxable item → no CGST/SGST"}}
+  - {id: pg-062, inputs: {purity: "22K", net_weight_g: 10.0, apply_tax: false, stones: []},
+     expect: {cgst: 0, sgst: 0, note: "owner waived tax at approval"}}
   - {id: pg-014, inputs: {purity: "18K", net_weight_g: 8.0, requested_discount_minor: 1000000},
      expect: {discount: 239600, note: "capped at 5% of subtotal, not the requested 10L paise"}}
   - {id: pg-031, inputs: {purity: "925", net_weight_g: 210.0},

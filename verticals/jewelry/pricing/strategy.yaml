@@ -8,6 +8,10 @@ input_schema:
     net_weight_g: {type: number, exclusiveMinimum: 0}
     stones: {type: array, items: {type: object, properties: {value_minor: {type: integer}}}}
     requested_discount_minor: {type: integer, minimum: 0, default: 0}
+    # Per-item (from the catalog) + a quote-time waiver — all optional (formulas default via .get):
+    labor_per_g_minor: {type: integer, minimum: 0, default: 0}  # ₹/g labor; 0 → no labor line
+    tax_applicable: {type: boolean, default: true}              # does this item carry CGST/SGST?
+    apply_tax: {type: boolean, default: true}                   # owner may waive tax at approval
   required: [purity, net_weight_g]
 rate_sources:
   - {key: ibja_gold, staleness_max: 24h, keys: ["24K","22K","18K","14K"],
@@ -26,22 +30,32 @@ rules:
       formula: "round(stage.metal_value * params.wastage_pct / 100, 'half_even')"
     - id: making
       formula: "max(round((stage.metal_value + stage.wastage) * params.making_pct / 100, 'half_even'), params.making_min_minor)"
+    - id: labor
+      # Per-gram labor (from the catalog), ON TOP of making. 0 when the item has no labor.
+      formula: "round(inputs.net_weight_g * inputs.get('labor_per_g_minor', 0), 'half_even')"
     - id: stones
       formula: "sum(inputs.stones[].value_minor)"
     - id: subtotal
-      formula: "stage.metal_value + stage.wastage + stage.making + stage.stones"
+      formula: "stage.metal_value + stage.wastage + stage.making + stage.labor + stage.stones"
     - id: discount
       formula: "min(inputs.requested_discount_minor, round(stage.subtotal * params.discount_ceiling_pct / 100, 'down'))"
       flags: {tier_2_if_nonzero: true}
-    - id: gst
-      formula: "tax_rule('in_gst_jewelry_3pct').apply(stage.subtotal - stage.discount)"
+    # GST is split CGST + SGST (India, intra-state). Applied only when the item is taxable AND the
+    # owner hasn't waived it at approval (negotiation); each half rounds independently.
+    - id: cgst
+      formula: "(inputs.get('tax_applicable', True) && inputs.get('apply_tax', True)) ? tax_rule('in_cgst_1_5pct').apply(stage.subtotal - stage.discount) : 0"
+    - id: sgst
+      formula: "(inputs.get('tax_applicable', True) && inputs.get('apply_tax', True)) ? tax_rule('in_sgst_1_5pct').apply(stage.subtotal - stage.discount) : 0"
     - id: total
-      formula: "stage.subtotal - stage.discount + stage.gst"
+      formula: "stage.subtotal - stage.discount + stage.cgst + stage.sgst"
   breakdown_labels:
     metal_value: "{purity} {metal} · {net_weight_g}g × ₹{rate}/g"
     making: "Making charges"
-    gst: "GST (3%)"
+    labor: "Labor charges"
+    cgst: "CGST (1.5%)"
+    sgst: "SGST (1.5%)"
 tax_rules:
-  - {id: in_gst_jewelry_3pct, kind: pct, value: 3.0, jurisdiction: IN}
+  - {id: in_cgst_1_5pct, kind: pct, value: 1.5, jurisdiction: IN}
+  - {id: in_sgst_1_5pct, kind: pct, value: 1.5, jurisdiction: IN}
 quote_validity: {from_slot: quote_validity_hours, invalidate_on: [rate.updated]}
 golden_cases: evals/pricing_golden.yaml

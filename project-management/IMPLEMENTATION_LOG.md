@@ -3983,3 +3983,37 @@ bad month; 403 non-operator.
 **Security:** operator-plane READ; RLS-scoped; **amount-only (no cost/margin leak)**; no external
 actions. **OC5–OC12 forecast backlog is fully delivered.** Remaining: JWL-EST-01 (jewelry estimation,
 fully spec'd, ready to build).
+
+---
+
+## 2026-08-10 — JWL-EST-01 phase 1 · Jewelry estimation — pricing config (branch `feature/jwl-est-01-pricing-config`)
+
+The declarative, golden-tested half of the founder's jewelry itemized estimate (grams/karat × rate,
+making, **CGST + SGST**, **per-gram labor**), built **phased** for clean CI. **No engine rewrite** — the
+rules_v1 DSL already supports ternaries + method calls, so `inputs.get('field', default)` gives optional
+inputs and a ternary gates the tax; existing callers are untouched.
+
+- **`verticals/jewelry/pricing/strategy.yaml`**: `gst` → **`cgst` + `sgst`** (1.5% each, `tax_rules`
+  `in_cgst_1_5pct`/`in_sgst_1_5pct`, each rounded half-even independently); new **`labor`** stage =
+  `round(net_weight_g × inputs.get('labor_per_g_minor',0))` folded into `subtotal` (on top of making);
+  CGST/SGST = `(inputs.get('tax_applicable',True) && inputs.get('apply_tax',True)) ? tax : 0`;
+  input_schema + `breakdown_labels` (Labor/CGST/SGST) updated. No IGST (founder: intra-state only).
+- **`verticals/jewelry/catalog/schema.json`**: `labor_per_g_minor` (int ₹/g, default 0) + `tax_applicable`
+  (bool, default true). **`ui/templates.yaml`**: labor/CGST/SGST quote-card rows (hide-if-zero) +
+  catalog-editor field order.
+- **`core/catalog/availability.py`**: `_input_refs` now parses `inputs.get('field', …)` (generic fix —
+  otherwise the method name `get` leaked as a phantom input); labor + tax flags now register as price
+  inputs. Pack docs (`pack.md`, `concierge.md`) updated for accuracy.
+
+**Requirement → evidence:** `tests/unit/test_pricing_engine.py` — `pg001` now asserts the CGST/SGST
+split (147044 each, total unchanged 10097032); `test_labor_per_gram_added_on_top_of_making`,
+`test_cgst_equals_sgst`, `test_tax_not_applicable_item_has_no_gst`, `test_owner_can_waive_tax_at_quote_time`.
+`tests/unit/test_availability.py` — labor/cgst/sgst stage deps + the new price inputs.
+`tests/integration/test_pricing_service.py` — ledger figures 5 → 6 (cgst+sgst), total/metal unchanged.
+
+**Commands:** ruff `All checks passed!` · guards 0 (verticals/ not scanned; core change is generic — no
+industry nouns) · `mypy core` 183 · **tests/unit 480** (+4) · pricing+pack integ 49 (no regressions).
+**Security/correctness:** money stays integer minor units (no float); `sum(breakdown)==total` invariant
+holds; quotes remain ledgered (`unledgered_figure`/`stale_rate` guards) + approval-gated downstream.
+**Next: JWL-EST-01 phase 2** — the two-step customer draft (price first → itemized breakdown on request),
+grounded (§18) + approval-gated (§19). Awaiting founder go.
