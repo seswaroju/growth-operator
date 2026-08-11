@@ -28,8 +28,8 @@ _BREAKDOWN = [
 
 
 def test_money_formats_whole_rupees() -> None:
-    assert money(10406032) == "₹104,060"        # 1,04,060.32 → whole units, ₹ symbol
-    assert money(500000, "USD") == "5,000 USD"
+    assert money(10406032) == "₹104,060.32"        # 1,04,060.32 → whole units, ₹ symbol
+    assert money(500000, "USD") == "5,000.00 USD"
 
 
 def test_line_label_uses_config_but_humanizes_templates() -> None:
@@ -46,20 +46,20 @@ def test_templated_label_filled_from_context_dropping_unknowns() -> None:
 
 def test_price_line_is_total_plus_validity() -> None:
     assert render_price_line(10406032, valid_label="12 Aug 2026") == \
-        "Total: ₹104,060 (valid till 12 Aug 2026)"
-    assert render_price_line(10406032) == "Total: ₹104,060"
+        "Total: ₹104,060.32 (valid till 12 Aug 2026)"
+    assert render_price_line(10406032) == "Total: ₹104,060.32"
 
 
 def test_breakdown_hides_zero_lines_and_shows_cgst_sgst() -> None:
     text = render_breakdown(_BREAKDOWN, _LABELS, valid_label="12 Aug 2026")
     lines = text.splitlines()
     # zero lines (wastage, stones, discount) are hidden; non-zero components (incl. subtotal) show.
-    assert "Making charges: ₹7,261" in text
-    assert "Labor charges: ₹3,000" in text
-    assert "CGST (1.5%): ₹1,515" in text and "SGST (1.5%): ₹1,515" in text
+    assert "Making charges: ₹7,261.44" in text
+    assert "Labor charges: ₹3,000.00" in text
+    assert "CGST (1.5%): ₹1,515.44" in text and "SGST (1.5%): ₹1,515.44" in text
     assert "wastage" not in text.lower() and "stones" not in text.lower()
     assert "discount" not in text.lower()   # zero discount hidden
-    assert lines[-2] == "Total: ₹104,060"
+    assert lines[-2] == "Total: ₹104,060.32"
     assert lines[-1] == "Valid till 12 Aug 2026"
 
 
@@ -70,8 +70,8 @@ def test_breakdown_shows_discount_as_negative_and_omits_it_when_zero() -> None:
         {"id": "total", "amount_minor": 75000},
     ]
     text = render_breakdown(with_disc, {"making": "Making charges", "discount": "Discount"})
-    assert "Discount: −₹250" in text          # negative sign
-    assert text.splitlines()[-1] == "Total: ₹750"
+    assert "Discount: −₹250.00" in text          # negative sign
+    assert text.splitlines()[-1] == "Total: ₹750.00"
 
 
 def test_waived_tax_breakdown_has_no_cgst_sgst() -> None:
@@ -83,4 +83,4 @@ def test_waived_tax_breakdown_has_no_cgst_sgst() -> None:
     ]
     text = render_breakdown(waived, _LABELS)
     assert "CGST" not in text and "SGST" not in text   # zero → hidden (owner waived / non-taxable)
-    assert text == "Making charges: ₹1,000\nTotal: ₹1,000"
+    assert text == "Making charges: ₹1,000.00\nTotal: ₹1,000.00"
