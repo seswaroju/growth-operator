@@ -14,6 +14,7 @@ import { channelLabel, spendByChannel } from "../lib/spend";
 import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
 import StoreBenchmarkCard from "./StoreBenchmarkCard";
 import StoreBudgetsSection from "./StoreBudgetsSection";
+import StoreInvoicesSection from "./StoreInvoicesSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
 
@@ -272,6 +273,9 @@ export default function StoreReportsSection() {
           canRead={canTenants} canManage={canManage}
         />
       )}
+
+      {/* Monthly invoices / statements from charges (OC12) */}
+      {canTenants && <StoreInvoicesSection token={t} orgId={orgId} canRead={canTenants} />}
 
       {/* Priority tickets (OC3) */}
       {canTickets && orgTickets.length > 0 && (

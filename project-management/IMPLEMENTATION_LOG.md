@@ -3954,3 +3954,32 @@ team needs >owner, progress %, isComplete only when all done.
 **4** · dashboard integ 6 (no regressions) · web oxlint clean · tsc 0 · vitest **69** (+4) · build ✓.
 **Security:** owner-only, RLS-scoped signals (no PII, no cross-tenant); no external actions. **Next:**
 OC12 — invoices/statements from recorded charges (final OC).
+
+---
+
+## 2026-08-10 — OC12 · Invoices/statements from charges (branch `feature/oc12-invoices`) — OC5–OC12 TRACK COMPLETE
+
+Eighth and final of OC5–OC12. A **monthly invoice per store**, generated on the fly from the store's
+recorded `billing_charges` — one immutable statement per store-month, so the number is **deterministic**
+(`{STORE}-INV-{YYMM}`) with no sequence to maintain. **Amount only — GO's internal `cost_minor`/margin
+is never on a client invoice.** **No migration** (reuses OC6's amount-only monthly aggregation).
+
+- **`core/billing/invoices.py`** (NEW): `monthly_invoice(org, month)` (line items by channel via
+  `service.monthly_spend_by_channel` + total + `{STORE}-INV-{YYMM}` number + buyer name);
+  `list_invoices(org)` (one row per month with charges, newest first). RLS-scoped.
+- **Admin API** (`core/billing/api.py`): `GET /v1/admin/billing/tenants/{org}/invoices` (list) +
+  `…/invoices/{YYYY-MM}` (statement; 404 when the month has no charges, 400 on a bad month). READ perm,
+  audited.
+- **web-ops**: `StoreInvoicesSection` on the store-360 — invoice rows (number · month · total) that
+  expand to the line-item statement; `api.ts` +2 fns.
+
+**Requirement → evidence:** `tests/integration/test_invoices.py` (6) — one invoice per month, newest
+first, `RATN-INV-2608` numbering + total; statement line items sum to the total; **cost/margin never in
+the response**; org-isolated (Beta gets `BETA-INV-2608`, not Ratna's); 404 for a charge-less month; 400
+bad month; 403 non-operator.
+
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 183 · **tests/unit 476** · new integ
+**6** · billing integ 10 (no regressions) · web-ops oxlint clean · tsc 0 · vitest 41 · build ✓.
+**Security:** operator-plane READ; RLS-scoped; **amount-only (no cost/margin leak)**; no external
+actions. **OC5–OC12 forecast backlog is fully delivered.** Remaining: JWL-EST-01 (jewelry estimation,
+fully spec'd, ready to build).

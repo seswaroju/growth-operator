@@ -499,3 +499,27 @@ export function adminDeleteBudget(token: string, orgId: string, channel: string)
     method: "DELETE",
   });
 }
+
+// ---- Monthly invoices from charges (/v1/admin/billing/tenants/{org}/invoices, OC12) -----------
+// One statement per month with charges; amount only (never GO's cost). platform.tenants:read.
+
+export interface InvoiceSummary {
+  invoice_no: string;
+  period_month: string; // "YYYY-MM"
+  total_minor: number;
+}
+
+export interface Invoice extends InvoiceSummary {
+  seller_name: string;
+  buyer_name: string;
+  currency: string;
+  line_items: { charge_type: string; amount_minor: number }[];
+}
+
+export function adminListInvoices(token: string, orgId: string): Promise<InvoiceSummary[]> {
+  return authed<InvoiceSummary[]>(`/v1/admin/billing/tenants/${orgId}/invoices`, token);
+}
+
+export function adminGetInvoice(token: string, orgId: string, month: string): Promise<Invoice> {
+  return authed<Invoice>(`/v1/admin/billing/tenants/${orgId}/invoices/${month}`, token);
+}

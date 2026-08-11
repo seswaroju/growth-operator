@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.billing import budgets, service
+from core.billing import budgets, invoices, service
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
@@ -297,3 +297,64 @@ async def delete_budget(
     await log_platform_access(
         session, actor_user_id=current.user_id, action="billing.budget.deleted",
         target_org_id=org_id, detail={"channel": channel})
+
+
+# ---- Monthly invoices / statements from charges (OC12) --------------------------------------
+
+class InvoiceLine(BaseModel):
+    charge_type: str
+    amount_minor: int
+
+
+class InvoiceSummaryOut(BaseModel):
+    invoice_no: str
+    period_month: str  # "YYYY-MM"
+    total_minor: int
+
+
+class InvoiceOut(InvoiceSummaryOut):
+    seller_name: str
+    buyer_name: str
+    currency: str
+    line_items: list[InvoiceLine]  # amount only — never GO's cost/margin
+
+
+def _parse_invoice_month(month: str) -> date:
+    try:
+        return datetime.strptime(month, "%Y-%m").date().replace(day=1)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "month must be YYYY-MM") from exc
+
+
+@router.get("/tenants/{org_id}/invoices", response_model=list[InvoiceSummaryOut],
+            summary="A client's monthly invoices (one per month with charges)")
+async def list_invoices(
+    org_id: UUID,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> list[InvoiceSummaryOut]:
+    rows = await invoices.list_invoices(session, org_id)
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.invoices.read",
+        target_org_id=org_id, detail={"count": len(rows)})
+    return [InvoiceSummaryOut(**r) for r in rows]
+
+
+@router.get("/tenants/{org_id}/invoices/{month}", response_model=InvoiceOut,
+            summary="One monthly invoice/statement (YYYY-MM)")
+async def get_invoice(
+    org_id: UUID,
+    month: str,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> InvoiceOut:
+    inv = await invoices.monthly_invoice(session, org_id, _parse_invoice_month(month))
+    if not inv["line_items"]:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no charges for that month")
+    await log_platform_access(session, actor_user_id=current.user_id, action="billing.invoice.read",
+                              target_org_id=org_id, detail={"invoice_no": inv["invoice_no"]})
+    return InvoiceOut(
+        invoice_no=inv["invoice_no"], period_month=inv["period_month"],
+        total_minor=inv["total_minor"], seller_name=inv["seller_name"],
+        buyer_name=inv["buyer_name"], currency=inv["currency"],
+        line_items=[InvoiceLine(**li) for li in inv["line_items"]])
