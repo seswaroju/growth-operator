@@ -15,10 +15,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.customers import annotations as crm_annotations
-from core.customers import service
+from core.customers import dpdp, service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
-from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE
+from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE, ORG_MANAGE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/customers", tags=["customers"])
@@ -219,5 +219,36 @@ async def remove_tag(
 ) -> None:
     removed = await crm_annotations.remove_tag(session, _require_org(current), contact_id, tag=tag)
     if removed is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    await session.commit()
+
+
+# ---- DPDP data-subject requests (D3) ----------------------------------------
+
+@router.get(
+    "/{contact_id}/export", response_model=dict[str, Any],
+    summary="Export a customer's full data (DPDP access request)")
+async def export_customer(
+    contact_id: UUID,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    data = await dpdp.export_customer(session, _require_org(current), contact_id)
+    if data is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
+    return data
+
+
+@router.delete(
+    "/{contact_id}", status_code=status.HTTP_204_NO_CONTENT,
+    summary="Erase a customer (DPDP right to erasure) — owner only")
+async def erase_customer(
+    contact_id: UUID,
+    current: CurrentAuth = Depends(requires(ORG_MANAGE)),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    erased = await dpdp.erase_customer(
+        session, _require_org(current), contact_id, actor_id=current.user_id)
+    if erased is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
     await session.commit()

@@ -9,7 +9,17 @@ selects and approves the next ticket.
 
 ---
 
-## D2 · CRM customer notes + tags — **COMPLETE — awaiting founder review** (2026-08-11)
+## D3 · DPDP export + erase — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-104-customer-dpdp`. Track D #3 (final CRM item). `core/customers/dpdp.py`:
+`export_customer` (full record JSON — right to access, read-only) + `erase_customer` (right to erasure
+— audits `dsr.fulfilled` with no PII first, then hard-deletes the contact; all `contact_id` FKs cascade,
+so every linked row goes). Both ownership-checked (→404) + org-scoped. Routes: `GET /v1/customers/{id}/
+export` (customers:read), `DELETE /v1/customers/{id}` (org:manage — owner only). No migration. **Gate:**
+ruff · guards 0 · mypy 189 · unit 498 · customer integ 13 (incl. cascade + no-PII-audit + org isolation).
+**Retention caveat → BLOCKER #24.** **Track D complete.**
+
+## D2 · CRM customer notes + tags — **COMPLETE — merged `a0561d9`, CI green** (2026-08-11)
 
 Branch `feature/mvp-103-customer-notes-tags`. Track D #2 (first Track-D migration). **Migration 040**:
 `customer_notes` + `contact_tags`, org-scoped + RLS + `ON DELETE CASCADE` (contacts & orgs); up/down/
