@@ -4200,3 +4200,30 @@ planner unit 11.
 
 **Merge/push:** branch `feature/mvp-097c-e2e-front-tail` (commit `a22a00e`) merged `--no-ff` into
 `main` as `f1a4a96` and pushed 2026-08-11. **GitHub CI green** (run 31511029459).
+
+---
+
+## 2026-08-11 — A3 · Wire the E2E CI gate: the jewelry journey runs in CI (branch `feature/mvp-097d-e2e-ci-gate`)
+
+The A1/A2 journey was green locally but **not gated in CI** (the `migrate` job's e2e step ran only the
+install + kirana dry-run tests, and had no Redis). A3 makes the full journey a CI gate.
+
+- **`.github/workflows/ci.yml`**: added a `redis:7-alpine` service to the `migrate` job (the runtime
+  e2e needs it — agent-run checkpoints + planner frequency cap; install/kirana don't) and changed the
+  e2e step to run the **whole `tests/e2e` suite** (`uv run pytest tests/e2e -v`) as the runtime role
+  `app_rw`, with `GROWTH_OPERATOR_REDIS_URL` set. So the jewelry journey (webhook → normalizer →
+  planner → concierge → catalog.search → pricing.compute → park → approve → gated send → order →
+  ROI/attribution) now runs on every push/PR, not just locally.
+
+**Why this is a faithful gate:** the local `database_url` default is already `app_rw` (config.py:79), so
+the journey passing locally exercises the exact CI role; CI only adds a fresh DB + Redis. Verified the
+exact CI command locally: `uv run pytest tests/e2e -v` → **5 passed** (install, journey ×3, kirana).
+
+**Out of scope (still stubbed):** the `evals` job stays a placeholder — running the eval suites
+(`verticals/*/evals/*.yaml`) needs a fake-provider eval harness (MVP-095/096); CLAUDE.md §18 forbids
+calling real model providers in CI, so wiring evals is a separate ticket, not A3.
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 184 · **tests/unit 487** · **tests/e2e 5 passed** · CI YAML validated (jobs + services parse).
+
+**Next recommended action:** Track B — the gated Instagram + Google Ads adapters (B1/B2).
