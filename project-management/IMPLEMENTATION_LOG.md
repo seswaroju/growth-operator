@@ -3765,3 +3765,33 @@ keys are set (§10.4). **No migration** — `webhook_events` already lists `razo
 new integ `test_razorpay_webhook.py` **7** · payments+webhooks integ **25** (no regressions). **Security:**
 public webhook fails closed without the secret; HMAC-verified; tenant resolved from signed notes; no real
 money until keys set; RLS via `org_scoped_session`; no secrets logged. **Next:** OC5–OC12 forecast backlog.
+
+---
+
+## 2026-08-10 — OC5 · Churn-risk score + early alerts (branch `feature/oc5-churn-risk-score`)
+
+First of the OC5–OC12 forecast backlog (founder: "PAY3b and then OC5–OC12"). Extends the Customer
+Success at-risk view (P4.4) from a boolean into a **0–100 composite churn-risk score** with the
+plain-language **factors** driving it, so an operator sees *why* and *how badly* a store is slipping.
+**Heuristic, not ML** (no churn labels yet) — every point explainable. **No migration** — computed in
+Python over the existing `platform_customer_health()` SECDEF rows; API fields are additive.
+
+- **`core/insights/churn.py`** (NEW, pure/deterministic): `churn_risk(paused, open_tickets,
+  urgent_tickets, days_since_activity, revenue_7d, revenue_prev_7d) -> ChurnRisk(score, band,
+  factors)`. Weights: inactivity (≥21d/14d/7d, or never-active) · WoW revenue (stopped / ≥50% / ≥25%
+  drop) · paused · urgent/open tickets (capped). Clamped 0–100; band high≥60 / medium≥30 / low.
+  Reused server-side later by OC9 (alert feed) + OC10 (benchmarking).
+- **`core/tenancy/customer_health_admin.py`**: `StoreHealth` += `churn_score`/`churn_band`/
+  `churn_factors`; endpoint computes per row and returns **worst-first**. Additive → back-compatible.
+- **web-ops `CustomerSuccessSection`**: churn-risk column (band-toned chip `score · band`), factors
+  inline, header shows high/medium counts; footer explains it's a transparent heuristic. `api.ts`
+  `StoreHealth` type extended.
+
+**Requirement → evidence:** `tests/unit/test_churn.py` (9) — healthy=0/low; long inactivity; never-
+active=35; paused+revenue-stop+inactivity compound to 85/high; revenue-drop bands; urgent-ticket cap;
+open-tickets fallback; clamp-to-100 + factors sorted desc; singular grammar.
+
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 181 · **tests/unit 476** (+9) ·
+`test_customer_health_admin.py` 4 (additive fields didn't break it) · web-ops oxlint clean · tsc 0 ·
+vitest 28 · build ✓. **Security:** aggregate store-health only (no PII); operator-plane read; no new
+external actions. **Next:** OC6 — client-facing transparency report (owner's spend-by-channel + ROI).
