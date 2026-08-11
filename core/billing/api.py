@@ -9,7 +9,7 @@ least-privilege lock stays intact.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -44,6 +44,9 @@ class PlanCreate(BaseModel):
     price_minor: int = Field(..., ge=0)
     description: str | None = None
     features: list[str] = Field(default_factory=list)
+    max_managers: int = Field(default=0, ge=0)
+    max_staff: int = Field(default=0, ge=0)
+    config: dict[str, Any] = Field(default_factory=dict)  # agents/channels/addons (llm later, CP-5)
 
 
 class PlanUpdate(BaseModel):
@@ -52,6 +55,9 @@ class PlanUpdate(BaseModel):
     active: bool = True
     description: str | None = None
     features: list[str] = Field(default_factory=list)
+    max_managers: int = Field(default=0, ge=0)
+    max_staff: int = Field(default=0, ge=0)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class PlanOut(BaseModel):
@@ -61,6 +67,9 @@ class PlanOut(BaseModel):
     active: bool
     description: str | None = None
     features: list[str] = Field(default_factory=list)
+    max_managers: int = 0
+    max_staff: int = 0
+    config: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -115,7 +124,8 @@ async def create_plan(
 ) -> PlanOut:
     plan = await service.create_plan(
         session, name=body.name, price_minor=body.price_minor,
-        description=body.description, features=body.features)
+        description=body.description, features=body.features,
+        max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
     await log_platform_access(session, actor_user_id=current.user_id, action="billing.plan.created",
                               detail={"name": body.name})
     return PlanOut(**plan)
@@ -131,7 +141,8 @@ async def update_plan(
     try:
         plan = await service.update_plan(
             session, plan_id, name=body.name, price_minor=body.price_minor, active=body.active,
-            description=body.description, features=body.features)
+            description=body.description, features=body.features,
+            max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
     except IntegrityError as exc:  # another plan already owns that name (UNIQUE)
         raise HTTPException(
             status.HTTP_409_CONFLICT, "a plan with that name already exists") from exc

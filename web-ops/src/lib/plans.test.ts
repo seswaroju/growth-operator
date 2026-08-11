@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { featuresToText, parseFeatures, rupeesToMinor } from "./plans";
+import { csvToText, featuresToText, parseCsv, parseFeatures, rupeesToMinor } from "./plans";
 
 describe("plan feature editor helpers", () => {
   it("parses one feature per line, trimming and dropping blanks", () => {
@@ -24,5 +24,14 @@ describe("plan feature editor helpers", () => {
     expect(rupeesToMinor("199.5")).toBe(19950);
     expect(rupeesToMinor("")).toBe(0);
     expect(rupeesToMinor("abc")).toBe(0);
+  });
+
+  it("parseCsv trims, drops blanks; csvToText round-trips", () => {
+    expect(parseCsv("concierge, nurture ,, campaigner ")).toEqual(
+      ["concierge", "nurture", "campaigner"]);
+    expect(parseCsv("   ")).toEqual([]);
+    expect(csvToText(["whatsapp", "instagram"])).toBe("whatsapp, instagram");
+    expect(csvToText(undefined)).toBe("");
+    expect(parseCsv(csvToText(["a", "b", "c"]))).toEqual(["a", "b", "c"]);
   });
 });

@@ -6,7 +6,10 @@ import {
 import type { AdminTicket, BillingPlan, TicketPriority, TicketSeverity, TicketStatus } from "../api";
 
 function plan(name: string, price: number): BillingPlan {
-  return { id: name, name, price_minor: price, active: true, description: null, features: [], created_at: "" };
+  return {
+    id: name, name, price_minor: price, active: true, description: null, features: [],
+    max_managers: 0, max_staff: 0, config: {}, created_at: "",
+  };
 }
 
 function ticket(o: {

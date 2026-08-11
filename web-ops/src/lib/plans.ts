@@ -12,6 +12,18 @@ export function featuresToText(features: string[]): string {
   return features.join("\n");
 }
 
+// Short lists (agents / channels / add-ons) edit as a comma-separated line <-> a string[].
+export function parseCsv(text: string): string[] {
+  return text
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+export function csvToText(items: string[] | undefined): string {
+  return (items ?? []).join(", ");
+}
+
 // Rupees (as typed) -> integer minor units for the API. Empty/NaN -> 0.
 export function rupeesToMinor(rupees: string): number {
   const n = Number.parseFloat(rupees);
