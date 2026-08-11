@@ -3,7 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  adminListCharges, adminListPlans, adminListTenants, adminListTickets,
+  adminAnalyticsRollup, adminListCharges, adminListPlans, adminListTenants, adminListTickets,
   adminStoreAnalytics, adminStoreReport, adminStoreReports,
   type StoreReportDetail, type StoreReportSummary,
 } from "../api";
@@ -12,6 +12,7 @@ import { rupees, wowDelta } from "../lib/analytics";
 import { hasPerm } from "../lib/roles";
 import { channelLabel, spendByChannel } from "../lib/spend";
 import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
+import StoreBenchmarkCard from "./StoreBenchmarkCard";
 import StoreBudgetsSection from "./StoreBudgetsSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
@@ -144,6 +145,11 @@ export default function StoreReportsSection() {
     queryKey: ["store-analytics", orgId], queryFn: () => adminStoreAnalytics(t, orgId),
     enabled: on && canTenants, retry: false,
   });
+  // Peer benchmark (OC10): platform rollup over the SAME 30-day window as the store analytics.
+  const rollup = useQuery({
+    queryKey: ["admin-analytics-rollup", 30], queryFn: () => adminAnalyticsRollup(t, 30),
+    enabled: on && canTenants, retry: false,
+  });
   const charges = useQuery({
     queryKey: ["billing-charges", orgId], queryFn: () => adminListCharges(t, orgId),
     enabled: on && canTenants, retry: false,
@@ -217,6 +223,11 @@ export default function StoreReportsSection() {
             {" "}{rupees(a.attributed_revenue_minor)} attributed revenue
           </div>
         </Card>
+      )}
+
+      {/* Cohort benchmark vs peers (OC10) */}
+      {canTenants && a && rollup.data && (
+        <StoreBenchmarkCard store={a} rollup={rollup.data} />
       )}
 
       {/* Spend by channel (OC2) */}
