@@ -9,6 +9,17 @@ selects and approves the next ticket.
 
 ---
 
+## B1 · Gated Instagram content-publishing adapter — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-098-instagram-adapter`. Track B (multi-channel/ads) #1. `core/channels/instagram/`
+`InstagramClient.publish(image_url, caption)` — **simulated by default** (`ig.SIM-…`, no network), like
+the WhatsApp Meta client + email adapter. Live requires `instagram_live_enabled` + wiring
+(`provider_unavailable` if enabled-but-unwired) and runs the Graph API two-step (create container →
+media_publish) over httpx; errors surface as a failed result, token never logged. §10.4 honoured — no
+real post until Meta access + an approved action. Config: `instagram_live_enabled` (False),
+`instagram_ig_user_id`, `instagram_access_token` (secret). **Gate:** ruff · guards 0 · mypy 185 ·
+unit 491 (+4). No migration (standalone client).
+
 ## A3 · Wire the E2E CI gate — **COMPLETE — merged `91b4bc1`, CI green** (2026-08-11)
 
 Branch `feature/mvp-097d-e2e-ci-gate`. The A1/A2 journey was green locally but not gated in CI. A3

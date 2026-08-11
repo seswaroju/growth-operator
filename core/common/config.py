@@ -161,6 +161,12 @@ class Settings(BaseSettings):
     # Real Meta API calls (webhook registration, sends) are OFF until API access lands
     # (BLOCKERS #3, §10.4). While false, the Meta client runs in simulated mode.
     whatsapp_live_enabled: bool = Field(default=False)
+    # Instagram content publishing (B1, §10.4 social post). OFF until Meta API access lands; while
+    # false the client SIMULATES (no network). Enabled needs the IG business user id + a token
+    # (secret → SOPS in prod, never in code). A real post also still needs an approved action.
+    instagram_live_enabled: bool = Field(default=False)
+    instagram_ig_user_id: str | None = Field(default=None)
+    instagram_access_token: str | None = Field(default=None)  # secret — never commit
     # Fernet key used to encrypt channel credentials (WABA access token) at rest.
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
     # ed25519 seed (base64, 32 bytes) that signs execution tokens (MVP-066). Prod via SOPS.
