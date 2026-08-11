@@ -9,7 +9,21 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC9 — Operator alert feed — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC10 — Cohort benchmarking — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc10-cohort-benchmarking`. On the store-360, a **Benchmarks vs peers** card: the
+store's revenue/orders/leads/quotes vs the **average of the other active stores** (rollup sums ÷ peer
+count, **excluding the store itself**), with a per-metric delta chip (ahead/behind/on-par, ±10% band)
+and **one line of advice** on the biggest gap. **Frontend-only, no backend/migration** — composes the
+existing store-analytics (OC4) + platform rollup, matched to the same 30-day window.
+
+- `web-ops/src/lib/benchmark.ts` (+tests): `benchmark(store, rollup)`, `worstGap`, `advice`. Pure.
+- `web-ops/src/components/StoreBenchmarkCard.tsx`; rollup query (30d) added in `StoreReportsSection`.
+
+**Gate:** web-ops oxlint clean · tsc 0 · vitest **41** (+5) · build ✓ · guards 0 · ruff clean.
+**Next:** OC11 — per-tenant onboarding checklist.
+
+## Operator V2 forecast · OC9 — Operator alert feed — **Merged `d32cf4b`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc9-operator-alert-feed`. The operator's own **bell** in the console header (mirrors
 the owner bell): composes **platform ops health** (stuck outbox, overdue approvals, urgent tickets,

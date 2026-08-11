@@ -3902,3 +3902,27 @@ overflow; danger sorts before warn; `hasDanger` true only with a danger alert.
 **Commands:** web-ops oxlint clean · tsc 0 · **vitest 36** (+5) · build ✓ · repo `guards.py` 0 ·
 `ruff .` clean. **Security:** operator-plane read-only over existing aggregates; no PII beyond the
 console's existing views; no new endpoints/external actions. **Next:** OC10 — cohort benchmarking.
+
+---
+
+## 2026-08-10 — OC10 · Cohort benchmarking (branch `feature/oc10-cohort-benchmarking`)
+
+Sixth of OC5–OC12. On the store-360, a **Benchmarks vs peers** card: the store's core metrics against
+the **average of the OTHER active stores**, turned into one line of advice on the biggest gap.
+**Frontend-only — no backend, no migration**; composes existing OC4 store-analytics + the platform
+rollup, matched to the same 30-day window.
+
+- **`web-ops/src/lib/benchmark.ts`** (+ tests): `benchmark(store, rollup)` — peer average excludes the
+  store itself (`(rollupSum − storeValue) / (active_stores − 1)`); per-metric deltaPct + verdict
+  (ahead/behind/on-par within ±10%); `worstGap` (most-behind metric) + `advice` (metric → suggestion).
+  Pure + deterministic.
+- **`web-ops/src/components/StoreBenchmarkCard.tsx`**: store vs peer-avg rows with delta chips + an
+  advice callout; rollup(30d) query added in `StoreReportsSection`, rendered after the Performance card.
+
+**Requirement → evidence:** `web-ops/src/lib/benchmark.test.ts` (5) — peer avg excludes self + delta/
+verdict; ±10% band boundary (ahead at +10%, on-par at +5%); single active store → no peers (null/
+on-par); `worstGap` picks the most-behind metric + `advice` explains it; null when nothing is behind.
+
+**Commands:** web-ops oxlint clean · tsc 0 · **vitest 41** (+5) · build ✓ · repo `guards.py` 0 ·
+`ruff .` clean. **Security:** operator-plane read-only over existing aggregates (no PII); no new
+endpoints/external actions. **Next:** OC11 — per-tenant onboarding checklist.
