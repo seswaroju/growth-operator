@@ -4585,3 +4585,7 @@ host, set `GROWTH_OPERATOR_AUDIT_ANCHOR_PATH=<clone>/anchors.jsonl`, and add a c
 
 **This completes the founder's follow-up batch — (a) soft-erase, (b) #22 scoping, (c) schema-doc,
 (d) MVP-071 anchoring — on top of tracks A–D.**
+
+**Merge/push:** branch `feature/mvp-071-audit-anchoring` merged `--no-ff` into `main` as `fbb7498`
+and pushed 2026-08-11. **GitHub CI green.** Follow-up batch complete: (c) `525a986`, (b) `3a6d112`,
+(a) `a4269d5`, (d) `fbb7498`.

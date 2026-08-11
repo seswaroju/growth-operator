@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## (d) MVP-071 · Audit-chain anchoring — **COMPLETE — awaiting founder review** (2026-08-11)
+## (d) MVP-071 · Audit-chain anchoring — **COMPLETE — merged `fbb7498`, CI green** (2026-08-11)
 
 Branch `feature/mvp-071-audit-anchoring`. External tamper-evidence for the per-org audit hash chains.
 `core/audit/anchor.py`: `build_anchor` (each org's chain head) → append-only JSONL sink →
