@@ -3878,3 +3878,27 @@ risk / on-track and excludes closed; `slaTargets` lists per-tier target + no-pla
 **Commands:** web-ops oxlint clean · tsc 0 · **vitest 31** (+3) · build ✓ · repo `guards.py` 0 ·
 `ruff .` clean. **Security:** operator-plane read-only view over existing ticket data; no PII beyond
 what the queue already shows; no new endpoints/external actions. **Next:** OC9 — operator alert feed.
+
+---
+
+## 2026-08-10 — OC9 · Operator alert feed (branch `feature/oc9-operator-alert-feed`)
+
+Fifth of OC5–OC12. The operator's **own notification bell** in the console header (mirrors the owner
+bell): a "what needs me now" feed composed from signals already exposed — **platform ops health**
+(stuck outbox, overdue approvals, urgent tickets, paused stores) + **per-store churn risk** (OC5).
+**Frontend-only — no backend, no migration**; reuses `adminOpsHealth` + `adminCustomerHealth`.
+
+- **`web-ops/src/lib/alerts.ts`** (+ tests): `buildAlerts(ops, health) -> Alert[]` — danger-first;
+  ops thresholds → danger/warn alerts; high-churn stores → a danger alert naming the top 3 (+overflow).
+  `hasDanger` drives the badge tone. Pure + deterministic.
+- **`web-ops/src/components/OperatorBell.tsx`**: bell button + count badge (danger/warn tone) + a
+  click-away popover listing alerts (severity dot, title, detail); inline drawn bell icon (no emoji).
+  Mounted in `Shell` header, gated on `platform.tenants:read`.
+
+**Requirement → evidence:** `web-ops/src/lib/alerts.test.ts` (5) — healthy → none; ops alerts for
+stuck outbox / overdue approvals / urgent tickets / paused; churn alert names top-3 high-risk + `+N`
+overflow; danger sorts before warn; `hasDanger` true only with a danger alert.
+
+**Commands:** web-ops oxlint clean · tsc 0 · **vitest 36** (+5) · build ✓ · repo `guards.py` 0 ·
+`ruff .` clean. **Security:** operator-plane read-only over existing aggregates; no PII beyond the
+console's existing views; no new endpoints/external actions. **Next:** OC10 — cohort benchmarking.

@@ -9,7 +9,21 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC8 — SLA-by-plan board — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC9 — Operator alert feed — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc9-operator-alert-feed`. The operator's own **bell** in the console header (mirrors
+the owner bell): composes **platform ops health** (stuck outbox, overdue approvals, urgent tickets,
+paused stores) + **per-store churn risk** (OC5) into a "what needs me now" feed, count badge (danger
+tone if any danger alert). **Frontend-only, no backend/migration** — reuses existing endpoints.
+
+- `web-ops/src/lib/alerts.ts` (+tests): `buildAlerts(ops, health)` (danger-first) + `hasDanger`. Pure.
+- `web-ops/src/components/OperatorBell.tsx`: bell + count badge + popover feed (inline drawn icon);
+  mounted in `Shell` (gated on `platform.tenants:read`).
+
+**Gate:** web-ops oxlint clean · tsc 0 · vitest **36** (+5) · build ✓ · guards 0 · ruff clean.
+**Next:** OC10 — cohort benchmarking (store vs peers; reuses churn score).
+
+## Operator V2 forecast · OC8 — SLA-by-plan board — **Merged `ab06889`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc8-sla-board`. An at-a-glance **SLA board** atop the operator support queue:
 open tickets bucketed **breached / about-to-breach / on-track**, plus the **response target per plan
