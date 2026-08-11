@@ -9,6 +9,28 @@ selects and approves the next ticket.
 
 ---
 
+## Operator payments track · PAY3b — Razorpay payment-confirmation webhook — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/pay3b-razorpay-webhook`. Closes the loop: a **payment link** ties a charge to a
+transaction; when the store owner pays, a **signed capture webhook** confirms it and auto-drafts the
+PAY3 receipt approval. Mirrors the WhatsApp ingress (verify → persist-and-200 → worker confirms later).
+**Gated/simulated** — no real money until Razorpay keys are set. **No migration** (`webhook_events`
+already lists `razorpay`; `transactions.provider/_ref` exist).
+
+- **Link:** `POST …/transactions/{id}/payment-link` → `get_payment_provider().create_payment_request`
+  (reference_id=receipt_no, **notes={org_id,tx_id}** for mapping), stores `provider`/`provider_ref`,
+  returns a SIM `pay_url`. Gated · audited · 409 if not `created`.
+- **Webhook:** public `POST /webhooks/razorpay` → HMAC-SHA256 verify (fail-closed 403) → persist raw
+  to `webhook_events` (dedupe on event id) → **200, never 5xx**.
+- **Sweep** (`reconcile.py`, scheduler job `razorpay_webhook_sweep` every minute): map paid event →
+  `org_id`/`tx_id` from signed notes → if tx `created`, PAY3 `mark_paid_and_request_receipt`.
+  **Idempotent** (unique event · `processed_at` · `status=='created'` guard).
+- Files: `razorpay.py`/`base.py`/`upi.py` (+notes), `api.py` (+link endpoint), `webhook.py`+`reconcile.py`
+  (new), router in `main.py`, job in `scheduler.py`, `transactions.set_provider_ref`.
+
+**Gate:** ruff · guards 0 · mypy 180 · **tests/unit 467** (+8 mapping/idempotency) · new integ
+`test_razorpay_webhook.py` 7 · payments+webhooks integ 25 (no regressions). **Next:** OC5–OC12 backlog.
+
 ## Operator payments track · Operator "Charge this store" UI — **Merged `ec0828f`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/pay-ops-ui-charge-store`. On the operator store-360 page (`/stores/$orgId`), a new

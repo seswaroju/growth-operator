@@ -3723,3 +3723,45 @@ library) → Meta media upload (`/media` → `media_id` → `document` message).
 keep WhatsApp as the detailed text message and drop PAY4** (see DECISIONS): WhatsApp prices by message
 *category*, not media type, so a PDF buys no cost saving while adding a dependency + media lifecycle. No
 code change — the shipped behaviour already matches. **Order:** PAY3b next, then OC5–OC12 by founder pick.
+
+---
+
+## 2026-08-10 — PAY3b · Razorpay payment-confirmation webhook (branch `feature/pay3b-razorpay-webhook`)
+
+**Founder ask:** after onboarding + Razorpay, charge the store and confirm the payment so the receipt
+auto-generates. Closes the charge→pay→confirm→receipt loop. Standard PSP flow, gated/simulated until
+keys are set (§10.4). **No migration** — `webhook_events` already lists `razorpay` + has `processed_at`;
+`transactions.provider/provider_ref` already exist.
+
+- **Provider `notes`** (`base.py`/`razorpay.py`/`upi.py`): `create_payment_request(..., notes=)` — the
+  Razorpay payment link carries `{org_id, tx_id}` in `notes`, echoed back in the capture webhook, so the
+  sweep can map the event → transaction (reference_id is capped at 40 chars, hence notes).
+- **Link endpoint** (`api.py`): `POST /v1/admin/tenants/{org}/transactions/{tx_id}/payment-link` →
+  `get_payment_provider().create_payment_request(reference_id=receipt_no, notes={org,tx})`, stores
+  `provider`/`provider_ref` (`transactions.set_provider_ref`), returns a simulated `pay_url`. Gated ·
+  TENANTS_MANAGE · audited (`payment_link.created`) · 404 unknown · 409 if not `created`.
+- **Webhook ingress** (`webhook.py`, NEW): public `POST /webhooks/razorpay` → HMAC-SHA256 verify
+  (`RazorpayClient.verify_webhook_signature`, fail-closed 403) → persist raw to `webhook_events` (dedupe
+  on `X-Razorpay-Event-Id`) → **200, never 5xx**. Registered in `core/api/main.py`.
+- **Confirmation sweep** (`reconcile.py`, NEW): `confirm_pending_razorpay()` reads unprocessed `razorpay`
+  rows → `payment_mapping` pulls `org_id/tx_id` from the signed notes of a paid event → `org_scoped_session`
+  → if tx `created`, PAY3 `mark_paid_and_request_receipt` (drafts the receipt approval) → mark processed.
+  Scheduler job `razorpay_webhook_sweep` (every minute) in `core/scheduler.py`. **Idempotent** three ways
+  (unique event · `processed_at` · `status=='created'` guard).
+
+**Requirement → evidence:**
+| Criterion | Test | Result |
+|---|---|---|
+| Bad signature rejected (403), no persist | `integration/test_razorpay_webhook::test_webhook_bad_signature_403` | PASS |
+| Valid capture persisted once (retry = 1 row), never 5xx | `…test_webhook_persists_and_dedupes` | PASS |
+| Confirmed payment marks tx paid + drafts the receipt approval | `…test_reconcile_confirms_payment_and_drafts_receipt_approval` | PASS |
+| Idempotent — no second approval on re-sweep | `…test_reconcile_is_idempotent` | PASS |
+| Unknown transaction is a no-op | `…test_reconcile_unknown_tx_is_noop` | PASS |
+| Payment-link endpoint returns SIM link + persists provider_ref; 409 if not created | `…test_payment_link_*` | PASS |
+| Event→tx mapping + external-id key (pure) | `unit/test_razorpay_webhook.py` (8) | PASS |
+
+**Commands (full CI mirror before push):** ruff `All checks passed!` · guards 0 · `mypy core` 180 ·
+**tests/unit 467** (+8; updated scheduler-entrypoint expected job set for `razorpay_webhook_sweep`) ·
+new integ `test_razorpay_webhook.py` **7** · payments+webhooks integ **25** (no regressions). **Security:**
+public webhook fails closed without the secret; HMAC-verified; tenant resolved from signed notes; no real
+money until keys set; RLS via `org_scoped_session`; no secrets logged. **Next:** OC5–OC12 forecast backlog.

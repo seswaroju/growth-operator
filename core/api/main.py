@@ -23,6 +23,7 @@ from core.insights.api import router as dashboard_router
 from core.notifications.api import router as notifications_router
 from core.packs.router import router as packs_router
 from core.payments.api import router as transactions_admin_router
+from core.payments.webhook import router as razorpay_webhook_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
 from core.runtime.ops_router import router as ops_router
@@ -76,6 +77,7 @@ app.include_router(invites_router)
 app.include_router(settings_router)
 app.include_router(flags_router)
 app.include_router(whatsapp_ingress_router)
+app.include_router(razorpay_webhook_router)
 app.include_router(whatsapp_connect_router)
 app.include_router(packs_router)
 app.include_router(catalog_router)

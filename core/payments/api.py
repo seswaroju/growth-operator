@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.payments import delivery
 from core.payments import transactions as service
+from core.payments.base import get_payment_provider
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
@@ -56,6 +57,15 @@ class ReceiptRequestOut(BaseModel):
     approval_id: UUID
     receipt_no: str
     status: str  # always "pending_approval" — the receipt sends only once an owner approves
+
+
+class PaymentLinkOut(BaseModel):
+    ok: bool
+    provider: str
+    provider_ref: str | None
+    pay_url: str | None  # what the store owner opens to pay (a SIM url until Razorpay is live)
+    status: str | None
+    simulated: bool
 
 
 class TransactionOut(BaseModel):
@@ -162,3 +172,37 @@ async def request_receipt(
         detail={"receipt_no": tx["receipt_no"], "approval_id": str(approval_id)})
     return ReceiptRequestOut(
         approval_id=approval_id, receipt_no=tx["receipt_no"], status="pending_approval")
+
+
+@router.post(
+    "/{org_id}/transactions/{tx_id}/payment-link", response_model=PaymentLinkOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a payment link for a charge (gated; simulated until a provider is live)",
+)
+async def create_payment_link(
+    org_id: UUID,
+    tx_id: UUID,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> PaymentLinkOut:
+    tx = await service.get_transaction(session, org_id, tx_id)
+    if tx is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "transaction not found")
+    if tx["status"] != "created":  # a paid/receipted charge doesn't get a new link
+        raise HTTPException(status.HTTP_409_CONFLICT, "transaction is not awaiting payment")
+    provider = get_payment_provider()
+    # notes carry our ids so the capture webhook maps back to this transaction (PAY3b).
+    req = await provider.create_payment_request(
+        amount_minor=tx["total_minor"], description=f"Receipt {tx['receipt_no']}",
+        contact_email=tx["contact_email"], contact_phone=tx["contact_phone"],
+        reference_id=tx["receipt_no"], notes={"org_id": str(org_id), "tx_id": str(tx_id)})
+    await service.set_provider_ref(
+        session, org_id, tx_id, provider=provider.name, provider_ref=req.id)
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="payment_link.created",
+        target_org_id=org_id,
+        detail={"receipt_no": tx["receipt_no"], "provider": provider.name,
+                "simulated": req.simulated})
+    return PaymentLinkOut(
+        ok=req.ok, provider=req.provider, provider_ref=req.id, pay_url=req.pay_url,
+        status=req.status, simulated=req.simulated)
