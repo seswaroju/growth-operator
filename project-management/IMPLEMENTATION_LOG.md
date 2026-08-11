@@ -4291,3 +4291,37 @@ step returns a failed result and never creates the campaign.
 `mypy core` 186 · **tests/unit 495** (+4).
 
 **Next recommended action:** Track C — the autonomy volume-knob (C1 per-action-type + threshold).
+
+**Merge/push:** branch `feature/mvp-099-google-ads-adapter` merged `--no-ff` into `main` as `258d0d7`
+and pushed 2026-08-11. **GitHub CI green.** Track B (B1 + B2) complete.
+
+---
+
+## 2026-08-11 — C1 · Autonomy volume-knob: per-capability value threshold (branch `feature/mvp-100-autonomy-threshold`)
+
+Track C #1. The per-capability autonomy knob (Ticket 3.6 — `autonomy.{messaging,pricing,campaigns}` =
+auto/suggest/draft_only/off + `autonomy.paused`) already existed; C1 adds the **threshold** dimension
+the founder asked for: *auto under ₹X, ask above*. An owner can leave a capability on `auto` for routine
+work but still require approval on big-ticket actions.
+
+- **`core/tenancy/settings.py`**: three new platform-default keys —
+  `autonomy.{messaging,pricing,campaigns}.threshold_minor` (default **0** = no threshold,
+  `schema_ref="core.money_minor"`, free-dial not tighten-only). 0 changes nothing until dialled.
+- **`core/approvals/engine.py`**: `_autonomy_floor` now, for each relevant capability **on `auto`**,
+  resolves that capability's `threshold_minor`; if the action's amount (a quote total / priced reply,
+  via the new shared `_action_amount_minor`) is **≥** the threshold it returns `AUTONOMY_REVIEW_TIER`.
+  Like the rest of the knob it is a max-tier contributor — it only ever **raises** a tier, so the
+  `CORE_TIER4_ACTIONS` money floor stays absolute. `evaluate_tool` reuses `_action_amount_minor` (DRY).
+- **`core/tenancy/settings_router.py`**: the `GET /v1/settings/autonomy` view now returns the three
+  `*_threshold_minor` values (settable via the existing generic `POST /v1/settings {key,value}`).
+
+**Tests (`tests/integration/test_autonomy_gate.py`, +3):** at/above the threshold → review, below →
+auto; default 0 is a no-op even for a huge amount; a plain reply (no amount) never trips it. Existing
+autonomy + money-floor tests still pass unchanged.
+
+**Migrations/APIs/events/frontend:** no migration (settings are key/value). API: one response model
+gains 3 fields. **Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 186 · **tests/unit
+495** · autonomy-gate + settings integ 14.
+
+**Next recommended action:** C2 — quiet-hours draft-only (`quiet_hours.start/end` already exist as
+settings; wire them into the autonomy overlay so sends park during quiet hours).

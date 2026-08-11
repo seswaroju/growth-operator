@@ -90,6 +90,10 @@ class AutonomyView(BaseModel):
     pricing: str
     campaigns: str
     paused: bool
+    # Per-capability "auto under ₹X, ask above" thresholds in minor units (C1); 0 = no threshold.
+    messaging_threshold_minor: int
+    pricing_threshold_minor: int
+    campaigns_threshold_minor: int
     floor_actions: list[str]  # the immovable tier-4 money/irreversible set (never auto)
 
 
@@ -112,5 +116,8 @@ async def autonomy(
         pricing=await _level("autonomy.pricing"),
         campaigns=await _level("autonomy.campaigns"),
         paused=bool(await _level("autonomy.paused")),
+        messaging_threshold_minor=int(await _level("autonomy.messaging.threshold_minor")),
+        pricing_threshold_minor=int(await _level("autonomy.pricing.threshold_minor")),
+        campaigns_threshold_minor=int(await _level("autonomy.campaigns.threshold_minor")),
         floor_actions=sorted(CORE_TIER4_ACTIONS),
     )

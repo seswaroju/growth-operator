@@ -9,7 +9,17 @@ selects and approves the next ticket.
 
 ---
 
-## B2 · Gated Google Ads campaign adapter — **COMPLETE — awaiting founder review** (2026-08-11)
+## C1 · Autonomy volume-knob: per-capability value threshold — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-100-autonomy-threshold`. Track C #1. The per-capability autonomy knob already
+existed; C1 adds the founder's **threshold** dimension — *auto under ₹X, ask above*. New settings
+`autonomy.{messaging,pricing,campaigns}.threshold_minor` (default 0 = off). `engine._autonomy_floor`:
+for a capability on `auto`, if the action's amount ≥ its threshold → `AUTONOMY_REVIEW_TIER` (only ever
+raises a tier; the tier-4 money floor stays absolute). `GET /v1/settings/autonomy` returns the
+thresholds; settable via the generic `POST /v1/settings`. **Gate:** ruff · guards 0 · mypy 186 · unit
+495 · autonomy-gate integ 14 (+3). No migration.
+
+## B2 · Gated Google Ads campaign adapter — **COMPLETE — merged `258d0d7`, CI green** (2026-08-11)
 
 Branch `feature/mvp-099-google-ads-adapter`. Track B #2. `core/channels/google_ads/`
 `GoogleAdsClient.create_campaign(name, daily_budget_minor)` — **simulated by default** (`gads.SIM-…`,

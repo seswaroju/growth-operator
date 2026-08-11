@@ -198,11 +198,21 @@ _CAPABILITY_BY_ACTION: dict[str, str] = {
 }
 
 
+def _action_amount_minor(tool: str, params: dict[str, Any]) -> int | None:
+    """The money amount an action carries, in minor units: a priced reply's body figure for
+    `messages.send`, else an explicit `amount_minor`. `None` when the action carries no amount."""
+    amount = (
+        _message_amount_minor(params) if tool == "messages.send" else params.get("amount_minor")
+    )
+    return int(amount) if amount is not None else None
+
+
 async def _autonomy_floor(
     session: AsyncSession, org_id: UUID, tool: str, params: dict[str, Any]
 ) -> int:
     """The tier the owner's autonomy knob forces for `tool` — `AUTONOMY_REVIEW_TIER` when the global
-    pause is on or any relevant capability is set below `auto`, else 0 (no effect / full auto)."""
+    pause is on, any relevant capability is below `auto`, or (C1) the action's amount is at or above
+    that capability's `threshold_minor`; else 0 (no effect / full auto)."""
     from core.tenancy import settings as tenant_settings  # lazy: avoids an import cycle
 
     if bool((await tenant_settings.resolve(session, org_id, "autonomy.paused")).value):
@@ -212,8 +222,15 @@ async def _autonomy_floor(
         for a in resolve_actions(tool, params)
         if a in _CAPABILITY_BY_ACTION
     }
+    amount = _action_amount_minor(tool, params)
     for cap in capabilities:
         if (await tenant_settings.resolve(session, org_id, f"autonomy.{cap}")).value != "auto":
+            return AUTONOMY_REVIEW_TIER
+        # On `auto`, a per-capability value threshold still forces review for big-ticket actions.
+        threshold = (
+            await tenant_settings.resolve(session, org_id, f"autonomy.{cap}.threshold_minor")
+        ).value
+        if threshold and amount is not None and amount >= int(threshold):
             return AUTONOMY_REVIEW_TIER
     return 0
 
@@ -228,12 +245,10 @@ async def evaluate_tool(
     as-is and the pack rules `has()`-guard them, so an absent field means the condition is not met
     (rather than fail-safe-matching)."""
     await repository.set_org_context(session, org_id)
-    amount = (
-        _message_amount_minor(params) if tool == "messages.send" else params.get("amount_minor")
-    )
+    amount = _action_amount_minor(tool, params)
     activation = _activation(ActionContext(
         org_id=org_id, action_type=tool, actor_instance_id=actor_instance_id,
-        amount_minor=int(amount) if amount is not None else None,
+        amount_minor=amount,
         currency=params.get("currency"), recipients=list(params.get("recipients", [])),
         attributes=dict(params), untrusted_content=untrusted,
     ))
