@@ -34,13 +34,15 @@ async def _catalog_search(
 async def _pricing_compute(
     ctx: RunContext, params: dict[str, Any], session: AsyncSession, audit_id: UUID
 ) -> Any:
-    from core.pricing.service import compute_quote
+    from core.pricing.service import compute_quote, quote_presentation
 
     quote_id = await compute_quote(
         session, ctx.org_id, strategy_key=str(params["strategy"]),
         inputs=params.get("inputs", {}), params=params.get("params", {}),
     )
-    return {"quote_id": str(quote_id)}
+    # Return the deterministic two-step presentation (JWL-EST-01 phase 2) so the concierge relays
+    # exact ledgered figures: `price_line` for the first reply, `breakdown_text` on request.
+    return await quote_presentation(session, ctx.org_id, quote_id)
 
 
 async def _ledger_read(

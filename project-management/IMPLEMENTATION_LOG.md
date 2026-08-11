@@ -4017,3 +4017,39 @@ industry nouns) · `mypy core` 183 · **tests/unit 480** (+4) · pricing+pack in
 holds; quotes remain ledgered (`unledgered_figure`/`stale_rate` guards) + approval-gated downstream.
 **Next: JWL-EST-01 phase 2** — the two-step customer draft (price first → itemized breakdown on request),
 grounded (§18) + approval-gated (§19). Awaiting founder go.
+
+---
+
+## 2026-08-10 — JWL-EST-01 phase 2 · Two-step grounded draft (branch `feature/jwl-est-02-two-step-draft`)
+
+The delivery half of the jewelry estimate: the concierge now replies **price first**, then the
+**itemized breakdown on request** — relaying **exact ledgered figures**, never invented ones (§18).
+
+**Key finding:** the `pricing.compute` tool returned only `{quote_id}` — the concierge had no figures
+to present verbatim, so grounding was aspirational. Fixed by returning a deterministic presentation.
+
+- **`core/pricing/render.py`** (NEW, pure, generic — labels from the strategy's `breakdown_labels`,
+  **no industry nouns**): `render_price_line` (total + validity) + `render_breakdown` (one labelled
+  line per non-zero component, zero lines hidden, `negative_ids` render a discount as a minus). Money
+  formatted to whole units (integer minor stays authoritative).
+- **`core/pricing/service.quote_presentation(org, quote_id)`**: reads the stored quote (breakdown /
+  total / currency / valid_until) + the strategy labels → `{quote_id, total_minor, currency,
+  price_line, breakdown_text}`.
+- **`core/mediation/tools._pricing_compute`**: returns that presentation (was `{quote_id}`), so the
+  concierge relays deterministic text.
+- **`verticals/jewelry/prompts/concierge.md`** quote layer → **two-step**: (3) first reply = `price_line`
+  only + "reply 'breakdown' for the full estimate", (4) on request relay `breakdown_text` verbatim,
+  never restate a figure. Eval `concierge_core.yaml` cc-014 (price-first) + new cc-015 (breakdown on
+  request).
+
+**Requirement → evidence:** `tests/unit/test_pricing_render.py` (6) — money format; config-vs-humanized
+labels; price line = total+validity; breakdown hides zero lines + shows CGST/SGST; discount negative;
+waived tax → no CGST/SGST. `tests/integration/test_pricing_service.py::test_quote_presentation_is_two_step_and_grounded`
+— the tool path returns a price-only line + an itemized breakdown with CGST/SGST, exact to the ledger.
+
+**Commands:** ruff `All checks passed!` · guards 0 (fixed a Rule-Zero "jewelry" noun in the render
+docstring — core stays vertical-agnostic) · `mypy core` 184 · **tests/unit 486** (+6) · pricing-service
+integ 8 (+1) · mediation integ 10 (no regressions). **Testing honesty:** the deterministic render +
+tool result are CI-tested; the LLM's two-step *conversational* behavior is specified in the pack eval
+suite (rubric/LLM — not CI-deterministic, per §18). **JWL-EST-01 essentially complete;** optional
+polish: fill the metal-line label with grams/karat (the concierge already narrates those from catalog).

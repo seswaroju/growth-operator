@@ -154,6 +154,31 @@ async def test_ledger_written_and_every_figure_matchable(env: Env) -> None:
         assert not await ledger.match(s, env.org, EXPECTED_TOTAL + 1)  # off-by-one fails closed
 
 
+async def test_quote_presentation_is_two_step_and_grounded(env: Env) -> None:
+    """JWL-EST-01 phase 2: the tool's presentation gives a price-only line + an itemized breakdown
+    (with CGST/SGST), all exact ledgered figures — what the concierge relays verbatim."""
+    await env.add_snapshot(RATE_VALUE)
+    async with org_scoped_session(env.org) as s:
+        qid = await service.compute_quote(
+            s, env.org, strategy_key=env.strategy_key, inputs=INPUTS, params=PARAMS
+        )
+        await s.commit()
+    async with org_scoped_session(env.org) as s:
+        pres = await service.quote_presentation(s, env.org, qid)
+
+    assert pres["quote_id"] == str(qid) and pres["total_minor"] == EXPECTED_TOTAL
+    # Step 1 — price only (total + validity), no component lines.
+    assert pres["price_line"].startswith("Total: ₹100,970")
+    assert "valid till" in pres["price_line"].lower()
+    assert "CGST" not in pres["price_line"] and "Making" not in pres["price_line"]
+    # Step 2 — the itemized breakdown carries the split + making, exact to the ledger.
+    bd = pres["breakdown_text"]
+    assert "Making charges: ₹7,261" in bd
+    assert "CGST (1.5%): ₹1,470" in bd and "SGST (1.5%): ₹1,470" in bd  # 147044 → ₹1,470
+    assert bd.splitlines()[-1].startswith("Valid till")
+    assert bd.rsplit("\n", 2)[-2] == "Total: ₹100,970"
+
+
 async def test_replay_is_byte_exact(env: Env) -> None:
     await env.add_snapshot(RATE_VALUE)
     async with org_scoped_session(env.org) as s:
