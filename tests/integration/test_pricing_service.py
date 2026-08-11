@@ -22,6 +22,7 @@ from sqlalchemy import text
 from core.common import db as dbmod
 from core.common.config import get_settings
 from core.pricing import ledger, registry, service
+from core.pricing.extract import extract_amounts
 from core.pricing.functions import PricingError
 from core.tenancy.middleware import org_scoped_session
 
@@ -148,9 +149,11 @@ async def test_ledger_written_and_every_figure_matchable(env: Env) -> None:
                 {"i": str(qid)},
             )
         ).scalar_one()
-        assert n == 6  # total + metal_value + making + subtotal + cgst + sgst (zero lines excluded)
+        # total + metal_value + making + subtotal + cgst + sgst + metal_rate (zero lines excluded)
+        assert n == 7
         assert await ledger.match(s, env.org, EXPECTED_TOTAL)
         assert await ledger.match(s, env.org, EXPECTED_METAL)
+        assert await ledger.match(s, env.org, 732000)  # per-gram rate ₹7,320 shown in breakdown
         assert not await ledger.match(s, env.org, EXPECTED_TOTAL + 1)  # off-by-one fails closed
 
 
@@ -179,6 +182,27 @@ async def test_quote_presentation_is_two_step_and_grounded(env: Env) -> None:
     assert "CGST (1.5%): ₹1,470.44" in bd and "SGST (1.5%): ₹1,470.44" in bd  # 147044 → ₹1,470
     assert bd.splitlines()[-1].startswith("Valid till")
     assert bd.rsplit("\n", 2)[-2] == "Total: ₹100,970.32"
+
+
+async def test_every_breakdown_text_figure_is_ledgered(env: Env) -> None:
+    """A1b — the send-path figure gate (MVP-054) extracts EVERY rupee amount in a customer-bound
+    message and requires each to match an unexpired ledger row. So the whole two-step breakdown can
+    go out, every figure the itemized breakdown displays — including the metal line's per-gram rate
+    `₹7,320/g` embedded in the label — must be ledgered, not just the line totals."""
+    await env.add_snapshot(RATE_VALUE)
+    async with org_scoped_session(env.org) as s:
+        qid = await service.compute_quote(
+            s, env.org, strategy_key=env.strategy_key, inputs=INPUTS, params=PARAMS
+        )
+        await s.commit()
+    async with org_scoped_session(env.org) as s:
+        bd = (await service.quote_presentation(s, env.org, qid))["breakdown_text"]
+        figures = extract_amounts(bd)
+        assert figures, "the breakdown text must carry money figures"
+        minors = [f.minor for f in figures]
+        assert 732000 in minors, "the per-gram rate must be an extractable figure"
+        for f in figures:  # the gate would refuse the send if ANY were unledgered
+            assert await ledger.match(s, env.org, f.minor), f"unledgered {f.minor} ({f.raw!r})"
 
 
 async def test_replay_is_byte_exact(env: Env) -> None:

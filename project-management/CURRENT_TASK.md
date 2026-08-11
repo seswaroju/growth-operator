@@ -9,6 +9,17 @@ selects and approves the next ticket.
 
 ---
 
+## A1b · Ledger the breakdown's per-gram rate (two-step breakdown can send) — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-097b-breakdown-rate-ledger`. Closes the gap A1 flagged: the itemized breakdown's
+metal line embeds the per-gram rate (`× ₹7,320/g`), which the send-path figure gate extracts but was
+**not** ledgered → the second-step breakdown was refused as `unledgered_figure`. Fixed in
+`core/pricing/service.py` only: one shared `_per_gram_rate_minor` derivation feeds both the label
+(display) and the ledger; `compute_quote` now records the **displayed** rate `(rate_minor // 100) * 100`
+as a `metal_rate` figure in the same atomic write. New `test_every_breakdown_text_figure_is_ledgered`
+extracts every figure from `breakdown_text` and asserts each matches the ledger (the send gate's exact
+predicate). **Gate:** ruff · guards 0 · mypy 184 · unit 487 · pricing-service integ 8 · sweep 25.
+
 ## A1 · End-to-end jewelry journey (≈MVP-097) — **COMPLETE — merged `64f5dea`, CI green** (2026-08-11)
 
 First item of the founder's 4-track plan (E2E journey → multi-channel/ads → autonomy volume-knob →
