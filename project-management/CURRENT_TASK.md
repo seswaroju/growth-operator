@@ -9,7 +9,18 @@ selects and approves the next ticket.
 
 ---
 
-## (a) DPDP soft-erase + platform archive — **COMPLETE — awaiting founder review** (2026-08-11)
+## (d) MVP-071 · Audit-chain anchoring — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-071-audit-anchoring`. External tamper-evidence for the per-org audit hash chains.
+`core/audit/anchor.py`: `build_anchor` (each org's chain head) → append-only JSONL sink →
+`verify_against_anchor` (flags a rewritten hash or truncated head). Daily `audit_anchor` scheduler job
+(02:00 UTC); `audit_anchor_path` config (off by default → point at a **separate private git repo**);
+`make verify-anchor` / `scripts/verify_audit_anchor.py` (exit 0 intact / 1 tamper / 2 unconfigured).
+**Gate:** ruff · guards 0 · mypy 190 · unit 501 · anchor integ 3 (build + verify clean/rewrite/
+truncation). **Founder wiring:** create a private repo, set `AUDIT_ANCHOR_PATH`, cron a git push.
+**Completes the (a)-(d) follow-up batch.**
+
+## (a) DPDP soft-erase + platform archive — **COMPLETE — merged `a4269d5`, CI green** (2026-08-11)
 
 Branch `feature/mvp-106-dpdp-soft-erase`. Founder decision (supersedes D3 hard-delete): erase now
 **anonymises + retains** business records, and the Growth Operator keeps the original. Migration 041:

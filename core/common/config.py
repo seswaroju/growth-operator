@@ -174,6 +174,10 @@ class Settings(BaseSettings):
     google_ads_customer_id: str | None = Field(default=None)  # e.g. "1234567890" (no dashes)
     google_ads_developer_token: str | None = Field(default=None)  # secret — never commit
     google_ads_access_token: str | None = Field(default=None)  # secret OAuth token — never commit
+    # Audit-chain anchoring (MVP-071). The daily scheduler snapshots each org's audit-chain head to
+    # this append-only file; point it at a checkout of a SEPARATE private git repo (trust isolation
+    # from the app) and have a cron `git commit && push` it. Unset (default) → anchoring is a no-op.
+    audit_anchor_path: str | None = Field(default=None)
     # Fernet key used to encrypt channel credentials (WABA access token) at rest.
     credential_encryption_key: str = Field(default=_DEV_CREDENTIAL_KEY)
     # ed25519 seed (base64, 32 bytes) that signs execution tokens (MVP-066). Prod via SOPS.
