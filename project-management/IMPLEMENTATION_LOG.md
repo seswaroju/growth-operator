@@ -3855,3 +3855,26 @@ up/down/up + RLS · **tests/unit 476** · new integ **6** · billing integ 10 ·
 regressions) · web-ops oxlint clean · tsc 0 · vitest 28 · build ✓. **Security:** operator-plane
 (READ/MANAGE); RLS-scoped; enforcement fails safe (blocks before insert); no secrets/external actions.
 **Next:** create the founder's jewelry-estimation ticket, then OC8 — SLA-by-plan board.
+
+---
+
+## 2026-08-10 — OC8 · SLA-by-plan board (branch `feature/oc8-sla-board`)
+
+Fourth of OC5–OC12. An at-a-glance **SLA board** on the operator support queue: open tickets bucketed
+by SLA state (**breached / about-to-breach / on-track**) with the **response target per plan tier**.
+Builds directly on OC3's plan-aware SLA ranking. **Frontend-only — no backend, no migration.**
+
+- **`web-ops/src/lib/ticketPriority.ts`** (+ tests): `slaBucket(r, atRiskFraction=0.25)` (about-to-
+  breach = open, not breached, ≤25% of the tier's SLA window remaining), `slaBoard` (partition ranked
+  tickets into the three buckets, worst-first preserved), `slaTargets(tierOrder)` (per-tier response
+  target hours + a no-plan fallback). Pure + deterministic.
+- **`web-ops/src/components/SlaBoardCard.tsx`**: three count tiles (danger/warn/good) + a response-
+  target legend; rendered above the queue list in `QueueSection` when there are tickets.
+
+**Requirement → evidence:** `web-ops/src/lib/ticketPriority.test.ts` (3 new) — buckets breached / at-
+risk / on-track and excludes closed; `slaTargets` lists per-tier target + no-plan fallback;
+`atRiskFraction` configurable (50% reclassifies a 2h-left/4h ticket as at-risk).
+
+**Commands:** web-ops oxlint clean · tsc 0 · **vitest 31** (+3) · build ✓ · repo `guards.py` 0 ·
+`ruff .` clean. **Security:** operator-plane read-only view over existing ticket data; no PII beyond
+what the queue already shows; no new endpoints/external actions. **Next:** OC9 — operator alert feed.

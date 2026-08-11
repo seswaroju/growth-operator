@@ -9,6 +9,21 @@ selects and approves the next ticket.
 
 ---
 
+## Operator V2 forecast · OC8 — SLA-by-plan board — **Completed — awaiting founder review** (2026-08-10)
+
+Branch `feature/oc8-sla-board`. An at-a-glance **SLA board** atop the operator support queue:
+open tickets bucketed **breached / about-to-breach / on-track**, plus the **response target per plan
+tier**. Builds on OC3's plan-aware SLA ranking; **frontend-only, no backend/migration**.
+
+- `web-ops/src/lib/ticketPriority.ts` (+tests): `slaBucket` (about-to-breach = ≤25% of the SLA window
+  left, configurable), `slaBoard` (partition), `slaTargets` (per-tier response targets + no-plan
+  fallback). Pure/deterministic.
+- `web-ops/src/components/SlaBoardCard.tsx`: three count tiles (danger/warn/good) + target legend,
+  rendered above the queue list in `QueueSection`.
+
+**Gate:** web-ops oxlint clean · tsc 0 · vitest **31** (+3) · build ✓ · guards 0 · ruff clean.
+**Next:** OC9 — operator alert feed (reuses the churn score).
+
 ## Operator V2 forecast · OC7 — Per-channel budgets & caps — **Merged `7e48627`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc7-channel-budgets`. A **monthly budget per channel per store** vs **month-to-date

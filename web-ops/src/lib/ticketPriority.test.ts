@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  plansByTier, rankTickets, slaHoursForTier, slaStatus, tierRank,
+  plansByTier, rankTickets, slaBoard, slaBucket, slaHoursForTier, slaStatus, slaTargets, tierRank,
 } from "./ticketPriority";
 import type { AdminTicket, BillingPlan, TicketPriority, TicketSeverity, TicketStatus } from "../api";
 
@@ -70,5 +70,45 @@ describe("ticket priority + SLA (OC3)", () => {
     expect(ids).toEqual(["pro-breached", "base-fresh", "none-fresh", "resolved"]);
     expect(ranked[0].sla?.breached).toBe(true);
     expect(ranked[3].open).toBe(false);
+  });
+});
+
+describe("SLA board (OC8)", () => {
+  const order = plansByTier([plan("Pro", 900)]); // Pro → SLA 4h; no-plan fallback → 8h
+  const orgPlan = new Map<string, string | null>([["pro", "Pro"]]);
+  const now = new Date("2026-08-10T12:00:00Z").getTime();
+  const ago = (h: number) => new Date(now - h * HOUR).toISOString();
+  const ranked = (items: AdminTicket[]) => rankTickets(items, orgPlan, order, now);
+
+  it("buckets open tickets: breached / about-to-breach / on-track; closed excluded", () => {
+    const r = ranked([
+      ticket({ id: "breached", org_id: "pro", created_at: ago(10) }), // 4h SLA, 10h old
+      ticket({ id: "atrisk", org_id: "pro", created_at: ago(3.5) }),  // 0.5h left <= 1h (25%)
+      ticket({ id: "ontrack", org_id: "pro", created_at: ago(1) }),   // 3h left
+      ticket({ id: "closed", org_id: "pro", status: "resolved", created_at: ago(10) }),
+    ]);
+    const byId = Object.fromEntries(r.map((x) => [x.ticket.id, x]));
+    expect(slaBucket(byId.breached)).toBe("breached");
+    expect(slaBucket(byId.atrisk)).toBe("at_risk");
+    expect(slaBucket(byId.ontrack)).toBe("on_track");
+    expect(slaBucket(byId.closed)).toBeNull();
+
+    const board = slaBoard(r);
+    expect(board.breached.map((x) => x.ticket.id)).toEqual(["breached"]);
+    expect(board.at_risk.map((x) => x.ticket.id)).toEqual(["atrisk"]);
+    expect(board.on_track.map((x) => x.ticket.id)).toEqual(["ontrack"]);
+  });
+
+  it("slaTargets lists the response target per tier + a no-plan fallback", () => {
+    expect(slaTargets(order)).toEqual([
+      { plan: "Pro", hours: 4 },
+      { plan: "no plan", hours: 8 },
+    ]);
+  });
+
+  it("atRiskFraction is configurable", () => {
+    const r = ranked([ticket({ id: "t", org_id: "pro", created_at: ago(2) })]); // 2h left = 50%
+    expect(slaBucket(r[0])).toBe("on_track");     // default 25%
+    expect(slaBucket(r[0], 0.5)).toBe("at_risk"); // 50%: 2h <= 2h
   });
 });

@@ -8,6 +8,7 @@ import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
 import { planByOrg, plansByTier, rankTickets, type RankedTicket } from "../lib/ticketPriority";
 import { buttonClasses, fieldClasses } from "../lib/ui";
+import SlaBoardCard from "./SlaBoardCard";
 import { Card } from "./ui";
 
 const PRIORITIES: TicketPriority[] = ["low", "normal", "high", "urgent"];
@@ -172,7 +173,9 @@ export default function QueueSection() {
   const breachedCount = ranked.filter((r) => r.sla?.breached).length;
 
   return (
-    <Card className="p-5">
+    <div>
+      {ranked.length > 0 && <SlaBoardCard ranked={ranked} tierOrder={tierOrder} />}
+      <Card className="p-5">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="text-sm font-semibold text-ink">Support queue · all stores</h2>
         <span className="text-xs text-muted">
@@ -191,6 +194,7 @@ export default function QueueSection() {
       ) : (
         <p className="text-sm text-muted">No tickets from any store yet.</p>
       )}
-    </Card>
+      </Card>
+    </div>
   );
 }
