@@ -181,7 +181,10 @@ async def _write_checkpoint(
 ) -> None:
     await redis.set(
         _checkpoint_key(run_id),
-        json.dumps({"cursor": cursor, "state": state, "seq": seq, "steps_taken": steps_taken}),
+        # `default=str` — the checkpointed state may carry UUIDs/datetimes from a tool result
+        # (e.g. catalog.search item ids); they round-trip as strings, which resume consumers coerce.
+        json.dumps({"cursor": cursor, "state": state, "seq": seq, "steps_taken": steps_taken},
+                   default=str),
     )
 
 
@@ -199,9 +202,11 @@ async def _persist_step(
         ),
         {"o": str(org_id), "r": str(run_id), "seq": seq, "node": node,
          "tc": (tool or {}).get("name") if tool else None,
-         "ti": json.dumps((tool or {}).get("input")) if tool else None,
-         "to": json.dumps((tool or {}).get("output")) if tool else None,
-         "st": json.dumps(state)},
+         # Tool i/o + state are an observability snapshot and may carry UUIDs/datetimes (e.g.
+         # catalog.search returns UUID item ids) — `default=str` keeps step persistence robust.
+         "ti": json.dumps((tool or {}).get("input"), default=str) if tool else None,
+         "to": json.dumps((tool or {}).get("output"), default=str) if tool else None,
+         "st": json.dumps(state, default=str)},
     )
     await session.execute(
         text(

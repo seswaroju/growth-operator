@@ -4076,3 +4076,55 @@ asserts the filled metal line `22K · 12.4g × ₹7,320/g: ₹90,768` end-to-end
 
 **Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 184 · **tests/unit 487** (+1) ·
 mediation+pricing integ 18. **JWL-EST-01 is complete** — nothing outstanding.
+
+---
+
+## 2026-08-11 — A1 · End-to-end jewelry journey (≈MVP-097) + 4 core fixes it surfaced (branch `feature/mvp-097-e2e-jewelry-journey`)
+
+The first **full §1-loop** end-to-end test over the **real runtime + mediation proxy + pricing engine**
+(no LLM, no network): a price inquiry → `catalog.search` (grounds on a real catalog piece) →
+`pricing.compute` (writes a quote **+ committed-figures ledger**) → a priced reply that **parks** for
+the owner (≥₹1L quote, tier 2) → **approve** → resume → the reply goes out through the **gated send
+path** and is recorded as an outbound message. Building it against the real spine surfaced **4 real
+production bugs**, each fixed minimally:
+
+**New test**
+- `tests/e2e/test_jewelry_journey.py` (NEW): installs the pack for a fresh org, seeds a 22K rate
+  snapshot + a catalog chain, registers the pricing strategy + WhatsApp creds, recompiles+signs the
+  instance manifest, then drives a deterministic `ConciergeModel` (stateless over `tool_calls_made`)
+  through `start_run` → park → `resume_after_approval`. Asserts: `interrupted` on the priced reply;
+  quote `total_minor == 10097032`; `ledger.match` exact-to-paise (and off-by-one fails closed);
+  one pending `messages.send` tier-2 approval; `succeeded` after approve; a single outbound message
+  `status='sent'` with a provider id and the exact figure `₹1,00,970.32` in the body. Teardown deletes
+  the pack's `approval_policies` (see below), its rate snapshot, and the org (cascades the rest).
+
+**4 core fixes surfaced by the real run**
+- `core/runtime/executor.py`: `_persist_step` + `_write_checkpoint` now `json.dumps(..., default=str)` —
+  tool input/output/state can carry `UUID`s (from `catalog.search`), which crashed JSON serialization.
+- `core/mediation/manifest.py`: added `_NO_TIER_TOOLS = {"pricing.compute"}`. `pricing.compute` computes
+  an internal artefact (a quote + its ledger) and takes no customer-facing action, so it **skips the
+  tier gate** (only the *send* of the result is tier-gated). It is **not** added to the
+  untrusted-narrowing allow-list (a run that ingested external content must not drive a quote). Before
+  this it defaulted to tier 2 and parked before it could even compute the quote.
+- `core/pricing/extract.py`: a bare **UPPERCASE** `K` (`22K`, `18K`) is a grade/purity suffix, not a
+  ₹22,000 magnitude — the money extractor no longer treats it as thousands (lowercase `50k` still does;
+  `₹22K` with a currency marker still does). Without this the karat in a jewelry reply was misread as a
+  phantom figure and blocked the send-path figure gate.
+- `core/pricing/render.py` (already merged `8f375c4` while planning A1): `money()` renders exact paise
+  (`.2f`) so a displayed total equals its ledger row to the minor unit (Gate-5 compatibility).
+
+**Migrations/APIs/events/frontend:** none.
+
+**Requirement → evidence:** `tests/e2e/test_jewelry_journey.py::test_full_journey_quote_park_approve_send`
+(the whole loop). **Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 184 · **tests/unit 487** ·
+`tests/integration/test_send_loop.py` **6 passed** (the pre-existing tier-leak failure resolved once the
+E2E teardown stopped polluting `approval_policies`) · CI e2e job (`test_jewelry_install` + `test_kirana_dryrun`)
+2 passed.
+
+**Known issues (not A1 regressions):** BLOCKER #22 — the tier engine reads `approval_policies` by action
+only (correct for the single-pack MVP; latent for multi-pack) + local-DB pollution from iterative dev
+makes `test_rate_ingestion`/`test_prompt_activation` fail **locally** (CI unaffected — fresh Postgres,
+suites not in the CI `test` job). Both confirmed pre-existing (reproduced with all A1 core changes stashed).
+
+**Next recommended action:** A1b — reconcile the itemized `breakdown_text` per-gram rate line with Gate 5
+(it is not independently ledgered) so the two-step breakdown can also send; then A2 (E2E front + tail).

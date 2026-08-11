@@ -67,6 +67,10 @@ def extract_amounts(text: str) -> list[Figure]:
     for m in _AMOUNT_RE.finditer(text):
         num, frac, mag = m.group("num"), m.group("frac"), m.group("mag")
         has_currency = bool(m.group("cur1") or m.group("cur2"))
+        # "22K"/"18K" is a grade/purity suffix, not ₹22,000: a bare UPPERCASE "K" is not a
+        # thousands magnitude. Lowercase "50k" still is; a currency symbol ("₹22K") forces money.
+        if mag and mag.lower() == "k" and mag.isupper() and not has_currency:
+            mag = None
         if not (has_currency or mag or _is_indian_grouped(num)):
             continue  # a bare number with no money signal — not a figure
         figures.append(Figure(minor=_to_minor(num, frac, mag), raw=m.group(0).strip()))
