@@ -1101,3 +1101,18 @@ store-owner INSERT only, operator-plane SELECT only). `core/customers/dpdp.erase
 `GET /v1/admin/erased-customers/{id}` (operator, `platform.tenants:manage`) retrieves the archive.
 Retained **indefinitely** for the pilot; auto-purge after a window is a later ticket. Resolves BLOCKER
 #24. **Decided by:** Founder (2026-08-11).
+
+---
+
+## 2026-08-11 — Build the Growth Operator control plane (web-ops) — founder-approved scope expansion
+
+**Decision (founder):** build the operator control plane in `web-ops` so the GO CEO runs the business
+directly — create/edit **plans** (seats + features + per-agent LLM + add-ons), **provision stores**
+(+ email owner setup), **wire each store's channels** (paste tokens, v1), **hold LLM keys** centrally
+(default Claude Sonnet, override per agent/store), see **per-store margin** (itemised LLM + each API),
+and **broadcast announcements** to all stores. CLAUDE.md §2 flagged "advanced billing" as
+out-of-scope-unless-approved; this is that approval. Payment stays **external** for v1 (record, don't
+auto-charge — Razorpay entity undecided, BLOCKERS #6). Platform/API charges billed **separately** from
+the monthly plan; **LLM cost is inside the plan** (GO margin). Channels use **token paste** (not OAuth)
+for v1. Full design + ticket plan: `project-management/CONTROL_PLANE_DESIGN.md` (tickets CP-1..CP-7).
+**Decided by:** Founder (2026-08-11).
