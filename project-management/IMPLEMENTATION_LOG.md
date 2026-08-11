@@ -4601,3 +4601,31 @@ and pushed 2026-08-11. **GitHub CI green.** Follow-up batch complete: (c) `525a9
   exist yet (staging un-applied — BLOCKERS #10). So anchoring is **inert but ready**: it no-ops until
   `AUDIT_ANCHOR_PATH` is set at deployment. (Correction: verify runs on the operator host, not a GitHub
   Action — CI can't reach the private DB.)
+
+---
+
+## 2026-08-11 — CP-1 · Plan builder: editable plans with seats + config (branch `feature/cp-1-plan-builder`)
+
+First control-plane ticket. The plan CRUD (create/edit/list, operator-gated) already existed but the
+model was thin (name + price + description + a free-text "features" list). CP-1 makes a plan a real,
+editable **template**: seat limits + functional gating.
+
+- **Migration 042** (`d0841183026c`): `billing_plans` gains `max_managers` / `max_staff` (seats; owner
+  is always 1) + `config jsonb` (functional gating — `agents` on, `channels` allowed, `addons`; `llm`
+  per-agent defaults land in CP-5). Global catalog table (no RLS); writes operator-gated at the API.
+  Verified up/down/up.
+- **`core/billing/service.py`**: `create_plan` / `update_plan` take + persist `max_managers`,
+  `max_staff`, `config`; `_PLAN_COLS` extended.
+- **`core/billing/api.py`**: `PlanCreate` / `PlanUpdate` / `PlanOut` carry the new fields; the existing
+  `POST` / `PATCH /v1/admin/billing/plans` (gated `platform.tenants:manage`) pass them through.
+- **web-ops** (`FinancialSection.tsx` + `lib/plans.ts` + `api.ts`): the plan form now edits seat counts
+  + comma-separated agents / channels / add-ons; `parseCsv`/`csvToText` helpers; `BillingPlan`/
+  `PlanInput`/`PlanConfig` types extended. **Editing already worked** — the founder's "can't edit" was
+  the thin model; now there's real structure to edit.
+
+**Tests:** `test_billing_admin.py::test_create_and_edit_plan_seats_and_config` (create → edit → list
+round-trips seats + config); web-ops `plans.test.ts` (+CSV helpers); fixed a `BillingPlan` test literal.
+**Commands:** ruff · guards 0 · `mypy core` 190 · **tests/unit + billing 512** · alembic up/down/up ·
+web-ops **tsc + oxlint + vitest 42 + build** all green.
+
+**Next:** CP-2 — store provisioning (create store + owner + subscription + email setup link).

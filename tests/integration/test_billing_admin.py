@@ -195,6 +195,40 @@ async def test_create_and_edit_plan_features(scene: Scene) -> None:
     assert row["features"] == ["Google Ads", "Monthly report"] and row["active"] is False
 
 
+async def test_create_and_edit_plan_seats_and_config(scene: Scene) -> None:
+    # CP-1: a plan is a full template — seat limits + functional config (which agents/channels are
+    # on, add-ons) — and it is editable.
+    op = _op(scene.operator)
+    created = await scene.client.post(
+        "/v1/admin/billing/plans", headers=op,
+        json={"name": scene.plan_name, "price_minor": 500_000, "max_managers": 1, "max_staff": 2,
+              "config": {"agents": ["concierge", "nurture"], "channels": ["whatsapp"],
+                         "addons": ["instagram"]}})
+    assert created.status_code == 201, created.text
+    body = created.json()
+    plan_id = body["id"]
+    assert body["max_managers"] == 1 and body["max_staff"] == 2
+    assert body["config"]["agents"] == ["concierge", "nurture"]
+    assert body["config"]["channels"] == ["whatsapp"]
+
+    # edit: bump seats + expand the config (fully editable template)
+    edited = await scene.client.patch(
+        f"/v1/admin/billing/plans/{plan_id}", headers=op,
+        json={"name": scene.plan_name, "price_minor": 750_000, "active": True,
+              "max_managers": 3, "max_staff": 10,
+              "config": {"agents": ["concierge", "nurture", "campaigner"],
+                         "channels": ["whatsapp", "instagram"], "addons": ["instagram", "seo"]}})
+    assert edited.status_code == 200, edited.text
+    e = edited.json()
+    assert e["max_managers"] == 3 and e["max_staff"] == 10
+    assert "campaigner" in e["config"]["agents"] and "seo" in e["config"]["addons"]
+
+    # durable through list
+    listed = (await scene.client.get("/v1/admin/billing/plans", headers=op)).json()
+    row = next(p for p in listed if p["id"] == plan_id)
+    assert row["max_staff"] == 10 and row["config"]["channels"] == ["whatsapp", "instagram"]
+
+
 async def test_edit_plan_404_for_unknown_id(scene: Scene) -> None:
     r = await scene.client.patch(
         f"/v1/admin/billing/plans/{uuid.uuid4()}", headers=_op(scene.operator),

@@ -8,7 +8,7 @@ import {
 } from "../api";
 import { useAuth } from "../auth";
 import { hasPerm } from "../lib/roles";
-import { featuresToText, parseFeatures, rupeesToMinor } from "../lib/plans";
+import { csvToText, featuresToText, parseCsv, parseFeatures, rupeesToMinor } from "../lib/plans";
 import { channelLabel, spendByChannel } from "../lib/spend";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Check } from "./icons";
@@ -53,15 +53,30 @@ function RollupCards({ r }: { r: BillingRollup }) {
 
 interface FormState {
   name: string; priceRupees: string; active: boolean; description: string; featuresText: string;
+  maxManagers: string; maxStaff: string;
+  agentsText: string; channelsText: string; addonsText: string;
 }
 
+const EMPTY_FORM: FormState = {
+  name: "", priceRupees: "", active: true, description: "", featuresText: "",
+  maxManagers: "0", maxStaff: "0", agentsText: "", channelsText: "", addonsText: "",
+};
+
 function toInput(f: FormState): PlanInput {
+  const int = (s: string) => Math.max(0, Math.trunc(Number(s) || 0));
   return {
     name: f.name.trim(),
     price_minor: rupeesToMinor(f.priceRupees),
     active: f.active,
     description: f.description.trim() || null,
     features: parseFeatures(f.featuresText),
+    max_managers: int(f.maxManagers),
+    max_staff: int(f.maxStaff),
+    config: {
+      agents: parseCsv(f.agentsText),
+      channels: parseCsv(f.channelsText),
+      addons: parseCsv(f.addonsText),
+    },
   };
 }
 
@@ -93,6 +108,30 @@ function PlanForm({ initial, submitLabel, onSubmit, onCancel, pending, error }: 
       <textarea value={f.featuresText} onChange={(e) => set({ featuresText: e.target.value })} rows={4}
         placeholder={"What's included — one per line\ne.g. WhatsApp campaigns + ghost-recovery"}
         className={fieldClasses("w-full resize-y text-xs")} />
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1.5 text-xs text-ink-2">
+          Managers
+          <input value={f.maxManagers} inputMode="numeric"
+            onChange={(e) => set({ maxManagers: e.target.value.replace(/\D/g, "") })}
+            className={fieldClasses("w-16 py-1.5 text-xs")} />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-ink-2">
+          Staff
+          <input value={f.maxStaff} inputMode="numeric"
+            onChange={(e) => set({ maxStaff: e.target.value.replace(/\D/g, "") })}
+            className={fieldClasses("w-16 py-1.5 text-xs")} />
+        </label>
+        <span className="text-xs text-muted">seats (owner is always 1)</span>
+      </div>
+      <input value={f.agentsText} onChange={(e) => set({ agentsText: e.target.value })}
+        placeholder="Agents on — comma separated (e.g. concierge, nurture, campaigner)"
+        className={fieldClasses("w-full py-1.5 text-xs")} />
+      <input value={f.channelsText} onChange={(e) => set({ channelsText: e.target.value })}
+        placeholder="Channels allowed — comma separated (e.g. whatsapp, instagram, google)"
+        className={fieldClasses("w-full py-1.5 text-xs")} />
+      <input value={f.addonsText} onChange={(e) => set({ addonsText: e.target.value })}
+        placeholder="Add-ons — comma separated (e.g. instagram, seo)"
+        className={fieldClasses("w-full py-1.5 text-xs")} />
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
         <button type="submit" disabled={pending || !f.name.trim() || !f.priceRupees}
@@ -123,6 +162,9 @@ function PlanRow({ token, plan, canManage }:
           initial={{
             name: plan.name, priceRupees: String(plan.price_minor / 100), active: plan.active,
             description: plan.description ?? "", featuresText: featuresToText(plan.features),
+            maxManagers: String(plan.max_managers), maxStaff: String(plan.max_staff),
+            agentsText: csvToText(plan.config.agents), channelsText: csvToText(plan.config.channels),
+            addonsText: csvToText(plan.config.addons),
           }}
           submitLabel="Save changes"
           onSubmit={(f) => update.mutate(f)}
@@ -176,8 +218,10 @@ function PlansPanel({ token, canManage }: { token: string; canManage: boolean })
   const create = useMutation({
     mutationFn: (f: FormState) => {
       const inp = toInput(f);
-      return adminCreatePlan(token, inp.name, inp.price_minor,
-        { description: inp.description, features: inp.features });
+      return adminCreatePlan(token, inp.name, inp.price_minor, {
+        description: inp.description, features: inp.features,
+        max_managers: inp.max_managers, max_staff: inp.max_staff, config: inp.config,
+      });
     },
     onSuccess: () => { setCreating(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
   });
@@ -202,7 +246,7 @@ function PlansPanel({ token, canManage }: { token: string; canManage: boolean })
         <div className="mt-3 rounded-xl border border-line bg-raised p-3">
           <div className="mb-2 text-xs font-semibold text-muted">New plan</div>
           <PlanForm
-            initial={{ name: "", priceRupees: "", active: true, description: "", featuresText: "" }}
+            initial={EMPTY_FORM}
             submitLabel="Create plan"
             onSubmit={(f) => create.mutate(f)}
             onCancel={() => setCreating(false)}

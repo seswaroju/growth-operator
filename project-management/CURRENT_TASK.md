@@ -9,6 +9,16 @@ selects and approves the next ticket.
 
 ---
 
+## CP-1 · Plan builder (editable plans + seats + config) — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-1-plan-builder`. First control-plane ticket. Migration 042: `billing_plans` gains
+`max_managers`/`max_staff` seats + `config` jsonb (agents/channels/addons gating; LLM in CP-5). Service
++ API (`POST`/`PATCH /v1/admin/billing/plans`, operator-gated) carry the new fields. web-ops plan form
+(FinancialSection) now edits seats + agents/channels/addons — the founder's "can't edit" was the thin
+model; editing already worked. **Gate:** ruff · guards 0 · mypy 190 · unit+billing 512 · alembic
+up/down/up · web-ops tsc+lint+vitest 42+build. Next: CP-2 store provisioning.
+
+
 ## (d) MVP-071 · Audit-chain anchoring — **COMPLETE — merged `fbb7498`, CI green** (2026-08-11)
 
 Branch `feature/mvp-071-audit-anchoring`. External tamper-evidence for the per-org audit hash chains.

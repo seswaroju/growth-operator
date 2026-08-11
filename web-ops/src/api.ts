@@ -291,6 +291,13 @@ export interface BillingRollup {
   active_clients: number;
 }
 
+// Functional gating a plan turns on (CP-1). `llm` (per-agent model defaults) arrives in CP-5.
+export interface PlanConfig {
+  agents?: string[];
+  channels?: string[];
+  addons?: string[];
+}
+
 export interface BillingPlan {
   id: string;
   name: string;
@@ -298,6 +305,9 @@ export interface BillingPlan {
   active: boolean;
   description: string | null;
   features: string[];
+  max_managers: number;
+  max_staff: number;
+  config: PlanConfig;
   created_at: string;
 }
 
@@ -307,6 +317,9 @@ export interface PlanInput {
   active: boolean;
   description: string | null;
   features: string[];
+  max_managers: number;
+  max_staff: number;
+  config: PlanConfig;
 }
 
 export interface Subscription {
@@ -351,13 +364,18 @@ export function adminListPlans(token: string): Promise<BillingPlan[]> {
 
 export function adminCreatePlan(
   token: string, name: string, priceMinor: number,
-  extra?: { description?: string | null; features?: string[] },
+  extra?: {
+    description?: string | null; features?: string[];
+    max_managers?: number; max_staff?: number; config?: PlanConfig;
+  },
 ): Promise<BillingPlan> {
   return authed<BillingPlan>("/v1/admin/billing/plans", token, {
     method: "POST",
     body: JSON.stringify({
       name, price_minor: priceMinor,
       description: extra?.description ?? null, features: extra?.features ?? [],
+      max_managers: extra?.max_managers ?? 0, max_staff: extra?.max_staff ?? 0,
+      config: extra?.config ?? {},
     }),
   });
 }
