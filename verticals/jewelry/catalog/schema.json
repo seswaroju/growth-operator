@@ -20,7 +20,11 @@
                   "x-index": true, "x-search": true},
     "design_style": {"type": "string", "x-search": true},
     "size":      {"type": "string"},
-    "made_to_order_days": {"type": "integer", "minimum": 1, "maximum": 60}
+    "made_to_order_days": {"type": "integer", "minimum": 1, "maximum": 60},
+    "labor_per_g_minor": {"type": "integer", "minimum": 0, "default": 0,
+                          "x-unit": "minor/g", "description": "Per-gram labor charge; 0 = none"},
+    "tax_applicable":    {"type": "boolean", "default": true,
+                          "description": "Whether this item carries CGST/SGST on quotes"}
   },
   "required": ["category","metal","purity","gross_weight_g","net_weight_g"],
   "constraints": [

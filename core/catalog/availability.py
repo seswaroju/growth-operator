@@ -48,14 +48,27 @@ class ItemNotFound(Exception):
 
 
 def _input_refs(formula: str) -> set[str]:
-    """The `inputs.<field>` / `inputs['field']` names a single formula reads."""
+    """The `inputs.<field>` / `inputs['field']` / `inputs.get('field', …)` names a formula reads."""
     tree = ast.parse(to_python(formula), mode="eval")
     refs: set[str] = set()
     for node in ast.walk(tree):
+        # inputs.get('field', default) — the field is the first (string) arg, not the method name.
         if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "inputs"
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            refs.add(node.args[0].value)
+        elif (
             isinstance(node, ast.Attribute)
             and isinstance(node.value, ast.Name)
             and node.value.id == "inputs"
+            and node.attr != "get"  # the .get() method itself is not a field
         ):
             refs.add(node.attr)
         elif (

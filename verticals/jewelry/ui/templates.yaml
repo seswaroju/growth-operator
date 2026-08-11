@@ -2,7 +2,7 @@ copy_slots:
   catalog_noun: {en-IN: "designs", hi-IN: "designs", te-IN: "డిజైన్లు"}
   visit_verb:   {en-IN: "visit the store", hi-IN: "showroom aayiye", te-IN: "స్టోర్‌కి రండి"}
 catalog_editor:
-  field_order: [media, title, category, metal, purity, gross_weight_g, net_weight_g, stone_details, huid, occasion, gender, made_to_order_days]
+  field_order: [media, title, category, metal, purity, gross_weight_g, net_weight_g, labor_per_g_minor, tax_applicable, stone_details, huid, occasion, gender, made_to_order_days]
   photo_first: true
   confidence_highlight: true
 commitment_card:                         # quote render (WhatsApp + dashboard preview identical)
@@ -10,9 +10,11 @@ commitment_card:                         # quote render (WhatsApp + dashboard pr
   rows:
     - {label_from: breakdown.metal_value.label, amount: breakdown.metal_value}
     - {label: "Making charges", amount: breakdown.making}
+    - {label: "Labor charges", amount: breakdown.labor, hide_if_zero: true}
     - {label: "Stones", amount: breakdown.stones, hide_if_zero: true}
     - {label: "Discount", amount: breakdown.discount, hide_if_zero: true, negative: true}
-    - {label: "GST (3%)", amount: breakdown.gst}
+    - {label: "CGST (1.5%)", amount: breakdown.cgst, hide_if_zero: true}
+    - {label: "SGST (1.5%)", amount: breakdown.sgst, hide_if_zero: true}
   total_row: {label: "Total", amount: breakdown.total, emphasize: true}
   footer: "Valid till {valid_until_local} · {purity} hallmarked{huid_suffix}"
 dashboard_widgets:

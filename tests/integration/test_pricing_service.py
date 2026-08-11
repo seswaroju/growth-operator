@@ -148,7 +148,7 @@ async def test_ledger_written_and_every_figure_matchable(env: Env) -> None:
                 {"i": str(qid)},
             )
         ).scalar_one()
-        assert n == 5  # total + metal_value + making + subtotal + gst (zero lines excluded)
+        assert n == 6  # total + metal_value + making + subtotal + cgst + sgst (zero lines excluded)
         assert await ledger.match(s, env.org, EXPECTED_TOTAL)
         assert await ledger.match(s, env.org, EXPECTED_METAL)
         assert not await ledger.match(s, env.org, EXPECTED_TOTAL + 1)  # off-by-one fails closed

@@ -1,6 +1,6 @@
 # Ticket JWL-EST-01 — Jewelry-style customer estimation (itemized), not a flat price
 
-**Status:** **Fully spec'd** (founder answered all questions 2026-08-10) — **ready to build**. Parked until the founder schedules it (default: after the OC5–OC12 run).
+**Status:** **Phase 1 (pricing config) DONE** (2026-08-10, branch `feature/jwl-est-01-pricing-config`) — CGST/SGST split, per-gram labor, `tax_applicable` + owner waiver, catalog fields, quote-card rows, engine goldens. **Phase 2 (two-step grounded draft) not started** — needs founder go.
 **Track:** Jewelry vertical pack (L1) + catalog + customer-facing draft. **Not** operator-console (OC).
 
 ---

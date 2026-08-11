@@ -9,7 +9,26 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC12 — Invoices/statements from charges — **Completed — awaiting founder review** (2026-08-10) — **OC5–OC12 TRACK COMPLETE**
+## JWL-EST-01 · Jewelry estimation — **Phase 1 (pricing config) COMPLETE — awaiting founder review** (2026-08-10)
+
+Branch `feature/jwl-est-01-pricing-config`. The declarative, golden-tested half of the jewelry
+itemized estimate. **No engine rewrite** (the DSL already supports ternaries + `inputs.get(default)`).
+
+- **`verticals/jewelry/pricing/strategy.yaml`**: split `gst` → **`cgst` + `sgst`** (1.5% each,
+  independent rounding); new **`labor`** stage = `net_weight_g × labor_per_g_minor` (on top of making);
+  CGST/SGST applied only when `tax_applicable` AND `apply_tax` (owner waiver) — both via `inputs.get`
+  defaults so existing callers are unaffected; input_schema + `breakdown_labels` + `tax_rules` updated.
+- **`verticals/jewelry/catalog/schema.json`**: per-item `labor_per_g_minor` (₹/g, default 0) +
+  `tax_applicable` (default true). **`ui/templates.yaml`**: labor/CGST/SGST quote rows (hide-if-zero).
+- **`core/catalog/availability.py`**: `_input_refs` now understands `inputs.get('field', …)` (generic;
+  labor + tax flags correctly register as price inputs). Docs (`pack.md`, `concierge.md`) updated.
+
+**Gate:** ruff · guards 0 · mypy 183 · **tests/unit 480** (+4 engine: labor on-top-of-making, CGST==SGST,
+tax-not-applicable, owner-waiver; pg001 → CGST/SGST split; availability deps/stages) · pricing+pack
+integ 49. Total unchanged where taxable (147044+147044 = old 294088). **Next: JWL-EST-01 phase 2** —
+two-step draft (price → itemized breakdown on request), grounded + approval-gated (needs founder go).
+
+## Operator V2 forecast · OC12 — Invoices/statements from charges — **Merged `988155e`, CI green — awaiting founder review** (2026-08-10) — **OC5–OC12 TRACK COMPLETE**
 
 Branch `feature/oc12-invoices`. A **monthly invoice per store** generated on the fly from recorded
 `billing_charges` — one immutable statement per store-month, **deterministic number** `{STORE}-INV-{YYMM}`,
