@@ -32,6 +32,11 @@ from core.common.config import get_settings
 MANIFEST_VERSION = 3
 UNTRUSTED_FLAGS = ["web_fetch", "file_ingest", "forwarded_content"]
 _READ_ONLY_SUFFIXES = (".read", ".search")
+# Tools that COMPUTE an internal artefact (e.g. a quote + its ledger rows) but take no customer-
+# facing/committing action — no approval to run (only the SEND of the result is tier-gated), so they
+# skip the tier gate. Unlike read-only tools they are NOT auto-added to the untrusted-narrowing
+# allow-list: a run that ingested external content must not drive a quote from bad input.
+_NO_TIER_TOOLS = frozenset({"pricing.compute"})
 
 
 def _seed() -> bytes:
@@ -84,7 +89,9 @@ def compile_manifest(
         tool: dict[str, Any] = {"name": name}
         if _is_read_only(name):
             tool["read_only"] = True
-            read_only_names.append(name)
+            read_only_names.append(name)  # usable under untrusted-content narrowing
+        elif name in _NO_TIER_TOOLS:
+            tool["read_only"] = True  # skip the tier gate, but NOT untrusted-narrowing-safe
         else:
             tool["requires_tier_eval"] = True
         if grant.get("rate_limit"):

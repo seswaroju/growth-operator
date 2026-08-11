@@ -9,6 +9,35 @@ selects and approves the next ticket.
 
 ---
 
+## A1 · End-to-end jewelry journey (≈MVP-097) — **COMPLETE — awaiting founder review** (2026-08-11)
+
+First item of the founder's 4-track plan (E2E journey → multi-channel/ads → autonomy volume-knob →
+CRM depth). Branch `feature/mvp-097-e2e-jewelry-journey`. The first full **§1-loop** test over the
+**real** runtime + mediation proxy + pricing engine (no LLM/network): inquiry → `catalog.search`
+(grounds) → `pricing.compute` (quote **+ ledger**) → priced reply **parks** (≥₹1L, tier 2) → owner
+**approves** → resume → **gated send** records the outbound message. Building it on the real spine
+surfaced and fixed **4 production bugs**:
+
+- `core/runtime/executor.py` — `_persist_step`/`_write_checkpoint` `json.dumps(default=str)` (UUIDs from
+  `catalog.search` crashed serialization).
+- `core/mediation/manifest.py` — `_NO_TIER_TOOLS={"pricing.compute"}`: computing a quote skips the tier
+  gate (only the *send* is gated), and is **not** untrusted-narrowing-safe. It was parking before it
+  could compute.
+- `core/pricing/extract.py` — a bare UPPERCASE `K` (`22K`) is a purity suffix, not ₹22,000 (lowercase
+  `50k` / `₹22K` still money). Fixed a phantom figure that blocked the send-path figure gate.
+- `core/pricing/render.py` — `money()` exact paise (merged `8f375c4`).
+
+**New test:** `tests/e2e/test_jewelry_journey.py` (park → approve → send-once, quote ledgered exact-to-paise,
+teardown clears its pack's `approval_policies` — see BLOCKER #22).
+
+**Gate:** ruff `All checks passed!` · guards 0 · `mypy core` 184 · **tests/unit 487** ·
+`test_send_loop` 6 passed · CI e2e (`test_jewelry_install`+`test_kirana_dryrun`) 2 passed. Pre-existing,
+non-A1 local failures (`test_rate_ingestion`/`test_prompt_activation` — DB pollution) and the latent
+multi-pack tier scoping are recorded in **BLOCKER #22**; CI is unaffected (fresh Postgres).
+
+**Next (awaiting founder):** A1b (ledger the itemized breakdown per-gram rate for Gate 5), then A2
+(E2E front webhook→planner + tail order→ROI/attribution).
+
 ## JWL-EST-01 · Jewelry estimation — **Phase 2 (two-step grounded draft) COMPLETE — awaiting founder review** (2026-08-10)
 
 Branch `feature/jwl-est-02-two-step-draft`. The concierge now delivers the estimate in **two steps**,
