@@ -4162,3 +4162,7 @@ predicate the send gate applies), proving the whole two-step breakdown can now g
 
 **Next recommended action:** A2 — extend the E2E to the **front** (webhook → normalizer →
 `msg.received` → planner routes to concierge) and the **tail** (order → ROI/attribution).
+
+**Merge/push:** branch `feature/mvp-097b-breakdown-rate-ledger` (commit `6bb2c0f`) merged `--no-ff`
+into `main` as `1304059` and pushed 2026-08-11. **GitHub CI green** (run 31509955394 — test · lint ·
+migrate · isolation · evals · secret-scan all success).
