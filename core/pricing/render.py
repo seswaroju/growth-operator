@@ -9,9 +9,19 @@ verbatim, so a customer only ever sees exact ledgered figures (§18), never an i
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 TOTAL_ID = "total"
+
+_WS = re.compile(r"\s+")
+
+
+class _SafeMap(dict):
+    """A format map that drops unknown placeholders (e.g. a `{metal}` the caller didn't supply)."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
 
 
 def money(minor: int, currency: str = "INR") -> str:
@@ -20,13 +30,22 @@ def money(minor: int, currency: str = "INR") -> str:
     return ("₹" + f"{major:,.0f}") if currency == "INR" else f"{major:,.0f} {currency}"
 
 
-def line_label(line_id: str, labels: dict[str, str]) -> str:
-    """A line's label from the pack config; a placeholder template or missing label falls back to a
-    humanized id (the concierge narrates weight/purity from the catalog, not from here)."""
+def line_label(
+    line_id: str, labels: dict[str, str], context: dict[str, str] | None = None
+) -> str:
+    """A line's label from the pack config. A templated label (e.g. a metal line
+    `{purity} {metal} · {net_weight_g}g × ₹{rate}/g`) is filled from `context` — unknown
+    placeholders drop out and whitespace collapses, so "22K · 12.4g × ₹7,320/g" renders even
+    without `{metal}`.
+    No context (or no label) → a humanized id. All values are data; core carries no domain nouns."""
     label = labels.get(line_id)
-    if label and "{" not in label:  # skip templated labels (e.g. the metal line) — humanize instead
-        return label
-    return line_id.replace("_", " ").capitalize()
+    if not label:
+        return line_id.replace("_", " ").capitalize()
+    if "{" in label:
+        if context is None:
+            return line_id.replace("_", " ").capitalize()
+        return _WS.sub(" ", label.format_map(_SafeMap(context))).strip()
+    return label
 
 
 def render_price_line(
@@ -43,6 +62,7 @@ def render_breakdown(
     breakdown: list[dict[str, Any]], labels: dict[str, str], *,
     currency: str = "INR", valid_label: str | None = None,
     negative_ids: tuple[str, ...] = ("discount",),
+    label_context: dict[str, str] | None = None,
 ) -> str:
     """The itemized estimate: one labelled line per non-zero component, then the total (+ validity).
     Zero lines (no stones / no labor / no discount / waived tax) are hidden. `negative_ids` are
@@ -58,7 +78,8 @@ def render_breakdown(
         if amount == 0:
             continue
         sign = "−" if (rid in negative_ids or amount < 0) else ""  # a discount reduces the total
-        lines.append(f"{line_label(rid, labels)}: {sign}{money(abs(amount), currency)}")
+        label = line_label(rid, labels, label_context)
+        lines.append(f"{label}: {sign}{money(abs(amount), currency)}")
     lines.append(f"Total: {money(total, currency)}")
     if valid_label:
         lines.append(f"Valid till {valid_label}")

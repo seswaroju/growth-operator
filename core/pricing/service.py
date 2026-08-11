@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -133,6 +134,26 @@ async def compute_quote(
     return quote_id
 
 
+def _label_context(inputs: dict[str, Any], breakdown: list[dict[str, Any]]) -> dict[str, str]:
+    """Values for templated breakdown labels (a metal line `… {net_weight_g}g × ₹{rate}/g`) from the
+    quote's stored inputs + the per-gram rate derived from that line (amount ÷ weight). All generic
+    string data; unknown placeholders (e.g. `{metal}`) simply drop out of the label."""
+    ctx: dict[str, str] = {
+        k: str(v) for k, v in inputs.items() if not isinstance(v, (list, dict))
+    }
+    metal = next((r for r in breakdown if str(r["id"]) == "metal_value"), None)
+    weight = inputs.get("net_weight_g")
+    if metal is not None and weight is not None:
+        try:
+            grams = Decimal(str(weight))
+            if grams > 0:
+                rate_minor = int(Decimal(int(metal["amount_minor"])) / grams)
+                ctx["rate"] = f"{rate_minor // 100:,}"  # per-gram rate in whole units, grouped
+        except (ArithmeticError, ValueError):
+            pass
+    return ctx
+
+
 async def quote_presentation(
     session: AsyncSession, org_id: UUID, quote_id: UUID
 ) -> dict[str, Any]:
@@ -143,7 +164,8 @@ async def quote_presentation(
     row = (
         await session.execute(
             text(
-                "SELECT q.breakdown, q.total_minor, q.currency, q.valid_until, s.rules AS strat "
+                "SELECT q.breakdown, q.total_minor, q.currency, q.valid_until, q.inputs, "
+                " s.rules AS strat "
                 "FROM quotes q JOIN pricing_strategies s ON s.id = q.strategy_id "
                 "WHERE q.id = :id AND q.org_id = :o"
             ),
@@ -157,13 +179,15 @@ async def quote_presentation(
     valid_label = row["valid_until"].strftime("%d %b %Y") if row["valid_until"] else None
     total = int(row["total_minor"])
     breakdown = list(row["breakdown"])
+    stored_inputs = dict(row["inputs"] or {}).get("inputs", {})
     return {
         "quote_id": str(quote_id),
         "total_minor": total,
         "currency": currency,
         "price_line": render.render_price_line(total, currency=currency, valid_label=valid_label),
         "breakdown_text": render.render_breakdown(
-            breakdown, labels, currency=currency, valid_label=valid_label),
+            breakdown, labels, currency=currency, valid_label=valid_label,
+            label_context=_label_context(stored_inputs, breakdown)),
     }
 
 

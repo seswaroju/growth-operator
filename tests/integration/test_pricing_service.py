@@ -173,6 +173,8 @@ async def test_quote_presentation_is_two_step_and_grounded(env: Env) -> None:
     assert "CGST" not in pres["price_line"] and "Making" not in pres["price_line"]
     # Step 2 — the itemized breakdown carries the split + making, exact to the ledger.
     bd = pres["breakdown_text"]
+    # metal line label filled with karat + grams + derived rate (9076800 ÷ 12.4 = ₹7,320/g)
+    assert "22K · 12.4g × ₹7,320/g: ₹90,768" in bd
     assert "Making charges: ₹7,261" in bd
     assert "CGST (1.5%): ₹1,470" in bd and "SGST (1.5%): ₹1,470" in bd  # 147044 → ₹1,470
     assert bd.splitlines()[-1].startswith("Valid till")

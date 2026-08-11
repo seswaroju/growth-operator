@@ -1,6 +1,9 @@
 # Ticket JWL-EST-01 — Jewelry-style customer estimation (itemized), not a flat price
 
-**Status:** **Phase 1 DONE** (`f325c86`) + **Phase 2 DONE** (branch `feature/jwl-est-02-two-step-draft`) — the quote tool now returns a deterministic two-step presentation (`price_line` + `breakdown_text`) the concierge relays verbatim, and the concierge quote layer is a price-first / breakdown-on-request flow. **Ticket essentially complete** (remaining polish: fill the metal-line label with grams/karat — a nice-to-have, since the concierge already narrates those from the catalog).
+**Status:** **COMPLETE.** Phase 1 (`f325c86`) + Phase 2 (`0d70209`) + the metal-line polish (branch
+`feature/jwl-est-02b-metal-line`): the itemized breakdown's metal line now renders **`22K · 12.4g ×
+₹7,320/g: ₹90,768`** — karat + grams + the per-gram rate (derived from the ledgered amount ÷ weight),
+filled generically from the strategy's label template. Nothing outstanding.
 **Track:** Jewelry vertical pack (L1) + catalog + customer-facing draft. **Not** operator-console (OC).
 
 ---
