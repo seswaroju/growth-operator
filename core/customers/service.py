@@ -27,7 +27,7 @@ async def list_customers(session: AsyncSession, org_id: UUID) -> list[dict[str, 
                        (SELECT count(*) FROM leads l WHERE l.contact_id = ct.id)  AS lead_count,
                        (SELECT count(*) FROM orders o WHERE o.contact_id = ct.id) AS order_count
                 FROM contacts ct
-                WHERE ct.org_id = :o
+                WHERE ct.org_id = :o AND ct.erased_at IS NULL
                 ORDER BY ct.created_at DESC
                 LIMIT 200
                 """

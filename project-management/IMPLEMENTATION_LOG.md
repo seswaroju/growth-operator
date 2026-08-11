@@ -4515,3 +4515,37 @@ integration: only the pre-existing #22b local-pollution errors remain, unrelated
 recorded in DECISIONS.
 
 **Next recommended action:** (a) DPDP soft-erase (anonymize + platform-only archive) + (d) MVP-071 anchoring.
+
+---
+
+## 2026-08-11 — (a) DPDP soft-erase + platform-only archive (branch `feature/mvp-106-dpdp-soft-erase`)
+
+Founder decision (supersedes the D3 hard-delete): a store owner's "erase customer" **anonymises +
+retains business records**, and the Growth Operator keeps the original for data requests.
+
+- **Migration 041** (`b2364e283f55`): `contacts.erased_at` (tombstone) + `erased_customer_archive`
+  (id, org_id→CASCADE, contact_id, erased_at, erased_by, reason, data jsonb). **Split RLS** — a
+  `p_archive_ins` INSERT policy scoped to the org (so the store owner writes their own during the
+  erase) + a `p_archive_admin_read` SELECT policy gated on `app.platform_admin='on'` (only the operator
+  plane reads). Append-only (no UPDATE/DELETE policy). Verified up → column + table + 2 policies; down
+  → dropped; re-up clean.
+- **`core/customers/dpdp.py`**: `erase_customer(... reason=…)` now soft-erases — archive the full
+  record → audit `dsr.fulfilled` (no PII) → delete message bodies (FK-safe: nothing references
+  `messages`; `quotes`/`agent_runs` reference `conversations` with `NO ACTION`, so conversation shells
+  stay) + notes + tags → anonymise the contact (null PII, stamp `erased_at`), keeping the row so
+  orders/leads/revenue stay linked. New `get_erased_archive` (operator-only via RLS).
+- **`core/customers/service.py`**: the customer **list excludes** erased contacts (`erased_at IS NULL`).
+- **`core/tenancy/platform_router.py`**: `GET /v1/admin/erased-customers/{contact_id}` (gated
+  `platform.tenants:manage`) returns the archived original for a data request.
+
+**Tests (`tests/integration/test_customer_dpdp.py`):** reworked to soft-erase — contact anonymised +
+tombstoned, messages/notes/tags gone, **orders + leads retained**, `dsr.fulfilled` audited without PII,
+the archive holds the real original PII; **new** RLS split test — the store owner's session gets
+`None` from the archive while an `admin_scoped_session` (operator) retrieves it.
+
+**Migrations/APIs/events/frontend:** migration 041; 1 new operator route; customer-list query change.
+**Commands:** ruff `All checks passed!` · guards 0 · `mypy core` 189 · **tests/unit 498** · alembic
+up/down/up · customer integ 12 · admin-plane suites green · full integration sweep 533 (only #22b
+pollution). Resolves BLOCKER #24; recorded in DECISIONS.
+
+**Next recommended action:** (d) MVP-071 audit anchoring.
