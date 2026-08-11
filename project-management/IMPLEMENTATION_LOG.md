@@ -4589,3 +4589,15 @@ host, set `GROWTH_OPERATOR_AUDIT_ANCHOR_PATH=<clone>/anchors.jsonl`, and add a c
 **Merge/push:** branch `feature/mvp-071-audit-anchoring` merged `--no-ff` into `main` as `fbb7498`
 and pushed 2026-08-11. **GitHub CI green.** Follow-up batch complete: (c) `525a986`, (b) `3a6d112`,
 (a) `a4269d5`, (d) `fbb7498`.
+
+## 2026-08-11 — (d) MVP-071 follow-up: anchor repo created + operator runbook
+
+- **Private anchor store created:** `git@github.com:seswaroju/growth-operator-audit-anchors.git`
+  (private, separate from the app for trust isolation; seeded with a README + empty `anchors.jsonl`).
+- **`infra/AUDIT_ANCHORING.md`** (NEW): the go-live wiring runbook — clone on the scheduler host, set
+  `GROWTH_OPERATOR_AUDIT_ANCHOR_PATH`, cron the 02:10 UTC `git commit && push`, and verify with
+  `make verify-anchor`.
+- **Go-live dependency:** the clone/env/cron steps run on a **deployed scheduler host**, which does not
+  exist yet (staging un-applied — BLOCKERS #10). So anchoring is **inert but ready**: it no-ops until
+  `AUDIT_ANCHOR_PATH` is set at deployment. (Correction: verify runs on the operator host, not a GitHub
+  Action — CI can't reach the private DB.)
