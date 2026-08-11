@@ -3,6 +3,7 @@ import { Link, Outlet } from "@tanstack/react-router";
 import { useAuth } from "../auth";
 import { ROLE_LABEL, hasPerm } from "../lib/roles";
 import { Mark, SignOut } from "./icons";
+import OperatorBell from "./OperatorBell";
 
 const navLink =
   "relative rounded-md px-2.5 py-1.5 text-[13px] text-ink-2 hover:bg-line-2 transition-colors";
@@ -70,6 +71,7 @@ export default function Shell() {
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            {hasPerm(permissions, "platform.tenants:read") && <OperatorBell />}
             <span className="rounded-lg bg-accent-soft px-2.5 py-1 text-[11px] font-semibold text-accent-ink">
               {ROLE_LABEL[role] ?? role}
             </span>
