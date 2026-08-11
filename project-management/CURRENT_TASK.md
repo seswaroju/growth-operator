@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## Operator V2 forecast · OC7 — Per-channel budgets & caps — **Completed — awaiting founder review** (2026-08-10)
+## Operator V2 forecast · OC7 — Per-channel budgets & caps — **Merged `7e48627`, CI green — awaiting founder review** (2026-08-10)
 
 Branch `feature/oc7-channel-budgets`. A **monthly budget per channel per store** vs **month-to-date
 spend**; when a budget is **enforced**, a charge that would exceed the cap is **blocked** with the
