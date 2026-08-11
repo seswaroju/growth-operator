@@ -66,7 +66,11 @@ AUTONOMY_LADDER: tuple[str, ...] = ("off", "draft_only", "suggest", "auto")
 
 PLATFORM_DEFAULTS: dict[str, PlatformDefault] = {
     "reply.tone": PlatformDefault("warm", schema_ref="core.reply_tone"),
+    # Quiet-hours window (local time). Inside [start, end) customer-bound sends don't go out on
+    # their own — the workflow guard blocks a scheduled send; the autonomy overlay parks a live send
+    # as a draft (C2). Default 21:00 → 08:00. Evaluated in the org's own timezone.
     "quiet_hours.start": PlatformDefault("21:00", schema_ref="core.time"),
+    "quiet_hours.end": PlatformDefault("08:00", schema_ref="core.time"),
     # Autonomy "volume knob" (Ticket 3.6). The owner **free-dials** how much the assistant handles
     # on its own, per capability — `tighten_only=False` supersedes the old tighten-only rule
     # (DECISIONS 2026-08-06): loosening no longer needs an earned trust threshold. Default `auto`

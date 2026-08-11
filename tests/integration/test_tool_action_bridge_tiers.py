@@ -57,6 +57,11 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'TB')", org)
+        # Disable quiet hours (empty window) so the auto-send tier assertions are clock-independent.
+        await conn.execute(
+            "INSERT INTO tenant_settings (org_id, key, value, schema_ref, version) VALUES "
+            "($1,'quiet_hours.start','\"00:00\"'::jsonb,'core.time',1),"
+            "($1,'quiet_hours.end','\"00:00\"'::jsonb,'core.time',1)", org)
         pack_id = await conn.fetchval(
             "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
             "status) VALUES ('jewelry',$1,'>=1','{}'::jsonb,'u','s','published') RETURNING id",

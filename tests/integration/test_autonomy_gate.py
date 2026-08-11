@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import pytest
@@ -46,6 +48,13 @@ async def org() -> AsyncIterator[uuid.UUID]:
         await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'Auton')", o)
     finally:
         await conn.close()
+    # Disable quiet hours by default (empty window) so the capability/threshold tests are isolated
+    # from the wall clock; the quiet-hours tests below set their own windows.
+    factory = dbmod.get_sessionmaker()
+    async with factory() as s:
+        await svc.write_setting(s, org_id=o, key="quiet_hours.start", value="00:00")
+        await svc.write_setting(s, org_id=o, key="quiet_hours.end", value="00:00")
+        await s.commit()
     yield o
     conn = await asyncpg.connect(_dsn())
     try:
@@ -139,6 +148,31 @@ async def test_value_threshold_default_zero_is_noop(org: uuid.UUID) -> None:
 async def test_value_threshold_ignored_when_no_amount(org: uuid.UUID) -> None:
     # A plain reply carries no amount → the threshold never triggers, even when dialled low.
     await _set(org, "autonomy.messaging.threshold_minor", 100)
+    assert await _floor(org, "messages.send", {"body": "Namaste"}) == 0
+
+
+# ---- quiet-hours draft-only (C2) --------------------------------------------
+# The org's default timezone is Asia/Kolkata; build windows around *its* current time so the tests
+# are deterministic regardless of when they run (the ±window handles the midnight wrap).
+
+def _hm(dt: datetime) -> str:
+    return dt.strftime("%H:%M")
+
+
+async def test_quiet_hours_parks_customer_send(org: uuid.UUID) -> None:
+    # A window centred on "now" (now-1h .. now+1h) always contains now → a messaging send parks,
+    # even though messaging is on auto (draft-only).
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    await _set(org, "quiet_hours.start", _hm(now - timedelta(hours=1)))
+    await _set(org, "quiet_hours.end", _hm(now + timedelta(hours=1)))
+    assert await _floor(org, "messages.send", {"body": "Namaste"}) == engine.AUTONOMY_REVIEW_TIER
+
+
+async def test_outside_quiet_hours_auto_sends(org: uuid.UUID) -> None:
+    # A window in the future (now+2h .. now+3h) never contains now → the send stays auto.
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
+    await _set(org, "quiet_hours.start", _hm(now + timedelta(hours=2)))
+    await _set(org, "quiet_hours.end", _hm(now + timedelta(hours=3)))
     assert await _floor(org, "messages.send", {"body": "Namaste"}) == 0
 
 

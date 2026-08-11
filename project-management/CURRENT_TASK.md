@@ -9,7 +9,19 @@ selects and approves the next ticket.
 
 ---
 
-## C1 · Autonomy volume-knob: per-capability value threshold — **COMPLETE — awaiting founder review** (2026-08-11)
+## C2 · Quiet-hours draft-only — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-101-quiet-hours-overlay`. Track C #2. Quiet-hours was only a workflow send-window
+guard; C2 makes it owner-configurable (`quiet_hours.end` registered) and wires it into the autonomy
+overlay so a live concierge send inside the window **parks as a draft** — the safe pilot default (no
+autonomous customer contact at night). New shared `core/tenancy/quiet_hours.py` (pure `in_quiet_window`
++ timezone-aware `is_quiet_now`, org tz default Asia/Kolkata). `engine._autonomy_floor`: customer-facing
+capability (messaging/campaigns) + quiet-now → `AUTONOMY_REVIEW_TIER` (only ever raises). Workflow guard
+delegates to the same helper. **Gate:** ruff · guards 0 · mypy 187 · unit 498 (+3) · integ+e2e 520
+(two auto-send suites now disable quiet hours in-fixture; only BLOCKER #22 pollution remains). CI e2e
+parks regardless of clock → safe. No migration.
+
+## C1 · Autonomy volume-knob: per-capability value threshold — **COMPLETE — merged `e442b59`, CI green** (2026-08-11)
 
 Branch `feature/mvp-100-autonomy-threshold`. Track C #1. The per-capability autonomy knob already
 existed; C1 adds the founder's **threshold** dimension — *auto under ₹X, ask above*. New settings

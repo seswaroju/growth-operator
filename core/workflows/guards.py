@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -30,9 +30,6 @@ GUARD_NAMES: frozenset[str] = frozenset({
     "budget_ok", "flag_on", "tier_max",
 })
 
-# Quiet-hours morning boundary until an explicit `quiet_hours.end` setting is registered. The window
-# is [quiet_hours.start .. QUIET_END) local time; a send inside it is blocked by within_send_window.
-QUIET_END = time(8, 0)
 # Marketing consent requires the strongest signal; other purposes accept an implicit opt-in.
 _CONSENT_OK_STRICT = frozenset({"explicit"})
 _CONSENT_OK_LOOSE = frozenset({"explicit", "implicit"})
@@ -122,18 +119,11 @@ async def _consent_valid(session: AsyncSession, ctx: GuardContext, args: tuple[s
 async def _within_send_window(
     session: AsyncSession, ctx: GuardContext, args: tuple[str, ...]
 ) -> bool:
-    from core.tenancy import settings as settings_mod
-    start_raw = (await settings_mod.resolve(session, ctx.org_id, "quiet_hours.start")).value
-    try:
-        hh, mm = (int(x) for x in str(start_raw).split(":"))
-        start = time(hh, mm)
-    except (ValueError, TypeError):
-        start = time(21, 0)
-    now_t = ctx.now.time()
-    # Quiet window wraps midnight (e.g. 21:00 → 08:00): inside if after start OR before the morning
-    # boundary. A send is allowed only OUTSIDE that window.
-    in_quiet = now_t >= start or now_t < QUIET_END
-    return not in_quiet
+    # The window is the owner's `quiet_hours.start`/`quiet_hours.end` (C2); a send is allowed only
+    # OUTSIDE it. `ctx.now` is already tenant-local, so evaluate the window against it directly.
+    from core.tenancy import quiet_hours
+    start, end = await quiet_hours.resolve_window(session, ctx.org_id)
+    return not quiet_hours.in_quiet_window(ctx.now.time(), start, end)
 
 
 async def _touch_cap(session: AsyncSession, ctx: GuardContext, args: tuple[str, ...]) -> bool:

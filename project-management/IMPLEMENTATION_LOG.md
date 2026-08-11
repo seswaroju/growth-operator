@@ -4325,3 +4325,40 @@ gains 3 fields. **Commands:** ruff `All checks passed!` · guards 0 · `mypy cor
 
 **Next recommended action:** C2 — quiet-hours draft-only (`quiet_hours.start/end` already exist as
 settings; wire them into the autonomy overlay so sends park during quiet hours).
+
+**Merge/push:** branch `feature/mvp-100-autonomy-threshold` merged `--no-ff` into `main` as `e442b59`
+and pushed 2026-08-11. **GitHub CI green.**
+
+---
+
+## 2026-08-11 — C2 · Quiet-hours draft-only (branch `feature/mvp-101-quiet-hours-overlay`)
+
+Track C #2. Quiet-hours existed only as a **workflow** send-window guard (a hardcoded 08:00 morning
+boundary); C2 makes it a real, owner-configurable window and wires it into the **autonomy overlay** so
+a live concierge send inside quiet hours **parks as a draft** (draft-only) instead of going out on its
+own — the safe pilot default (no autonomous customer contact at night).
+
+- **`core/tenancy/quiet_hours.py`** (NEW, shared): `in_quiet_window(now, start, end)` (pure, handles
+  the midnight wrap), `resolve_window` (reads `quiet_hours.start/end`), and `is_quiet_now` (evaluates
+  the window in the **org's own timezone**, `organizations.timezone`, default Asia/Kolkata; bad tz →
+  fallback, never crashes).
+- **`core/tenancy/settings.py`**: registered `quiet_hours.end` (default `08:00`, `core.time`) — the
+  window is now fully owner-set, replacing the guard's hardcoded `QUIET_END`.
+- **`core/workflows/guards.py`**: `within_send_window` now delegates to the shared helper (removed the
+  hardcoded boundary + the now-unused `time` import).
+- **`core/approvals/engine.py`**: `_autonomy_floor` — for a customer-facing capability
+  (`messaging`/`campaigns`), if `is_quiet_now` it returns `AUTONOMY_REVIEW_TIER`. Like the rest of the
+  knob it only ever RAISES a tier (the tier-4 money floor stays absolute).
+
+**Tests:** `tests/unit/test_quiet_hours.py` (NEW, +3) pins the window math (non-wrap, midnight wrap,
+empty). `tests/integration/test_autonomy_gate.py` (+2) — a send inside a now-centred window parks; a
+future window auto-sends. Two auto-send suites (`test_send_loop`, `test_tool_action_bridge_tiers`) now
+disable quiet hours in their fixtures so their tier assertions stay clock-independent (the default
+21:00–08:00 window would otherwise park a night-time auto-send — the correct new behaviour).
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 187 · **tests/unit 498** (+3) · integration+e2e sweep **520 passed** (only the pre-existing
+BLOCKER #22 pollution failures remain; confirmed not C2-caused). The CI e2e journey parks regardless of
+clock, so C2 is safe for the CI gate.
+
+**Next recommended action:** Track D — CRM depth (D1 activity timeline, D2 notes+tags, D3 DPDP export/delete).
