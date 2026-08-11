@@ -9,7 +9,15 @@ selects and approves the next ticket.
 
 ---
 
-## C2 · Quiet-hours draft-only — **COMPLETE — awaiting founder review** (2026-08-11)
+## D1 · CRM activity timeline — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/mvp-102-customer-timeline`. Track D #1. Read-only unified activity feed:
+`service.customer_timeline` UNIONs messages/quotes/orders/leads/campaign_touches into one typed
+`{kind, occurred_at, ref_id, detail}` list, newest-first, org-scoped (RLS + explicit filter; foreign
+contact → None → 404). `GET /v1/customers/{id}/timeline` (customers:read). No migration. **Gate:** ruff
+· guards 0 · mypy 187 · unit 498 · CRM integ 5 (merge/order + cross-org isolation + unknown-contact).
+
+## C2 · Quiet-hours draft-only — **COMPLETE — merged `27e4b70`, CI green** (2026-08-11)
 
 Branch `feature/mvp-101-quiet-hours-overlay`. Track C #2. Quiet-hours was only a workflow send-window
 guard; C2 makes it owner-configurable (`quiet_hours.end` registered) and wires it into the autonomy
