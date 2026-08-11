@@ -36,6 +36,7 @@ def _install_jobs() -> None:
     """(Re)register the canonical job set. Clears first so registration is authoritative and
     idempotent across process (re)starts."""
     from core.approvals import notify, trust
+    from core.audit import anchor as audit_anchor
     from core.campaigns import send as campaign_send
     from core.catalog import embed
     from core.ingestion import load as ingestion_load
@@ -52,6 +53,7 @@ def _install_jobs() -> None:
     ingestion_load.register_jobs()  # import_batch_reaper — daily 03:45 UTC (free staging data)
     workflow_waits.register_jobs()  # workflow_wait_sweep — every minute (duration fire + timeout)
     payments_reconcile.register_jobs()  # razorpay_webhook_sweep — every minute (confirm captures)
+    audit_anchor.register_jobs()  # audit_anchor — daily 02:00 UTC (tamper-evidence, MVP-071)
     sched.register("dedupe_prune", "30 3 * * *", _prune_dedupe)  # daily 03:30 UTC
 
 

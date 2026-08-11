@@ -4549,3 +4549,39 @@ up/down/up · customer integ 12 · admin-plane suites green · full integration 
 pollution). Resolves BLOCKER #24; recorded in DECISIONS.
 
 **Next recommended action:** (d) MVP-071 audit anchoring.
+
+---
+
+## 2026-08-11 — (d) MVP-071 · Audit-chain anchoring (branch `feature/mvp-071-audit-anchoring`)
+
+External tamper-evidence for the per-org audit hash chains. The chain (`writer._entry_hash`) makes
+tampering detectable **inside** the DB; anchoring closes the "attacker rewrites the whole chain +
+recomputes every hash" gap by snapshotting each org's head **outside** the DB.
+
+- **`core/audit/anchor.py`** (NEW): `chain_heads()` (each org's max-`seq` `entry_hash`; per-org read
+  because `audit_log` is FORCE-RLS) → `build_anchor()` (a point-in-time record) → `write_anchor` /
+  `read_anchors` (an append-only JSONL sink). `verify_against_anchor(record)` compares the anchored
+  head hashes to the live DB and returns a `Discrepancy` per head that was **rewritten** (hash
+  differs) or **truncated** (row gone) — empty = intact. `run_audit_anchor()` is the scheduler entry
+  (no-op + log when unconfigured). `register_jobs()` → daily **02:00 UTC**.
+- **`core/scheduler.py`**: registers the `audit_anchor` job.
+- **`core/common/config.py`**: `audit_anchor_path` (default None = anchoring off). Point it at a
+  checkout of a **separate private git repo** (trust isolation from the app); a cron `git commit &&
+  push` publishes the head hashes. Founder's pick for the pilot (git repo, 3 stores).
+- **`scripts/verify_audit_anchor.py`** + **`make verify-anchor`**: the operator's verify command —
+  exit 0 intact / 1 tamper / 2 unconfigured.
+
+**Tests:** `tests/unit/test_audit_anchor.py` — append-only write/read roundtrip; unconfigured no-op
+never touches the DB. `tests/integration/test_audit_anchor_db.py` — build over a real 3-deep chain
+captures the head; `verify` is clean on an untouched chain and **flags a rewritten hash** and a
+**truncated head** (immutability trigger disabled to simulate a full-DB-access attacker).
+
+**Migrations/APIs/events/frontend:** none. **Commands:** ruff `All checks passed!` · guards 0 ·
+`mypy core` 190 · **tests/unit 501** (+3 anchor, +1 scheduler set) · anchor integ 3.
+
+**Wiring (founder, when ready):** create an empty **private** GitHub repo, clone it on the scheduler
+host, set `GROWTH_OPERATOR_AUDIT_ANCHOR_PATH=<clone>/anchors.jsonl`, and add a cron that `git -C
+<clone> commit -am anchor && git push` after the daily 02:00 job. `make verify-anchor` audits it.
+
+**This completes the founder's follow-up batch — (a) soft-erase, (b) #22 scoping, (c) schema-doc,
+(d) MVP-071 anchoring — on top of tracks A–D.**

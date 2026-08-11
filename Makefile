@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f infra/docker/docker-compose.dev.yml
 
-.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip backup restore backup-drill hooks schema-doc
+.PHONY: dev migrate db-roles bootstrap test seed down grant-admin revoke-admin make-owner secret-scan glitchtip backup restore backup-drill hooks schema-doc verify-anchor
 
 # Enable the local CI-guardrail git hooks (run once per clone). A HARD line: pre-commit blocks a
 # commit on ruff/guard failure; pre-push blocks a push unless the full CI mirror (ruff + guards +
@@ -24,6 +24,11 @@ migrate:
 # of truth; this snapshot keeps docs/06-database/schema.sql (the vault) in sync — run after a migration.
 schema-doc:
 	./scripts/dump_schema.sh docs/06-database/schema.sql
+
+# Verify the live audit chains against the most recent anchor (MVP-071 tamper-evidence).
+# Exit 0 = intact, 1 = tamper detected, 2 = not configured. Needs GROWTH_OPERATOR_AUDIT_ANCHOR_PATH.
+verify-anchor:
+	uv run python scripts/verify_audit_anchor.py
 
 # One-shot local bring-up of the data layer: app_rw role + schema at head.
 bootstrap: db-roles migrate
