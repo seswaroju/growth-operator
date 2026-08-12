@@ -5556,7 +5556,8 @@ outbound, no-consent 422 writes nothing, bad phone 422, unpublished/unknown reco
 submission reuses the one contact, rate-limited 429, tenant-isolated with `captured_from` naming page
 + variant). web untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `071f4a8` (merge `b33dfbd`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** CP-8 (operator per-tenant lead roster in web-ops — each store's captured leads +
 `captured_from` + landing page; web-ops currently shows only an aggregate "New inquiries" count).

@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-3b · Public lead capture → CRM + attribution + parked concierge draft — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-3b · Public lead capture → CRM + attribution + parked concierge draft — **COMPLETE — merged `b33dfbd`, CI green** (2026-08-12)
 
 Branch `feature/lp-3b-lead-capture`. A visitor submits the form on a **published** page → a real
 **contact + lead in the existing CRM** (no second CRM), stamped with the **LEAD-1 origin shape**, and
