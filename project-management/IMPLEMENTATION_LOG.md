@@ -4811,4 +4811,53 @@ job (2m34s) ran the seat suite + full integration + isolation against a fresh DB
 
 **Next:** CP-4 — per-store channel setup (v1 token paste: WhatsApp/Instagram/Google, extensible).
 
-**Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
+---
+
+## 2026-08-11 — CP-4 · Per-store channel setup (v1 token paste)
+
+**Ticket/branch:** CP-4 · `feature/cp-4-channel-setup` (founder approved after a plain-language
+walkthrough; option A = setup + encrypted storage now, adapter runtime consumption deferred).
+
+**Objective:** Let the GO operator wire any store's channels from web-ops by pasting tokens (decision
+b1: operator holds credentials, not the owner; b2: per-channel "Add" on the store profile). v1 is
+token paste, not OAuth.
+
+**What was built:**
+- **`core/channels/registry.py`** (NEW): declarative registry — channel type → required credential
+  fields + which field is `channels.external_id`. `whatsapp`/`instagram`/`google_ads`, one entry to
+  add more (e.g. `tiktok`). Rule-Zero safe (channel *types* are platform concepts, not industry
+  nouns); holds field **names**, never values.
+- **`core/channels/admin.py`** (NEW): operator-gated router under `/v1/admin/tenants/{org_id}/channels`
+  (`require_admin_plane_enabled` + `require_platform`). **POST** validates against the registry, sets
+  the **target** org context, upserts one `channels` row per (store, type), and stores the pasted
+  creds **Fernet-encrypted** via `store_credentials` (reuses the WhatsApp cred store). **GET** lists
+  type + external_id + status — **never** credentials. **DELETE** disconnects (creds cascade). The
+  token is never returned or logged; the global `UNIQUE (type, external_id)` → `IntegrityError` → 409
+  if an account is already wired to another store. A `GET /channel-types` drives the web-ops form.
+- **`core/api/main.py`**: register `channel_admin_router`.
+- **web-ops** (`StoreChannelsSection.tsx` NEW + `api.ts` + rendered in `StoreReportsSection`): a
+  **Channels** card on the store profile — per-type "+ Add" buttons → registry-driven fields (token
+  fields rendered as masked password inputs, so a shoulder-surfer can't read them) → save; list with
+  status + remove. Operator-gated (`platform.tenants:manage`).
+
+**Migrations/APIs/events/frontend:** no migration (channels/channel_credentials exist). New operator
+routes (POST/GET/DELETE + channel-types). No event/contract change. web-ops store-profile UI.
+
+**Security:** tokens Fernet-encrypted at rest (a test asserts the plaintext token is NOT in the
+ciphertext AND that it decrypts back exactly), never returned/logged; writes set the target org's
+context so `channels`/`channel_credentials` (FORCE-RLS) bind to that store only; every write
+operator-audited; cross-store account reuse blocked by the DB unique + a test. UI masks token fields.
+
+**Commands (CI-relevant gate):** `ruff check .` ✓ · `mypy core` 194 ✓ · `scripts/guards.py` 0 ✓ ·
+`pytest tests/unit` 501 ✓ · **fresh scratch-DB `pytest tests/integration tests/isolation`** 590 passed,
+4 skipped, 0 errors ✓ · web-ops `oxlint` + `tsc` + `build` + `vitest` 42 ✓. Channel suite alone:
+`tests/integration/test_channel_admin.py` 13/13.
+
+**Deferred (BLOCKER #26):** (1) the Instagram/Google **send adapters** still read global env creds —
+point them at these per-store creds at send-time (gated/simulated until go-live, so nothing sends
+meanwhile); (2) an **operator-console auto-logout / screen-lock** so an unattended logged-in session
+can't be used to replace/remove channels (the write-only design already blocks *reading* a key).
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-5 — per-tenant / per-agent LLM config (default Claude Sonnet, override) + web-ops dropdown.

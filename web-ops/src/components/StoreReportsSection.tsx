@@ -14,6 +14,7 @@ import { channelLabel, spendByChannel } from "../lib/spend";
 import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
 import StoreBenchmarkCard from "./StoreBenchmarkCard";
 import StoreBudgetsSection from "./StoreBudgetsSection";
+import StoreChannelsSection from "./StoreChannelsSection";
 import StoreInvoicesSection from "./StoreInvoicesSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
@@ -257,6 +258,13 @@ export default function StoreReportsSection() {
             </span>
           </div>
         </Card>
+      )}
+
+      {/* Channel setup — paste WhatsApp/Instagram/Google tokens (CP-4) */}
+      {canTenants && (
+        <StoreChannelsSection
+          token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
+        />
       )}
 
       {/* Budgets & caps by channel (OC7) */}

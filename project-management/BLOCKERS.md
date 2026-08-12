@@ -180,6 +180,22 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   3. **`tests/integration/test_prompt_activation` (4 tests)** — test bodies pass; **teardown** raises `prompt_bindings_vertical_layer_fkey` deleting `prompt_layers` while pack-scoped bindings still reference them (fixture cleanup ordering / leftover pack rows). Local pollution-flavoured.
 - **Next action (proposed follow-up ticket):** (a) add `erased_customer_archive` to `ALLOWED_CROSS_TENANT_TABLES`; (b) **wire the isolation suite (and ideally integration) into `ci.yml`** so this class of latent red is caught going forward; (c) fix the rate_ingestion + prompt_activation test bugs. Kept out of CP-2b to preserve scope discipline (§6) — none block CP-2b, which is independently CI-green.
 
+### 26. CP-4 follow-ups: per-store cred consumption + operator-console auto-logout
+
+- **Severity:** Low — enhancements, not defects. No runtime/data risk. CP-4 setup is complete + tested.
+- **Owner:** Engineering (schedule after the CP sequence, or when go-live nears).
+- **Description:** CP-4 lets the operator *store* a store's channel credentials (encrypted). Two
+  intentional deferrals: (1) the Instagram/Google **send adapters** (`core/channels/instagram`,
+  `core/channels/google_ads`) still read **global** env settings (`instagram_*`, `google_ads_*`) — they
+  should load the **per-store** creds from `channel_credentials` at send-time (WhatsApp already does via
+  `load_credentials`). Until then the per-store creds are stored but not consumed; sends are
+  gated/simulated regardless, so nothing sends. (2) The **operator console (web-ops)** has no
+  auto-logout / screen-lock — the CP-4 write-only design stops an unattended session from *reading* a
+  key, but it could still be used to replace/remove a channel (every such action is audited). Founder
+  raised the "away from my desk" threat when approving CP-4.
+- **Next action:** when wiring live sends, switch the IG/Google adapters to per-store `load_credentials`
+  (org context required); add an idle-timeout / re-auth to the operator console.
+
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
 - **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.
