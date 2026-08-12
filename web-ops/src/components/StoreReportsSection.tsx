@@ -17,6 +17,7 @@ import StoreBudgetsSection from "./StoreBudgetsSection";
 import StoreChannelsSection from "./StoreChannelsSection";
 import StoreCostMarginSection from "./StoreCostMarginSection";
 import StoreInvoicesSection from "./StoreInvoicesSection";
+import StoreLeadsSection from "./StoreLeadsSection";
 import StoreModelsSection from "./StoreModelsSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
@@ -274,6 +275,11 @@ export default function StoreReportsSection() {
         <StoreModelsSection
           token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
         />
+      )}
+
+      {/* Leads captured + where each came from (CP-8) */}
+      {canTenants && (
+        <StoreLeadsSection token={t} orgId={orgId} canRead={canTenants} />
       )}
 
       {/* Cost & margin, itemised (LLM + each API) per month (CP-6) */}

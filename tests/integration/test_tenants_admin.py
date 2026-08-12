@@ -152,3 +152,117 @@ async def test_roster_404_when_plane_disabled(
     monkeypatch.setenv("GROWTH_OPERATOR_ADMIN_PLANE_ENABLED", "false")  # override the fixture
     r = await scene.client.get("/v1/admin/tenants", headers=_bearer(scene.operator))
     assert r.status_code == 404  # even a real operator can't reach a disabled plane
+
+
+# ---- CP-8: per-store lead roster (where each lead was captured from) ----------------------------
+
+async def _seed_leads(org: uuid.UUID) -> None:
+    """Leads from three different origins — a landing page, WhatsApp, and word of mouth."""
+    conn = await asyncpg.connect(_dsn())
+    try:
+        ct = await conn.fetchval(
+            "INSERT INTO contacts (org_id, phone, full_name) VALUES ($1,'919000012345','Priya') "
+            "RETURNING id", org)
+        ch = await conn.fetchval(
+            "INSERT INTO channels (org_id,type,external_id,credentials_ref) "
+            "VALUES ($1,'whatsapp',$2,'ref') RETURNING id", org, f"ext-{uuid.uuid4()}")
+        page = await conn.fetchval(
+            "INSERT INTO landing_pages (org_id, vertical, slug, status, conversion_goal) "
+            "VALUES ($1,'jewelry','diwali-diamond','published','whatsapp') RETURNING id", org)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage, landing_page_id, variant) "
+            "VALUES ($1,$2,'landing_page','new',$3,'story')", org, ct, page)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage, channel_id) "
+            "VALUES ($1,$2,'whatsapp','new',$3)", org, ct, ch)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage) VALUES ($1,$2,'walk_in','new')",
+            org, ct)
+    finally:
+        await conn.close()
+
+
+async def test_store_leads_roster_shows_where_each_lead_came_from(scene: Scene) -> None:
+    await _seed_leads(scene.org_id)
+    r = await scene.client.get(
+        f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(scene.operator))
+    assert r.status_code == 200, r.text
+    rows = r.json()
+    assert len(rows) == 3
+    captured = {row["captured_from"] for row in rows}
+    assert "Landing page · diwali-diamond (story)" in captured  # which page AND variant
+    assert "WhatsApp" in captured and "Walk-in" in captured
+
+    landing = next(x for x in rows if x["source"] == "landing_page")
+    assert landing["landing_slug"] == "diwali-diamond" and landing["variant"] == "story"
+    assert landing["contact_name"] == "Priya"
+
+
+async def test_store_leads_roster_masks_customer_pii(scene: Scene) -> None:
+    await _seed_leads(scene.org_id)
+    r = await scene.client.get(
+        f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(scene.operator))
+    body = r.text
+    assert "919000012345" not in body  # the full phone is NEVER sent to the operator console
+    assert "2345" in body              # only the last 4, masked
+    for row in r.json():
+        assert row["contact_phone_masked"] == "••••2345"
+        assert "email" not in row      # email is not exposed at all
+
+
+async def test_store_leads_roster_is_scoped_to_one_store(scene: Scene) -> None:
+    await _seed_leads(scene.org_id)
+    other = uuid.uuid4()
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'OtherStore')", other)
+        ct = await conn.fetchval(
+            "INSERT INTO contacts (org_id, phone) VALUES ($1,'919888877777') RETURNING id", other)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage) VALUES ($1,$2,'referral','new')",
+            other, ct)
+    finally:
+        await conn.close()
+    try:
+        r = await scene.client.get(
+            f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(scene.operator))
+        assert r.status_code == 200
+        # the other store's lead is never returned by this store's roster
+        assert all(row["source"] != "referral" for row in r.json())
+        assert "7777" not in r.text
+    finally:
+        conn = await asyncpg.connect(_dsn())
+        try:
+            await conn.execute("DELETE FROM organizations WHERE id=$1", other)
+        finally:
+            await conn.close()
+
+
+async def test_store_leads_roster_is_audited(scene: Scene) -> None:
+    await _seed_leads(scene.org_id)
+    await scene.client.get(
+        f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(scene.operator))
+    conn = await asyncpg.connect(_dsn())
+    try:
+        action = await conn.fetchval(
+            "SELECT action FROM platform_access_log WHERE actor_user_id=$1 "
+            "AND action='store.leads.read' ORDER BY created_at DESC LIMIT 1", scene.operator)
+    finally:
+        await conn.close()
+    assert action == "store.leads.read"  # every operator read of customer data is logged
+
+
+async def test_store_leads_roster_403_for_non_operator(scene: Scene) -> None:
+    stranger = uuid.uuid4()
+    r = await scene.client.get(
+        f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(stranger))
+    assert r.status_code == 403
+
+
+async def test_store_leads_roster_404_when_plane_disabled(
+    scene: Scene, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GROWTH_OPERATOR_ADMIN_PLANE_ENABLED", "false")
+    r = await scene.client.get(
+        f"/v1/admin/tenants/{scene.org_id}/leads", headers=_bearer(scene.operator))
+    assert r.status_code == 404

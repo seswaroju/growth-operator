@@ -9,7 +9,33 @@ selects and approves the next ticket.
 
 ---
 
-## LP-3b · Public lead capture → CRM + attribution + parked concierge draft — **COMPLETE — awaiting founder review** (2026-08-12)
+## CP-8 · Operator per-tenant lead roster — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/cp-8-operator-lead-roster`. Closes the gap the founder found: leads must be visible in
+the **tenant/operator dashboard** too, not just the store's — web-ops previously showed only an
+aggregate "New inquiries" count, with **no per-lead list for any store**.
+
+- **Migration 049** — `platform_store_leads(p_org, p_limit)` **SECURITY DEFINER** (the established
+  operator-read pattern, migrations 033/035): the operator reads one store's leads with definer
+  privilege **without widening the `app.platform_admin` flag** — the RLS lock stays intact. Scoped to
+  the single `p_org`, so it can never return two stores' rows. REVOKE PUBLIC / GRANT app_rw; verified
+  `prosecdef=true`, app_rw ✓, PUBLIC ✗; up/down/up clean.
+- **Privacy:** the roster returns the customer's phone **masked** (`••••2345`) and **no email** — it's
+  an operator *support* view. The store owner still sees the full record in their own RLS-scoped
+  dashboard. Every operator read is **audited** (`store.leads.read` in `platform_access_log`).
+- **API:** `GET /v1/admin/tenants/{org_id}/leads?limit=` (gated `platform.tenants:read`), returning the
+  LEAD-1 **`captured_from`** plus `landing_slug` / `variant` / `channel_type` / stage / when.
+- **web-ops:** `StoreLeadsSection` on the store profile — a scannable roster (customer + masked phone,
+  a tone-coded **"captured from"** chip, stage, date).
+
+**Gate (all green):** ruff · mypy core **210** · guards **0** · **alembic 049 up/down/up + SECDEF
+grants** · unit **564** · **fresh-DB integration+isolation 662** (+6: roster shows where each lead came
+from across 3 origins, **masks PII** (full phone never sent, email absent), **scoped to one store**,
+**audited**, 403 non-operator, 404 plane-off) · web-ops **tsc + lint + vitest 42 + build**. **Next:**
+LP-3c (attribution + outbox events) or LP-4a (owner UI).
+
+
+## LP-3b · Public lead capture → CRM + attribution + parked concierge draft — **COMPLETE — merged `b33dfbd`, CI green** (2026-08-12)
 
 Branch `feature/lp-3b-lead-capture`. A visitor submits the form on a **published** page → a real
 **contact + lead in the existing CRM** (no second CRM), stamped with the **LEAD-1 origin shape**, and
