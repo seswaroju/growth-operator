@@ -5653,7 +5653,8 @@ advances + event emitted with touch columns stamped, second quote idempotent, no
 **the emitted event actually STARTS the pack's ghost-recovery workflow** while a `new` lead does not)
 · **`pytest tests/e2e` 5** (the changed send path did not regress the journey).
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `00eedea` (merge `d8fed6c`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1b (re-enable `classify_ghost` + the 24h silence window + extend the eval set —
 BLOCKER #28), then LP-4a.

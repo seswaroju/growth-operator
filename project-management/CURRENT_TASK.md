@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## GHOST-1a · Ghost-recovery ignition (make the wedge actually fire) — **COMPLETE — awaiting founder review** (2026-08-12)
+## GHOST-1a · Ghost-recovery ignition (make the wedge actually fire) — **COMPLETE — merged `d8fed6c`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1a-ignition`. Founder asked whether ghost recovery was "even implemented or
 silently set aside". **It was implemented — but it could never fire.** Three independent breaks in the
