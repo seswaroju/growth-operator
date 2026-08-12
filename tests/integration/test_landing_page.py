@@ -75,6 +75,11 @@ async def scene() -> AsyncIterator[Scene]:
         yield Scene(client, org_a, owner_a, org_b, owner_b, tag)
     conn = await asyncpg.connect(_dsn())
     try:  # org delete cascades landing_pages + versions + events
+        # audit_log is append-only (immutable trigger) → clear the orgs' rows first (owner conn).
+        await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
+        await conn.execute(
+            "DELETE FROM audit_log WHERE org_id = ANY($1::uuid[])", [org_a, org_b])
+        await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM organizations WHERE name LIKE $1", f"LPStore-{tag}%")
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [owner_a, owner_b])
     finally:
@@ -336,3 +341,108 @@ async def test_variant_preview_is_tenant_isolated(scene: Scene) -> None:
     assert (await scene.client.get(
         f"/v1/landing/pages/{page_id}/versions/9/preview",
         headers=_owner(scene.owner_a, scene.org_a))).status_code == 404
+
+
+# ---- LP-2b: lifecycle + owner approval (HITL #1) ------------------------------------------------
+
+async def _make_page(scene: Scene, *, variants: int = 3) -> str:
+    return (await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(variants=variants))).json()["page_id"]
+
+
+async def _detail(scene: Scene, page_id: str, owner=None, org=None) -> httpx.Response:
+    return await scene.client.get(
+        f"/v1/landing/pages/{page_id}",
+        headers=_owner(owner or scene.owner_a, org or scene.org_a))
+
+
+async def _act(scene: Scene, page_id: str, action: str, *, json=None, owner=None,
+               org=None) -> httpx.Response:
+    return await scene.client.post(
+        f"/v1/landing/pages/{page_id}/{action}",
+        headers=_owner(owner or scene.owner_a, org or scene.org_a), json=json)
+
+
+async def _transition_audits(page_id: str) -> int:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        return await conn.fetchval(
+            "SELECT count(*) FROM audit_log WHERE resource=$1 AND action='landing_page.transition'",
+            page_id)
+    finally:
+        await conn.close()
+
+
+async def test_lifecycle_happy_path_and_is_audited(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    assert (await _detail(scene, page_id)).json()["status"] == "generated"
+
+    # owner approves + selects the "focused" candidate (version 2) — HITL #1
+    r = await _act(scene, page_id, "select", json={"version_no": 2})
+    assert r.status_code == 200 and r.json()["status"] == "approved"
+    d = (await _detail(scene, page_id)).json()
+    assert d["current_version_no"] == 2 and d["current_variant_label"] == "focused"
+
+    assert (await _act(scene, page_id, "publish")).json()["status"] == "published"
+    assert (await _detail(scene, page_id)).json()["status"] == "published"
+    assert (await _act(scene, page_id, "pause")).json()["status"] == "paused"
+    assert (await _act(scene, page_id, "publish")).json()["status"] == "published"
+    assert (await _act(scene, page_id, "archive")).json()["status"] == "archived"
+
+    # every transition left an immutable audit record (select, publish, pause, publish, archive)
+    assert await _transition_audits(page_id) == 5
+
+
+async def test_publish_before_approval_is_409(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    r = await _act(scene, page_id, "publish")  # still 'generated'
+    assert r.status_code == 409
+    assert (await _detail(scene, page_id)).json()["status"] == "generated"  # unchanged
+    assert await _transition_audits(page_id) == 0  # a rejected transition writes nothing
+
+
+async def test_illegal_transition_is_409(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    await _act(scene, page_id, "select", json={"version_no": 1})  # → approved
+    assert (await _act(scene, page_id, "pause")).status_code == 409  # can't pause an approved page
+
+
+async def test_rollback_repoints_to_earlier_variant(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    await _act(scene, page_id, "select", json={"version_no": 3})   # story
+    await _act(scene, page_id, "publish")
+    r = await _act(scene, page_id, "rollback", json={"version_no": 1})  # back to classic
+    assert r.status_code == 200 and r.json()["status"] == "approved"
+    d = (await _detail(scene, page_id)).json()
+    assert d["current_version_no"] == 1 and d["current_variant_label"] == "classic"
+
+
+async def test_select_unknown_version_is_404(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    assert (await _act(scene, page_id, "select", json={"version_no": 9})).status_code == 404
+
+
+async def test_lifecycle_is_tenant_isolated(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    # org B cannot see, select, or publish org A's page
+    assert (await _detail(scene, page_id, owner=scene.owner_b,
+                          org=scene.org_b)).status_code == 404
+    assert (await _act(scene, page_id, "select", json={"version_no": 1},
+                       owner=scene.owner_b, org=scene.org_b)).status_code == 404
+    assert (await _act(scene, page_id, "publish", owner=scene.owner_b,
+                       org=scene.org_b)).status_code == 404
+    assert (await _detail(scene, page_id)).json()["status"] == "generated"  # A's page untouched
+
+
+async def test_lifecycle_requires_campaign_permission(scene: Scene) -> None:
+    page_id = await _make_page(scene)
+    viewer = auth.issue_access_token(
+        sub=str(uuid.uuid4()), secret=get_settings().jwt_secret,
+        org_id=str(scene.org_a), roles=["viewer"])
+    h = {"Authorization": f"Bearer {viewer}"}
+    assert (await scene.client.post(
+        f"/v1/landing/pages/{page_id}/select", headers=h,
+        json={"version_no": 1})).status_code == 403
+    assert (await scene.client.post(
+        f"/v1/landing/pages/{page_id}/publish", headers=h)).status_code == 403

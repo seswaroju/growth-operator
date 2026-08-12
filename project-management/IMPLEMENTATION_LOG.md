@@ -5268,3 +5268,52 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2b (lifecycle draft→…→published + versioning/rollback + owner select/approve one
 variant via `core/approvals`, HITL #1).
+
+---
+
+## 2026-08-12 — LP-2b · Landing-page lifecycle + owner approval (HITL #1)
+
+**Ticket:** LP-2b — second sub-ticket of the split "LP-2" (ladder in
+[LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md) §10). The owner reviews the LP-2a candidate variants
+and **approves one** (HITL gate #1); the page then moves through a validated, audited status machine.
+Agent mediation tools + gated LLM planner = LP-2c; owner picker UI = LP-4.
+
+**Approved plan:** founder "Right, lets get started with LP-2b" + the standing rule "after every ticket,
+rigorously tested, CI clean/green, push to main." Deterministic, generic (Rule Zero), **no new
+migration** (statuses + `current_version_id` on `landing_pages`; `approved_by`/`published_at` on
+`landing_page_versions` — all from migration 045).
+
+**Files created:** `core/landing/lifecycle.py`, `tests/unit/test_landing_lifecycle_map.py` (3).
+**Files modified:** `core/audit/taxonomy.py` (+`landing_page.transition`), `core/landing/api.py`
+(owner lifecycle routes + `GET /pages/{id}` detail), `core/landing/service.py` (`page_detail`),
+`tests/integration/test_landing_page.py` (+7 lifecycle tests; teardown now clears append-only
+`audit_log` rows with the immutable trigger disabled, matching `test_customer_dpdp`),
+`project-management/{CURRENT_TASK,LANDING_PAGE_DESIGN}.md`.
+
+**Behaviour:** fail-closed transition map; `select_variant` (owner approves+picks → `approved`, sets
+page `current_version_id` + the version's `approved_by`), `submit_for_approval`, `publish` (→`published`
++ the live version's `published_at`; **mark+record only — live serving is LP-3a**), `pause`,
+`rollback(version_no)` (repoint current version → `approved`), `archive`. Invalid transition → 409;
+unknown page/version → 404. Every transition writes an immutable `audit_log` `landing_page.transition`
+entry (actor, from→to, version); a rejected transition writes nothing. Execution-token gating is
+sequenced to where it gates a real side effect (LP-3a serving / LP-2c agent publish).
+
+**Migration:** none. **APIs (owner):** `POST /v1/landing/pages/{id}/{select|submit|publish|pause|
+rollback|archive}` (campaigns:send; select/rollback take `{version_no}`) → `{page_id, status}`;
+`GET /v1/landing/pages/{id}` (campaigns:read) → status + current variant. **Events:** none on the
+outbox (LP-3c); the audit chain records each transition. **Frontend:** none (LP-4).
+
+**Security:** Rule Zero preserved (guards 0); RBAC — mutations require `campaigns:send` (viewer → 403);
+RLS-scoped (cross-org select/publish/detail → 404); invalid transition → 409 (no silent state change);
+audit chain is append-only + tamper-evident. No external side effect (publish records only).
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**206**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**538**, +3 transition-map) · **fresh-DB integration+isolation
+`verify_fresh_db.sh` — 637 passed, 4 skipped, 0 errors** (+7: happy-path + audited ×5, publish-before-
+approval 409, illegal-transition 409, rollback repoints, select-unknown-version 404, tenant-isolated
+404, viewer 403). web untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-2c (agent `landing_page.*` mediation tools + campaigner grants + publish
+approval-rule + gated LLM strategy planner, simulated in tests).
