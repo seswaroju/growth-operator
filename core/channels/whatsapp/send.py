@@ -304,6 +304,15 @@ async def send(
                     "audit_id": str(audit_id),
                 },
             )
+            # GHOST-1a ignition: a delivered message carrying LEDGERED figures is a quote the
+            # customer actually received → advance their lead to `quoted` and emit
+            # `lead.stage_changed.v1`, which is what starts the silent-lead (ghost) recovery
+            # playbook. Transition on delivery, never on merely computing a quote.
+            if figure_refs:
+                from core.customers.lifecycle import mark_quoted
+
+                await mark_quoted(
+                    s, org_id, contact_id=conv["contact_id"], message_id=message_id)
             await write_outcome(s, audit_id, "succeeded")
             return SendOutcome(
                 sent=True, message_id=message_id,

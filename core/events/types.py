@@ -47,7 +47,7 @@ PAYLOAD_SPECS: dict[str, dict[str, str]] = {
     "lead.stage_changed.v1": {
         "lead_id": "uuid",
         "stage": "string",
-        "last_customer_msg_at": "rfc3339"
+        "last_customer_msg_at": "rfc3339|null"
     },
     "lead.reengaged.v1": {},
     "quote.created.v1": {
@@ -97,4 +97,4 @@ PAYLOAD_SPECS: dict[str, dict[str, str]] = {
     }
 }
 
-TOPICS_CHECKSUM = "bffd5dd50a485a601a7d316002f746262e5b6709ee38b8147058ab6b998b270c"
+TOPICS_CHECKSUM = "fb68c032331566543e07b57065ca1c2dbe226190980e1d33b50c550f3e6d72f7"

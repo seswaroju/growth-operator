@@ -10,8 +10,11 @@
 # The diagnosis + reason-conditioned recovery + approval gate all run today.
 workflow: silent_lead_reactivation
 version: 4
+# GHOST-1a: the trigger type must be the CANONICAL event name — the routing lookup is an exact
+# match on `trigger_spec->>'event_type'`, so the old `lead.stage.changed` could never fire.
+# `core/customers/lifecycle.mark_quoted` emits this when a ledgered quote is actually DELIVERED.
 trigger:
-  event: {type: lead.stage.changed, condition: "payload.stage == 'quoted'"}
+  event: {type: lead.stage_changed.v1, condition: "payload.stage == 'quoted'"}
 # Block style so YAML does not split the comma inside touch_cap(3, 30d).
 guards:
   - consent_valid(marketing)
