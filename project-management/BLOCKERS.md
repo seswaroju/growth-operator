@@ -207,7 +207,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   chain, so an overridden route loses the global default's provider failover — add failover for
   overrides when wiring live models. Both are gated/simulated until `llm_provider_enabled`.
 
-### 27. LP-2d: vault `tool-permissions.yaml` lands outside the vault (campaigner landing tools)
+### ~~27. LP-2d: vault `tool-permissions.yaml` lands outside the vault (campaigner landing tools)~~ — RESOLVED 2026-08-12
 
 - **Severity:** Low — narrative/doc sync only. **No runtime or test risk** (the drift test reads the
   vendored `spec/agents/tool-permissions.yaml`, which IS updated; the vault original is not test-checked
@@ -215,13 +215,13 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** LP-2d extended the `campaigner` archetype's level-1 `capability_allowlist` with
   `landing_page.generate` + `landing_page.publish`. Kept in byte-for-byte sync across the three
   test-checked mirrors: `core/packs/archetypes.py` ↔ `spec/agents/tool-permissions.yaml` ↔ the seeded
-  `agent_archetypes` row (**migration 047**). The vault original
-  `docs/agents/tool-permissions.yaml` (read-only from the repo) still lists the old 3-tool campaigner
-  allowlist.
-- **Next action (founder):** update the vault `docs/agents/tool-permissions.yaml` campaigner allowlist to
-  `[segments.query, campaigns.execute, templates.read, landing_page.generate, landing_page.publish]` so
-  the narrative source matches the vendored spec + code + DB. File save is the record (vault is not
-  git-tracked).
+  `agent_archetypes` row (**migration 047**).
+- **Resolution (2026-08-12):** founder edited the vault
+  `docs/implementation/agents/tool-permissions.yaml` — the campaigner allowlist now parses to
+  `[segments.query, campaigns.execute, templates.read, landing_page.generate, landing_page.publish]`,
+  matching the vendored spec + code constant + seeded DB row (verified: `yaml.safe_load` equals the
+  target list; the editor reformatted inline→block, which is immaterial — data, not text, is compared).
+  Vault is not git-tracked, so the file save is the record.
 
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
