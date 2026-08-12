@@ -12,12 +12,12 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.billing import budgets, invoices, service
+from core.billing import budgets, cost_margin, invoices, service
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
     log_platform_access,
@@ -242,6 +242,68 @@ async def record_charge(
         target_org_id=org_id,
         detail={"type": body.charge_type, "amount_minor": body.amount_minor})
     return ChargeOut(**charge)
+
+
+# ---- Per-store cost & margin, itemised (CP-6) -----------------------------------------------
+# Folds recorded charges (revenue + GO cost per type) with the runtime's LLM spend (`costs_lite`,
+# USD→INR) into one itemised monthly breakdown. LLM is in-plan (revenue 0, pure cost); platform APIs
+# (whatsapp/instagram/google_ads) are their own lines, separate from the plan.
+
+class CostMarginLineOut(BaseModel):
+    category: str
+    label: str
+    revenue_minor: int
+    cost_minor: int
+    margin_minor: int
+
+
+class LlmDetailOut(BaseModel):
+    cost_usd: str
+    cost_minor: int
+    runs: int
+    tokens_in: int
+    tokens_out: int
+
+
+class CostMarginOut(BaseModel):
+    month: str
+    currency: str
+    usd_inr_rate: float
+    lines: list[CostMarginLineOut]
+    llm: LlmDetailOut
+    revenue_minor: int
+    cost_minor: int
+    margin_minor: int
+
+
+def _parse_month(month: str | None) -> date:
+    """`YYYY-MM` → the first of that month; None → the current month. 422 on a bad string."""
+    if month is None:
+        return date.today().replace(day=1)
+    try:
+        return datetime.strptime(month, "%Y-%m").date().replace(day=1)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "month must be YYYY-MM") from exc
+
+
+@router.get("/tenants/{org_id}/cost-margin", response_model=CostMarginOut,
+            summary="A store's itemised cost & margin for a month (LLM + each API)")
+async def store_cost_margin(
+    org_id: UUID,
+    month: str | None = Query(default=None, description="YYYY-MM; defaults to the current month"),
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> CostMarginOut:
+    result = await cost_margin.cost_margin_for_month(session, org_id, _parse_month(month))
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.cost_margin.read",
+        target_org_id=org_id, detail={"month": result.month})
+    return CostMarginOut(
+        month=result.month, currency=result.currency, usd_inr_rate=result.usd_inr_rate,
+        lines=[CostMarginLineOut(**vars(ln)) for ln in result.lines],
+        llm=LlmDetailOut(**vars(result.llm)),
+        revenue_minor=result.revenue_minor, cost_minor=result.cost_minor,
+        margin_minor=result.margin_minor)
 
 
 # ---- Per-channel budgets & caps (OC7) -------------------------------------------------------

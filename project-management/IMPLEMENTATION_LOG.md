@@ -4918,3 +4918,53 @@ job (2m54s) applied migration 043 and ran the routing-override + operator-API su
 passed.
 
 **Next:** CP-6 — per-store cost & margin view (itemised LLM + each API) + charge separation.
+
+---
+
+## 2026-08-12 — CP-6 · Per-store cost & margin view (itemised)
+
+**Ticket/branch:** CP-6 · `feature/cp-6-cost-margin` (founder: *"lets do CP-6 plan it, implement/build
+it, rigorously test it with corner cases and then make CI clean/green"*).
+
+**Objective:** The operator's "what am I making on this store" view — per store, per month, itemised:
+LLM spend + each platform API individually + margin, with platform/API charges kept separate from the
+plan and LLM baked into the plan (the founder's charge-separation model).
+
+**Design (as built):** No migration — folds two existing org-scoped tables:
+- **`billing_charges`** — recorded revenue (`amount_minor`) + GO cost (`cost_minor`) per `charge_type`
+  for the month. whatsapp/instagram/google_ads are their own lines (separate from the plan); add-ons
+  (social/seo/campaign) too.
+- **`costs_lite`** — the runtime's per-turn LLM spend (`cost_usd`), **surfaced for the first time**.
+  LLM is in-plan → a line with revenue 0 and a pure cost, USD→INR at `usd_inr_rate` (new config,
+  default 83.0; a placeholder until a real FX source).
+- **`core/billing/cost_margin.py`** (NEW): `cost_margin_for_month(session, org_id, month)` sets the
+  target org context and returns ordered `CostMarginLine`s (subscription, llm, the APIs, add-ons) +
+  `LlmDetail` (runs/tokens/usd/inr) + totals. `usd_to_minor` is a pure, unit-tested Decimal
+  conversion. Empty API/add-on lines are hidden; subscription + LLM always show.
+- **`core/billing/api.py`**: `GET /v1/admin/billing/tenants/{org_id}/cost-margin?month=YYYY-MM` (gated
+  `platform.tenants:read`; bad month → 422; audited `billing.cost_margin.read`). New config
+  `usd_inr_rate`.
+- **web-ops** (`StoreCostMarginSection.tsx` NEW + `api.ts` + rendered in `StoreReportsSection`): a
+  **Cost & margin** card — month picker (`<input type=month>`), itemised table (line · revenue · cost ·
+  margin, margins coloured), the LLM runs/tokens/USD sub-line, and a totals row, all in ₹.
+
+**Migrations/APIs/events/frontend:** no migration. New operator GET route + `usd_inr_rate` config. No
+event/contract change. web-ops store-profile card.
+
+**Security:** `billing_charges` + `costs_lite` are org-scoped (RLS); the aggregation sets the target
+org's context, so one store's costs never bleed into another (proven by `test_cost_margin_is_org_scoped`).
+Operator-gated + audited. No secrets; figures only.
+
+**Commands (CI-relevant gate):** `ruff check .` ✓ · `mypy core` 197 ✓ · `scripts/guards.py` 0 ✓ ·
+`pytest tests/unit` 504 ✓ (+3 conversion) · **fresh scratch-DB `pytest tests/integration
+tests/isolation`** 609 passed, 4 skipped, 0 errors ✓ · web-ops `oxlint`+`tsc`+`build`+`vitest` ✓.
+New suites: `tests/unit/test_cost_margin.py` 3, `tests/integration/test_cost_margin.py` 7 (itemised
+totals, LLM USD→INR, empty month, month filter, org-scoped, 422, 403, plane-off).
+
+**Deferred:** weekly granularity (recorded charges are monthly via `period_month`; LLM could go weekly
+later); a real USD→INR FX source (the rate is a config placeholder); subscription revenue is from
+recorded charges only (not derived from plan price).
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-7 — operator broadcast / announcements to all stores.

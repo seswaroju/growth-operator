@@ -234,6 +234,11 @@ class Settings(BaseSettings):
     llm_api_base: str | None = Field(default=None)  # e.g. https://api.anthropic.com
     llm_max_tokens: int = Field(default=1024)
 
+    # USD→INR rate used only to fold LLM provider spend (billed in USD, `costs_lite.cost_usd`) into
+    # the store cost/margin view (all other figures are already INR paise). A placeholder until a
+    # real FX source; the operator can override per environment (CP-6).
+    usd_inr_rate: float = Field(default=83.0)
+
     # SOPS secrets (MVP-008). In staging/prod the container entrypoint decrypts
     # secrets/<env>.enc.yaml (SOPS+age) to a plaintext file at GROWTH_OPERATOR_SECRETS_FILE,
     # which SopsSecretsSource above reads. Set require_secrets_file=true there so boot
