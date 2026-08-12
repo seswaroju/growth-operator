@@ -4965,6 +4965,7 @@ totals, LLM USD→INR, empty month, month filter, org-scoped, 422, 403, plane-of
 later); a real USD→INR FX source (the rate is a config placeholder); subscription revenue is from
 recorded charges only (not derived from plan price).
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `4f05f7b` (merge `ae103b2`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job (2m48s) ran the cost-margin suites (unit + integration) on a fresh DB and passed.
 
 **Next:** CP-7 — operator broadcast / announcements to all stores.
