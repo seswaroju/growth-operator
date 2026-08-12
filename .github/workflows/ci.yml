@@ -33,9 +33,21 @@ jobs:
           fetch-depth: 0  # full history so the scan covers every commit, not just HEAD
       - name: Install gitleaks (pinned)
         run: |
+          set -euo pipefail
           VERSION=8.30.1
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
+          URL="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          # Download to a FILE (never pipe curl→tar: a flaky download would feed tar a corrupt
+          # stream). Retry across transient TLS/CDN hiccups, which have failed this step before.
+          for attempt in 1 2 3 4 5; do
+            if curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 15 \
+                 "$URL" -o /tmp/gitleaks.tar.gz && [ -s /tmp/gitleaks.tar.gz ]; then
+              break
+            fi
+            echo "gitleaks download attempt ${attempt} failed; retrying in 5s…" >&2
+            sleep 5
+            [ "$attempt" = 5 ] && { echo "::error::gitleaks download failed after retries"; exit 1; }
+          done
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
           gitleaks version
       - name: Scan history + tree for secrets
         run: gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --verbose
