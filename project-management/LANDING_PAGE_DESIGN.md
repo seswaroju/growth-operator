@@ -202,20 +202,42 @@ hosting (#8/#10); India residency (#8) matters for captured PII.**
 GrowthProfile, Meta CAPI/Google/GA4, SEO/AEO generation, Shopify/Woo publishing, advanced experimentation,
 real-time personalization, AI-generated media.
 
-**LP tickets (each branch → test → CI-green):**
-- **LP-1 (smallest, §34.13):** *deterministic foundation, no LLM / no publish / no public serving / no
-  agent.* Migration (`landing_pages`, `landing_page_versions`, `landing_page_events`, RLS); typed
-  `LandingPageSpec` + `ExperienceStrategy` + **component contracts** + validator; deterministic renderer
-  (`core/landing`, generic) + one **jewelry** template + component palette in the pack; `brand`
-  tenant-setting. Tests: validation, render output, **sanitisation/no-JS-injection**, tenant isolation.
-- **LP-2:** lifecycle (draft→…→published) + versioning/rollback; `landing_page.{plan,generate_spec,
-  validate,publish,pause,rollback}` mediation tools (campaigner grants); publish via execution-token +
-  approval; planner (LLM ×1, **simulated** in tests) producing ExperienceStrategy→Spec.
-- **LP-3:** public router (serve static/cached + lead capture → contacts/leads **+ concierge draft** +
-  event track); UTM/campaign/variant attribution; `landing_page.*` events (vault + `spec/` sync);
-  rate-limit / bot / CSP / tenant-from-domain.
-- **LP-4:** owner `web/` `LandingPagesSection` + asset-upload / activate-campaign trigger + notification;
-  basic funnel analytics.
+**LP tickets — split into small, independently-shippable sub-tickets (founder, 2026-08-12: "split each
+LP into multiple tickets with clear scope … knock out one by one"). Each = its own branch → rigorous
+tests → CI-green → merge/push to main, like LP-1.**
+
+- **LP-1 (DONE — `27530f1`):** *deterministic foundation, no LLM / no publish / no public serving / no
+  agent.* Migration 045 (`landing_pages`, `landing_page_versions`, `landing_page_events`, RLS/FORCE +
+  SECDEF); typed `LandingPageSpec` + `ExperienceStrategy` + component contracts + validator;
+  deterministic renderer (`core/landing`, generic, premium/bolder UX) + jewelry template; `brand`
+  setting; owner create + **preview** + public `/track`. Tests: validation/render/sanitisation/isolation.
+- **LP-1b (DONE — `27530f1`):** per-item first-party data capture — migration 046 (`item_ref` + `meta`),
+  enriched beacon (utm/referrer/device/scroll/dwell + WhatsApp deep-link), whitelisted+clamped `/track`,
+  `GET /pages/{id}/insights` (top items by interest).
+
+Phase-1 remainder (the split of the old "LP-2/3/4"):
+- **LP-2a — Variant generation:** `plan_variants` → **N (≈3) genuinely different-UX** candidates
+  (deterministic, generic; LLM strategy-selection deferred to LP-2c); persist N `landing_page_versions`;
+  owner API to generate + **preview each variant**. *No lifecycle/approval yet. No migration.*
+- **LP-2b — Lifecycle + owner approval (HITL #1):** status machine (generated→awaiting_approval→approved
+  →published→paused→archived) + **select/approve one** variant (reuse `core/approvals`) + versioning/
+  rollback + publish[mark+record, live serving hosting-gated]/pause. Approval gate enforced + tested.
+- **LP-2c — Agent mediation tools:** `landing_page.{plan,generate_spec,validate,publish,pause,rollback}`
+  mediation tools + `campaigner` `capability_allowlist`/`tool_grants` + publish approval-rule + the
+  gated **LLM** planner (×1, simulated in tests) producing ExperienceStrategy→Spec. The agent path.
+- **LP-3a — Public serving surface:** public router serves the published static/cached page
+  (tenant-from-path) + CSP/noindex + `/track` rate-limit/bot defence. *(Live serving hosting-gated.)*
+- **LP-3b — Lead capture → CRM + concierge draft:** public lead POST → contacts/leads + attribution +
+  concierge auto-drafts a WhatsApp follow-up for approval (consent).
+- **LP-3c — Attribution + outbox events:** UTM/campaign/variant into `attributions`; `landing_page.*`
+  outbox events (vault + `spec/` sync) into the existing campaign attribution.
+- **LP-4a — Owner web `LandingPagesSection`:** view pages/variants, preview, pick/approve, funnel analytics.
+- **LP-4b — Upload → auto-generate trigger + notification:** owner uploads media → GO detects →
+  auto-generates the N variants → notifies owner to pick (LP-2a + LP-4a). The "upload button" flow.
+
+Then (Phase 2+, separate families): **CAMP-1** (ad launch, HITL #2, gated Instagram/Google Ads adapters)
+· **EXP-\*** (general experiment model + A/B) · **DOM-\*** (custom domains + TLS) · **CAPI-\*** (Meta/
+Google conversions) · **GROW-\*** (TenantGrowthProfile/learning) · **CRO-\*** (autonomous) · **OMNI-\***.
 
 ---
 

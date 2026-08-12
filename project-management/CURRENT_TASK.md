@@ -9,6 +9,31 @@ selects and approves the next ticket.
 
 ---
 
+## LP-2a · Landing-page variant generation — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-2a-variant-generation`. First sub-ticket of the split LP-2 (founder: "split each LP
+into multiple tickets… knock out one by one"). Generates **N (≈3) genuinely-different-UX candidates**
+for one page so the owner can pick (picker = LP-4; approval/lifecycle = LP-2b; LLM strategy-selection =
+LP-2c). **Deterministic, generic (Rule Zero), no new migration** (reuses `landing_page_versions`).
+
+- `core/landing/plan.py`: `plan_variants(campaign, brand, vertical, n)` → `[(label, strategy, spec)]`
+  via generic **UX archetypes** — **classic** (full, lifestyle-led), **focused** (short/punchy, drops
+  benefits/testimonials/faq), **story** (social-proof-led: trust/benefits/testimonials before the
+  grid). Variants differ by composition/order/depth/dials only — **message-match preserved, no
+  invented claims**. Deterministic + bounded (caps at the archetype set).
+- `core/landing/service.py`: `generate_variants` (one page + N immutable versions `variant_label`
+  classic/focused/story; `current_version_id`→first), `list_variants`, `version_spec` (per-version
+  spec + label). Shared `_insert_page`/`_insert_version` helpers (refactor, no behaviour change).
+- `core/landing/api.py`: `POST /pages` gains `variants:int(1-3)` (→ `LandingCreated.variants[]` with
+  per-variant `preview_url`); new `GET /pages/{id}/variants` + **`GET /pages/{id}/versions/{n}/preview`**
+  (renders each candidate, `variant` threaded into the LP-1b beacon). `variants=1` = unchanged.
+
+**Gate (all green):** ruff · mypy core **205** · guards **0** · unit **535** (+4: distinct/valid,
+focused-trims/story-reorders, bounded, deterministic) · **fresh-DB integration+isolation 630** (+3:
+generate-3-and-preview-each-differ, single back-compat, variant preview tenant-isolated 404). No
+migration. web untouched. **Next:** LP-2b (lifecycle + owner approval, HITL #1).
+
+
 ## LP-1 · Landing-page foundation (deterministic vertical slice) — **COMPLETE — merged `27530f1`, CI green** (2026-08-12)
 
 Branch `feature/lp-1-foundation`. First landing-page ticket (approved v2 architecture, `LANDING_PAGE_DESIGN.md`).

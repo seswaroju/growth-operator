@@ -11,8 +11,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.landing.plan import CampaignContext, plan_page
-from core.landing.spec import BrandTokens, LandingPageSpec
+from core.landing.plan import CampaignContext, plan_page, plan_variants
+from core.landing.spec import BrandTokens, ExperienceStrategy, LandingPageSpec
 from core.landing.validate import validate_spec
 from core.tenancy.repository import set_org_context
 
@@ -86,6 +86,39 @@ async def org_vertical(session: AsyncSession, org_id: UUID) -> str:
     ).scalar() or ""
 
 
+async def _insert_page(
+    session: AsyncSession, org_id: UUID, *, vertical: str, slug: str, conversion_goal: str,
+    created_by: UUID | None, campaign_id: UUID | None,
+) -> UUID:
+    return (
+        await session.execute(
+            text("INSERT INTO landing_pages (org_id, campaign_id, vertical, slug, status, "
+                 "conversion_goal, created_by) "
+                 "VALUES (:o,:c,:v,:s,'generated',:g,:by) RETURNING id"),
+            {"o": str(org_id), "c": str(campaign_id) if campaign_id else None, "v": vertical,
+             "s": slug, "g": conversion_goal, "by": str(created_by) if created_by else None})
+    ).scalar_one()
+
+
+async def _insert_version(
+    session: AsyncSession, *, page_id: UUID, org_id: UUID, version_no: int,
+    strategy: ExperienceStrategy, spec: LandingPageSpec, campaign: CampaignContext,
+    variant_label: str, created_by: UUID | None,
+) -> UUID:
+    return (
+        await session.execute(
+            text("INSERT INTO landing_page_versions (page_id, org_id, version_no, "
+                 "experience_strategy, spec, source_context, variant_label, created_by) "
+                 "VALUES (:p,:o,:n,CAST(:es AS jsonb),CAST(:sp AS jsonb),CAST(:sc AS jsonb),"
+                 ":vl,:by) RETURNING id"),
+            {"p": str(page_id), "o": str(org_id), "n": version_no,
+             "es": json.dumps(strategy.to_dict()), "sp": json.dumps(spec.to_dict()),
+             "sc": json.dumps({"headline": campaign.headline, "offer": campaign.offer,
+                               "planner": "deterministic", "variant": variant_label}),
+             "vl": variant_label, "by": str(created_by) if created_by else None})
+    ).scalar_one()
+
+
 async def create_landing_page(
     session: AsyncSession, org_id: UUID, *, campaign: CampaignContext, slug: str,
     created_by: UUID | None = None, campaign_id: UUID | None = None,
@@ -97,30 +130,86 @@ async def create_landing_page(
     validate_spec(spec)  # raises SpecInvalid → 422 at the API
 
     await set_org_context(session, org_id)
-    page_id = (
-        await session.execute(
-            text("INSERT INTO landing_pages (org_id, campaign_id, vertical, slug, status, "
-                 "conversion_goal, created_by) "
-                 "VALUES (:o,:c,:v,:s,'generated',:g,:by) RETURNING id"),
-            {"o": str(org_id), "c": str(campaign_id) if campaign_id else None, "v": vertical,
-             "s": slug, "g": spec.conversion_goal, "by": str(created_by) if created_by else None})
-    ).scalar_one()
-    version_id = (
-        await session.execute(
-            text("INSERT INTO landing_page_versions (page_id, org_id, version_no, "
-                 "experience_strategy, spec, source_context, created_by) "
-                 "VALUES (:p,:o,1,CAST(:es AS jsonb),CAST(:sp AS jsonb),CAST(:sc AS jsonb),:by) "
-                 "RETURNING id"),
-            {"p": str(page_id), "o": str(org_id), "es": json.dumps(strategy.to_dict()),
-             "sp": json.dumps(spec.to_dict()),
-             "sc": json.dumps({"headline": campaign.headline, "offer": campaign.offer,
-                               "planner": "deterministic"}),
-             "by": str(created_by) if created_by else None})
-    ).scalar_one()
+    page_id = await _insert_page(
+        session, org_id, vertical=vertical, slug=slug, conversion_goal=spec.conversion_goal,
+        created_by=created_by, campaign_id=campaign_id)
+    version_id = await _insert_version(
+        session, page_id=page_id, org_id=org_id, version_no=1, strategy=strategy, spec=spec,
+        campaign=campaign, variant_label="default", created_by=created_by)
     await session.execute(
         text("UPDATE landing_pages SET current_version_id = :v WHERE id = :p"),
         {"v": str(version_id), "p": str(page_id)})
     return page_id, slug
+
+
+async def generate_variants(
+    session: AsyncSession, org_id: UUID, *, campaign: CampaignContext, slug: str, n: int = 3,
+    created_by: UUID | None = None, campaign_id: UUID | None = None,
+) -> tuple[UUID, list[dict[str, Any]]]:
+    """Generate N genuinely-different-UX candidates as immutable versions of one page (LP-2a).
+
+    The owner reviews + picks one in LP-2b; here we just plan → validate → persist all N. The page's
+    `current_version_id` points at the first candidate so the page-level preview shows something."""
+    brand = await resolve_brand(session, org_id)
+    vertical = await org_vertical(session, org_id)
+    variants = plan_variants(campaign, brand, vertical, n=n)
+    for _label, _strategy, spec in variants:
+        validate_spec(spec)  # every candidate must be valid → 422 at the API otherwise
+
+    await set_org_context(session, org_id)
+    page_id = await _insert_page(
+        session, org_id, vertical=vertical, slug=slug,
+        conversion_goal=variants[0][2].conversion_goal, created_by=created_by,
+        campaign_id=campaign_id)
+    rows: list[dict[str, Any]] = []
+    first_version_id: UUID | None = None
+    for i, (label, strategy, spec) in enumerate(variants, start=1):
+        version_id = await _insert_version(
+            session, page_id=page_id, org_id=org_id, version_no=i, strategy=strategy, spec=spec,
+            campaign=campaign, variant_label=label, created_by=created_by)
+        first_version_id = first_version_id or version_id
+        rows.append({"version_no": i, "variant_label": label})
+    await session.execute(
+        text("UPDATE landing_pages SET current_version_id = :v WHERE id = :p"),
+        {"v": str(first_version_id), "p": str(page_id)})
+    return page_id, rows
+
+
+async def list_variants(
+    session: AsyncSession, org_id: UUID, page_id: UUID
+) -> list[dict[str, Any]] | None:
+    """The page's candidate versions (RLS-scoped; None → 404). Newest-first version rows."""
+    await set_org_context(session, org_id)
+    if (await session.execute(
+            text("SELECT 1 FROM landing_pages WHERE id = :id"), {"id": str(page_id)})).scalar() \
+            is None:
+        return None
+    rows = (
+        await session.execute(
+            text("SELECT version_no, variant_label, created_at FROM landing_page_versions "
+                 "WHERE page_id = :p ORDER BY version_no"),
+            {"p": str(page_id)})
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def version_spec(
+    session: AsyncSession, org_id: UUID, page_id: UUID, version_no: int
+) -> tuple[LandingPageSpec, str] | None:
+    """A candidate version's validated spec + its variant label (RLS-scoped; None → 404)."""
+    await set_org_context(session, org_id)
+    row = (
+        await session.execute(
+            text("SELECT v.spec, v.variant_label FROM landing_page_versions v "
+                 "JOIN landing_pages p ON p.id = v.page_id "
+                 "WHERE v.page_id = :p AND v.version_no = :n"),
+            {"p": str(page_id), "n": version_no})
+    ).mappings().first()
+    if row is None:
+        return None
+    spec = row["spec"]
+    parsed = LandingPageSpec.from_dict(json.loads(spec) if isinstance(spec, str) else spec)
+    return parsed, row["variant_label"]
 
 
 async def current_spec(

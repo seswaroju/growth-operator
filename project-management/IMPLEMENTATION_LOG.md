@@ -5222,3 +5222,48 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 marketing-agent planner: the "3 different-UX pages" engine behind the approved end-to-end flow), then
 LP-4 (owner upload → 3-variant → pick → activate) and LP-3 (public serving + outbox events +
 attribution + /track rate-limit).
+
+---
+
+## 2026-08-12 — LP-2a · Landing-page variant generation
+
+**Ticket:** LP-2a — first sub-ticket of the split "LP-2" (founder 2026-08-12: "split each LP into
+multiple tickets with clear scope … knock out one by one"; ladder recorded in
+[LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md) §10). Generate **N (≈3) genuinely-different-UX
+candidate versions** of one landing page so the owner can pick one. Lifecycle/approval = LP-2b; agent
+mediation tools + LLM strategy-selection = LP-2c; owner picker UI = LP-4.
+
+**Approved plan:** founder "lets get started … Lets start LP-2a" (after approving the LP-2a scope in the
+ladder). Deterministic, generic (Rule Zero), **no new migration** (reuses `landing_page_versions`).
+
+**Files modified:** `core/landing/plan.py` (`plan_variants` + generic `VariantArchetype`s
+classic/focused/story), `core/landing/service.py` (`generate_variants`/`list_variants`/`version_spec`
++ shared `_insert_page`/`_insert_version` refactor), `core/landing/api.py` (`POST /pages` gains
+`variants:int`; `GET /pages/{id}/variants`; `GET /pages/{id}/versions/{n}/preview`),
+`project-management/{CURRENT_TASK,LANDING_PAGE_DESIGN}.md`.
+**Files created:** `tests/unit/test_landing_variants.py` (4).
+
+**Behaviour:** archetypes reshape the base section plan + strategy dials into different experiences —
+**classic** (full, lifestyle), **focused** (short/punchy, drops benefits/testimonials/faq), **story**
+(social-proof-led: trust/benefits/testimonials before the grid). **Message-match preserved on all; no
+invented claims** (variants differ by composition/order/depth/dials only). Deterministic + bounded.
+
+**Migration:** none. **APIs:** `POST /v1/landing/pages {…, variants:1-3}` → `LandingCreated.variants[]`
+(per-variant `preview_url`); `GET /v1/landing/pages/{id}/variants` (campaigns:read);
+`GET /v1/landing/pages/{id}/versions/{n}/preview` (campaigns:read) → real HTML, `variant` threaded into
+the LP-1b beacon. `variants=1` = unchanged (back-compat). **Events/Frontend:** none.
+
+**Security:** Rule Zero preserved (guards 0); each candidate validated + sanitized (SpecInvalid → 422);
+variants list + per-version preview RLS-scoped (org B → 404, non-existent version → 404). No new
+external surface.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**205**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**535**, +4: distinct/valid, focused-trims/story-reorders, bounded, deterministic)
+· **fresh-DB integration+isolation `verify_fresh_db.sh` — 630 passed, 4 skipped, 0 errors** (+3:
+generate-3-and-preview-each-differ, single back-compat, variant preview tenant-isolated 404). web
+untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-2b (lifecycle draft→…→published + versioning/rollback + owner select/approve one
+variant via `core/approvals`, HITL #1).
