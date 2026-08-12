@@ -5511,7 +5511,8 @@ personal data); junk `source` values are normalised away rather than persisted a
 integration+isolation `verify_fresh_db.sh` — 649 passed, 4 skipped, 0 errors** (+2: pipeline reports
 where each lead came from across 4 mixed origins; org-scoped). web untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `539be65` (merge `e85c54f`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3b (public landing lead capture consuming this shape: `source='landing_page'` +
 page/version/variant/utm, consent-gated, concierge draft parks for approval).

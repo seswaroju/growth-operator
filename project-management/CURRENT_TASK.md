@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LEAD-1 · Generic lead-origin model ("captured from", every channel) — **COMPLETE — awaiting founder review** (2026-08-12)
+## LEAD-1 · Generic lead-origin model ("captured from", every channel) — **COMPLETE — merged `e85c54f`, CI green** (2026-08-12)
 
 Branch `feature/lead-1-origin-model`. **New foundation ticket**, created from the founder's steer while
 planning LP-3b: leads don't only come from landing pages — they also arrive by **word of mouth, the
