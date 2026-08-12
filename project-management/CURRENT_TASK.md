@@ -9,6 +9,66 @@ selects and approves the next ticket.
 
 ---
 
+## LP-1 · Landing-page foundation (deterministic vertical slice) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-1-foundation`. First landing-page ticket (approved v2 architecture, `LANDING_PAGE_DESIGN.md`).
+Delivers the **presentation-critical vertical slice** end-to-end, fully deterministic (**no LLM, no
+network, 0 tokens/pageview**): campaign context → **ExperienceStrategy** (semantic decisions) →
+**LandingPageSpec** (executable, curated component library) → **deterministic renderer** → tenant-branded
+**jewelry** page → **CTA interaction** → **Growth Operator event**.
+
+- **Migration 045** (`landing_pages`, `landing_page_versions`, `landing_page_events`) — all org-scoped +
+  **RLS/FORCE**; `experience_strategy` **embedded/versioned inside** the version row (no separate table,
+  per the founder's adjustment); immutable versions; a **SECURITY-DEFINER `landing_page_org(uuid)`**
+  (REVOKE PUBLIC / GRANT app_rw) resolves tenant from a page id so the **public track beacon never trusts
+  the request**. Verified up/down/up + FORCE-RLS ×3.
+- `core/landing/`: `spec.py` (typed artifacts + **component contracts** — a curated library, the model
+  never emits raw HTML/JS), `validate.py` (contract + **sanitization** — rejects `<script>`/`<iframe>`/
+  `javascript:`/handlers), `plan.py` (deterministic, **vertical-aware**, generic fallback), `render.py`
+  (mobile-first HTML, **all copy HTML-escaped**, strict **CSP** + nonce'd own beacon, `noindex` for paid),
+  `service.py` (plan→validate→persist; RLS-scoped; public event via the SECDEF), `api.py`
+  (`POST /v1/landing/pages` · `GET /pages` · **`GET /pages/{id}/preview`** → real HTML · public
+  **`POST /track`** → 204). Rule Zero preserved: `core/` is generic; all jewelry nouns live in the pack.
+- `verticals/jewelry/landing/template.yaml` (L1): jewelry trust (BIS Hallmarked / certified diamonds /
+  buyback), benefits, FAQ, section plan, WhatsApp CTA. Router registered in `core/api/main.py`.
+
+**UX overhaul (founder review round, used the vendored craft skills — impeccable craft-floor + Persuade
+mode, apple-design, design-taste):** premium redesign of the deterministic renderer, then a **bolder**
+pass on founder feedback ("plain without accent"). System **serif** display; neutrals **hue-tinted from
+the brand** via `color-mix` (never flat gray); real offset+blur elevation; **authored SVG** icons (one
+stroke, no emoji); a translucent **sticky mobile CTA**; themed browser surfaces (selection/caret/focus/
+tabular numerals); CSS-only motion gated behind `@supports(animation-timeline)` **+**
+`prefers-reduced-motion` (content never hidden). Bolder: a **deep-accent destination CTA panel** (the one
+decisive move), filled offer, accent-tinted trust band, benefit icon-chips, tinted testimonials, hero
+ambient glow + wordmark + ornament, and on-brand imagery. Still zero external assets/requests under the
+page's own CSP; per-brand webfont embedding is LP-2.
+
+**LP-1b · per-item data capture (founder-approved fold-in — "know which item the customer liked / max
+info per click"):** **Migration 046** adds `item_ref` + `meta jsonb` to `landing_page_events` (+ index;
+FORCE-RLS preserved; up/down/up verified). The funnel-sink vocabulary gains `landing_page.item_viewed`
++ `landing_page.item_clicked` (**local sink, NOT the event outbox** — outbox fan-out stays LP-3).
+Product tiles carry a **stable `item_ref`**; the enriched beacon captures per-item view/click **plus a
+first-party context bundle** (utm, referrer, device, scroll, dwell, session, variant); the WhatsApp CTA
+**deep-links prefilled with the last-engaged item** when a number is present. Public `POST /track` body
+extended and **whitelisted + size-clamped in the service** (untrusted-body hardening; always 204). New
+**`GET /pages/{id}/insights`** (campaigns:read) → "top items by interest" + funnel counts (the
+"which item is most sellable" answer). Owner web section + the upload→auto-generate→**3 variant choices**
+trigger remain LP-4.
+
+**Gate (all green):** ruff `All checks passed!` · mypy core **205** · mypy migrations · guards **0**
+(Rule Zero incl.) · unit **531** (+14 landing: plan/validate/render/sanitize/escape + item_ref/beacon/
+WA-deep-link) · alembic up/down/up + FORCE RLS (045 & 046) · **fresh-DB integration+isolation 627** (+8
+landing: create→preview→CTA-event, tenant isolation 404, 422 bad slug, unknown-page/disallowed-type
+record nothing, viewer 403, **item capture persists + ranks by interest, insights tenant-isolated,
+untrusted-body clamped**). web untouched.
+
+**Scope held:** no custom domains, Meta/Google APIs, A/B, autonomous CRO, SEO/AEO/GEO, Shopify/Woo,
+TenantGrowthProfile/learning (architecturally defined, not implemented) — all deferred to LP-2/3/4.
+**Next (later):** LP-2 lifecycle + agent capability + LLM planner; LP-3 public surface + outbox events +
+attribution + rate-limit + track rate-limiting/bot-defence; LP-4 owner web section + asset-upload →
+auto-generate **3 variant choices** → owner picks → activate.
+
+
 ## CP-7 · Operator broadcast / announcements — **COMPLETE — awaiting founder review** (2026-08-12)
 
 Branch `feature/cp-7-announcements`. The operator posts an announcement (plan/company updates) that
