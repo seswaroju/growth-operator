@@ -110,21 +110,55 @@ jobs:
           GROWTH_OPERATOR_REDIS_URL: redis://localhost:6379/0
         run: uv run pytest tests/e2e -v
 
-  # Placeholder — fails the build once real isolation tests exist and are skipped.
-  # Wired for real in MVP-097 (isolation suite + nightly synthetic e2e).
+  # Tenant-isolation + integration suites against real Postgres. Previously a non-executing
+  # placeholder — that let a real cross-tenant guard regression (an app.platform_admin policy added
+  # to erased_customer_archive without allowlisting it) sit red on main unnoticed (BLOCKER #25).
+  # Now it actually runs: the isolation suite proves RLS fail-closed + the cross-tenant blast radius,
+  # and the integration suite exercises DB/API/adapter flows. Runs as app_rw (so RLS is enforced)
+  # with the owner DSN for fixture setup — the same env as the e2e step.
   isolation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: growth_operator
+          POSTGRES_PASSWORD: growth_operator
+          POSTGRES_DB: growth_operator
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U growth_operator -d growth_operator"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GROWTH_OPERATOR_DATABASE_URL: postgresql+asyncpg://app_rw:app_rw@localhost:5432/growth_operator
+      GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: postgresql+asyncpg://growth_operator:growth_operator@localhost:5432/growth_operator
+      GROWTH_OPERATOR_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           version: ${{ env.UV_VERSION }}
       - run: uv sync --frozen
-      - name: Fail if isolation suite is missing
-        run: |
-          if [ -z "$(find tests/isolation -name 'test_*.py' 2>/dev/null)" ]; then
-            echo "::error::tests/isolation has no tests yet — expected until MVP-097 lands. Placeholder passes until then."
-          fi
+      # app_rw + its DEFAULT PRIVILEGES must exist before migrations (same as the migrate job).
+      - name: Create app_rw runtime role
+        run: psql "postgresql://growth_operator:growth_operator@localhost:5432/growth_operator" -f infra/db/roles.sql
+      - run: uv run alembic upgrade head
+      - name: Isolation suite — RLS fail-closed + cross-tenant blast radius
+        run: uv run pytest tests/isolation -v
+      - name: Integration suite — DB / API / adapter flows
+        run: uv run pytest tests/integration -v
 
   # Placeholder — fails the build once real eval suites exist and are skipped.
   # Wired for real in MVP-095/MVP-096 (eval harness + CI gates).

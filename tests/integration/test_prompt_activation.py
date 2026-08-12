@@ -75,10 +75,17 @@ async def scene() -> AsyncIterator[Scene]:
         await conn.execute("DELETE FROM audit_log WHERE org_id=$1", org)
         await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM organizations WHERE id=$1", org)  # cascades bindings/layers
-        for t in ("approval_policies", "prompt_layers", "agent_bindings", "catalog_schemas"):
-            await conn.execute(f"DELETE FROM {t} WHERE pack_id=$1", pid)
-        await conn.execute("DELETE FROM prompt_layers WHERE layer_type='base'")
-        await conn.execute("DELETE FROM packs WHERE id=$1", pid)
+        # The jewelry pack's rows (prompt_layers, agent_bindings, approval_policies,
+        # catalog_schemas, the pack itself) are SHARED across every org that installed it — remove
+        # them ONLY when no other org still has the pack installed, else the delete FK-fails against
+        # another org's bindings. Base prompt_layers (pack_id NULL) are shared infra, left intact.
+        # (Mirrors the canonical teardown in tests/e2e/test_jewelry_install.py.)
+        if pid and not await conn.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM pack_installations WHERE pack_id=$1)", pid
+        ):
+            for t in ("prompt_layers", "approval_policies", "agent_bindings", "catalog_schemas"):
+                await conn.execute(f"DELETE FROM {t} WHERE pack_id=$1", pid)
+            await conn.execute("DELETE FROM packs WHERE id=$1", pid)
     finally:
         await conn.close()
     await dbmod.get_engine().dispose()
