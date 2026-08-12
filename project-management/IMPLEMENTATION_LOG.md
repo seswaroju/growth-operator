@@ -4715,6 +4715,7 @@ security-relevant one: `test_platform_admin_scope` — `erased_customer_archive`
 add it to the allowlist (coverage already in `test_customer_dpdp.py`) **and wire the isolation suite
 into CI**.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `2c6e5ef` (merge `84460ab`). Pushed to `main`; **GitHub CI green** (lint,
+secret-scan, unit, migrate+e2e, isolation-placeholder all ✓).
 
 **Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
