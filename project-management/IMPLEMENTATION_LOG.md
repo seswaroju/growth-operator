@@ -5120,7 +5120,7 @@ tests still pass under the async switch.
 **Gate:** ruff · mypy core 198 · guards 0 · unit 517 (+4) · **fresh-DB integration+isolation 619, 0
 errors**. No migration; no web change.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `52f4523` (merge `7792a54`). Pushed to `main`; **GitHub CI green**.
 
 **Next:** the three build-blockers (#5, #16) + the two event-blockers (#17, #21) are cleared; remaining
 open blockers are founder-side (#3 WhatsApp, #6 Razorpay, #8/#10 hosting) or low-value narrative
