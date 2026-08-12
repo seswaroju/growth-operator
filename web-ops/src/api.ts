@@ -320,6 +320,27 @@ export function adminChannelTypes(token: string): Promise<ChannelTypeInfo[]> {
   return authed<ChannelTypeInfo[]>("/v1/admin/tenants/channel-types", token);
 }
 
+export interface StoreLead {
+  id: string;
+  stage: string;
+  source: string | null;
+  created_at: string;
+  contact_name: string | null;
+  /** Operator view: the customer's phone is masked (last 4 only); email is not exposed. */
+  contact_phone_masked: string | null;
+  /** Uniform "captured from" across every origin (landing page, WhatsApp, walk-in, ...). */
+  captured_from: string;
+  landing_slug: string | null;
+  variant: string | null;
+  channel_type: string | null;
+}
+
+export function adminStoreLeads(
+  token: string, orgId: string, limit = 100,
+): Promise<StoreLead[]> {
+  return authed<StoreLead[]>(`/v1/admin/tenants/${orgId}/leads?limit=${limit}`, token);
+}
+
 export function adminListChannels(token: string, orgId: string): Promise<StoreChannel[]> {
   return authed<StoreChannel[]>(`/v1/admin/tenants/${orgId}/channels`, token);
 }

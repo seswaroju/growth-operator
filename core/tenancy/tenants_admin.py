@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.errors import GrowthOperatorError
+from core.customers import origins
 from core.packs.installer import InstallError
 from core.tenancy import provisioning
 from core.tenancy.deps import CurrentAuth, get_current_auth
@@ -251,3 +252,46 @@ async def store_analytics(
         target_org_id=org_id, detail={"days": days},
     )
     return StoreAnalytics(**row)
+
+
+# ---- CP-8: per-store lead roster (who was captured, and from where) ------------------------------
+
+_STORE_LEADS_SQL = text("SELECT * FROM platform_store_leads(CAST(:o AS uuid), :n)")
+
+
+class StoreLead(BaseModel):
+    id: UUID
+    stage: str
+    source: str | None
+    created_at: datetime
+    contact_name: str | None
+    # Operator support view → the customer's phone is MASKED and the email is not returned at all.
+    # The store owner sees the full record in their own (RLS-scoped) dashboard.
+    contact_phone_masked: str | None
+    captured_from: str
+    landing_slug: str | None
+    variant: str | None
+    channel_type: str | None
+
+
+@router.get(
+    "/{org_id}/leads",
+    response_model=list[StoreLead],
+    summary="A store's captured leads + where each came from (masked PII; audited)",
+)
+async def store_leads(
+    org_id: UUID,
+    limit: int = Query(100, ge=1, le=500),
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> list[StoreLead]:
+    rows = (
+        await session.execute(_STORE_LEADS_SQL, {"o": str(org_id), "n": limit})
+    ).mappings().all()
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="store.leads.read",
+        target_org_id=org_id, detail={"limit": limit, "returned": len(rows)},
+    )
+    return [
+        StoreLead(**{**dict(r), "captured_from": origins.describe(dict(r))}) for r in rows
+    ]

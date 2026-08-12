@@ -5561,3 +5561,44 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** CP-8 (operator per-tenant lead roster in web-ops — each store's captured leads +
 `captured_from` + landing page; web-ops currently shows only an aggregate "New inquiries" count).
+
+---
+
+## 2026-08-12 — CP-8 · Operator per-tenant lead roster
+
+**Ticket:** CP-8 — created from the founder's ask (2026-08-12) that captured leads be visible in the
+**store dashboard *and* the tenant/operator dashboard**, with where each was captured from and which
+landing page. An audit during LP-3b planning found web-ops had **only an aggregate "New inquiries"
+count** and no per-lead list for any store — a gap in no existing ticket.
+
+**Files created:** `migrations/versions/…049_platform_store_leads.py`,
+`web-ops/src/components/StoreLeadsSection.tsx`.
+**Files modified:** `core/tenancy/tenants_admin.py` (`GET /{org_id}/leads` + `StoreLead`),
+`web-ops/src/api.ts` (`adminStoreLeads` + `StoreLead`), `web-ops/src/components/StoreReportsSection.tsx`
+(mount), `tests/integration/test_tenants_admin.py` (+6), tracking docs.
+
+**Migration:** **049** (`cf4e8cff464d → 93111b93b290`) — `platform_store_leads(uuid, int)`
+**SECURITY DEFINER**, the established operator-read pattern (033/035): reads one store's rows with
+definer privilege **without widening `app.platform_admin`** (RLS lock intact), scoped to the single
+`p_org` so it can never return two stores' leads. REVOKE PUBLIC / GRANT app_rw. Verified
+`prosecdef=true`, app_rw EXECUTE ✓, PUBLIC ✗; **up/down/up clean**.
+
+**API:** `GET /v1/admin/tenants/{org_id}/leads?limit=1..500` (gated `platform.tenants:read`) →
+`captured_from` (LEAD-1 uniform origin) + `landing_slug` / `variant` / `channel_type` / stage /
+created_at / contact name / **masked** phone. **Frontend:** `StoreLeadsSection` on the store profile.
+
+**Security / privacy:** the operator gets a **support** view — phone **masked** (`••••2345`), **email
+never returned** (asserted in tests); the store owner still sees the full record in their own
+RLS-scoped dashboard. Every read is **audited** (`store.leads.read` with target org + row count).
+Gated 403 for a non-operator, 404 when the operator plane is disabled.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**210**) · `guards.py` (**0**) ·
+**alembic 049 up/down/up + SECDEF grant checks** · `pytest tests/unit` (**564**) · **fresh-DB
+integration+isolation `verify_fresh_db.sh` — 662 passed, 4 skipped, 0 errors** (+6: roster shows where
+each lead came from across 3 origins, masks PII, scoped to one store, audited, 403 non-operator, 404
+plane-off) · web-ops **tsc + lint + vitest 42 + build**.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** founder selects — LP-3c (UTM/variant attribution + outbox `landing_page.*` events) or
+LP-4a (owner web LandingPagesSection + leads "captured from" column).
