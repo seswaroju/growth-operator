@@ -4806,7 +4806,8 @@ concrete ints (`NOT NULL DEFAULT 0`) so `0` = no seats. No new canonical error c
 RLS-scoped (cross-tenant seat count proven org-scoped by `test_cap_is_org_scoped`). Fail-closed on no
 context / no plan. No secrets, no external side effects.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `cacbc0a` (merge `4b1556f`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job (2m34s) ran the seat suite + full integration + isolation against a fresh DB and passed.
 
 **Next:** CP-4 — per-store channel setup (v1 token paste: WhatsApp/Instagram/Google, extensible).
 
