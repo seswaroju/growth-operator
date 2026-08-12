@@ -9,6 +9,34 @@ selects and approves the next ticket.
 
 ---
 
+## LP-2c · Gated LLM strategy planner — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-2c-llm-planner`. Third sub-ticket of the split LP-2 (founder 2026-08-12 approved
+splitting LP-2c/LP-2d). The marketing agent's **semantic** contribution: an LLM proposes N landing-page
+**strategies** (section selection/order, depth, framing) → `ExperienceStrategy` → deterministic spec →
+render. Makes LP-2a's variants "the marketing agent's suggestions." **Gated off by default**
+(`llm_provider_enabled=False`) → deterministic path runs everywhere incl. tests (no network). **No new
+migration.** `core/landing` only (agent mediation/approval wiring is LP-2d).
+
+- `core/landing/planner_llm.py`: builds a strategy prompt from the campaign facts + the pack's
+  available sections; **one gated LLM call** → JSON strategies. **Untrusted output (§18):** the model
+  decides **structure only** — its `section_plan` is intersected with the pack's real sections (so it
+  can only **reorder/subset**, never invent a component or claim); it starts with the hero or is
+  rejected; `conversion_goal`/`message_match`/trust copy come from the **facts**, not the model; every
+  resulting spec is re-`validate_spec`'d; **any malformed/invalid output or a provider error → the
+  deterministic archetypes (LP-2a)**. Records `planner` + `model` provenance on each version.
+- `core/landing/service.py`: `generate_variants(use_llm=…)` → `plan_variants_planned` (returns
+  `(planner_kind, variants)`); `_insert_version` records provenance. `core/landing/api.py`:
+  `POST /pages` gains `use_llm:bool=false` (no-op unless a key is wired).
+
+**Gate (all green):** ruff · mypy core **207** · guards **0** · unit **546** (+8 planner:
+valid-parse, **injected-sections-stripped**, facts-kept-from-base, malformed-rejected, disabled→
+deterministic, enabled+mocked→llm+validated, malformed→fallback, provider-raises→fallback) · **fresh-DB
+integration+isolation 638** (+1: `use_llm` API passthrough → deterministic fallback + provenance,
+provider off). **No paid provider in tests** — the LLM is mocked / gated off. No migration. web
+untouched. **Next:** LP-2d (agent mediation tools + campaigner grants + publish approval-rule).
+
+
 ## LP-2b · Landing-page lifecycle + owner approval (HITL #1) — **COMPLETE — merged `70b82d6`, CI green** (2026-08-12)
 
 Branch `feature/lp-2b-lifecycle-approval`. Second sub-ticket of the split LP-2. The owner reviews the

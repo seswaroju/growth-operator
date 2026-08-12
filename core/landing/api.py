@@ -50,6 +50,9 @@ class LandingCreate(BaseModel):
     campaign_id: UUID | None = None
     # LP-2a: >1 generates that many genuinely-different-UX candidate versions for the owner to pick.
     variants: int = Field(default=1, ge=1, le=3)
+    # LP-2c: use the gated LLM strategy planner for the variants (falls back to deterministic when
+    # the provider is off — so this is a no-op unless a key is wired).
+    use_llm: bool = False
 
 
 class VariantRow(BaseModel):
@@ -135,7 +138,7 @@ async def create_page(
         if body.variants > 1:
             page_id, rows = await service.generate_variants(
                 session, current.org_id, campaign=campaign, slug=body.slug, n=body.variants,
-                created_by=current.user_id, campaign_id=body.campaign_id)
+                created_by=current.user_id, campaign_id=body.campaign_id, use_llm=body.use_llm)
         else:
             page_id, _slug = await service.create_landing_page(
                 session, current.org_id, campaign=campaign, slug=body.slug,

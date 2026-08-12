@@ -11,7 +11,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.landing.plan import CampaignContext, plan_page, plan_variants
+from core.common.config import get_settings
+from core.landing.plan import CampaignContext, plan_page
+from core.landing.planner_llm import plan_variants_planned
 from core.landing.spec import BrandTokens, ExperienceStrategy, LandingPageSpec
 from core.landing.validate import validate_spec
 from core.tenancy.repository import set_org_context
@@ -103,8 +105,12 @@ async def _insert_page(
 async def _insert_version(
     session: AsyncSession, *, page_id: UUID, org_id: UUID, version_no: int,
     strategy: ExperienceStrategy, spec: LandingPageSpec, campaign: CampaignContext,
-    variant_label: str, created_by: UUID | None,
+    variant_label: str, created_by: UUID | None, planner: str = "deterministic",
 ) -> UUID:
+    provenance = {"headline": campaign.headline, "offer": campaign.offer,
+                  "planner": planner, "variant": variant_label}
+    if planner == "llm":  # record the model that made the semantic decisions (§18)
+        provenance["model"] = get_settings().llm_model
     return (
         await session.execute(
             text("INSERT INTO landing_page_versions (page_id, org_id, version_no, "
@@ -113,8 +119,7 @@ async def _insert_version(
                  ":vl,:by) RETURNING id"),
             {"p": str(page_id), "o": str(org_id), "n": version_no,
              "es": json.dumps(strategy.to_dict()), "sp": json.dumps(spec.to_dict()),
-             "sc": json.dumps({"headline": campaign.headline, "offer": campaign.offer,
-                               "planner": "deterministic", "variant": variant_label}),
+             "sc": json.dumps(provenance),
              "vl": variant_label, "by": str(created_by) if created_by else None})
     ).scalar_one()
 
@@ -144,15 +149,18 @@ async def create_landing_page(
 
 async def generate_variants(
     session: AsyncSession, org_id: UUID, *, campaign: CampaignContext, slug: str, n: int = 3,
-    created_by: UUID | None = None, campaign_id: UUID | None = None,
+    created_by: UUID | None = None, campaign_id: UUID | None = None, use_llm: bool = False,
 ) -> tuple[UUID, list[dict[str, Any]]]:
-    """Generate N genuinely-different-UX candidates as immutable versions of one page (LP-2a).
+    """Generate N genuinely-different-UX candidates as immutable versions of one page.
 
-    The owner reviews + picks one in LP-2b; here we just plan → validate → persist all N. The page's
-    `current_version_id` points at the first candidate so the page-level preview shows something."""
+    Variants come from the gated **LLM** strategy planner when `use_llm` + the provider is enabled
+    (LP-2c), else the deterministic archetypes (LP-2a); either way each is validated + persisted and
+    the planner used is recorded as provenance. The owner reviews + picks one (LP-2b). The page's
+    `current_version_id` points at the first candidate so the page-level preview shows one."""
     brand = await resolve_brand(session, org_id)
     vertical = await org_vertical(session, org_id)
-    variants = plan_variants(campaign, brand, vertical, n=n)
+    planner, variants = await plan_variants_planned(
+        campaign, brand, vertical, n=n, use_llm=use_llm)
     for _label, _strategy, spec in variants:
         validate_spec(spec)  # every candidate must be valid → 422 at the API otherwise
 
@@ -166,7 +174,7 @@ async def generate_variants(
     for i, (label, strategy, spec) in enumerate(variants, start=1):
         version_id = await _insert_version(
             session, page_id=page_id, org_id=org_id, version_no=i, strategy=strategy, spec=spec,
-            campaign=campaign, variant_label=label, created_by=created_by)
+            campaign=campaign, variant_label=label, created_by=created_by, planner=planner)
         first_version_id = first_version_id or version_id
         rows.append({"version_no": i, "variant_label": label})
     await session.execute(
