@@ -63,6 +63,11 @@ export default function Shell() {
                   Financial
                 </Link>
               )}
+              {hasPerm(permissions, "platform.tenants:read") && (
+                <Link to="/announcements" className={navLink} activeProps={navActive}>
+                  Announcements
+                </Link>
+              )}
               {hasPerm(permissions, "platform.debug") && (
                 <Link to="/debug" className={navLink} activeProps={navActive}>
                   Debug

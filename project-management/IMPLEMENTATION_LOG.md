@@ -4969,3 +4969,58 @@ recorded charges only (not derived from plan price).
 job (2m48s) ran the cost-margin suites (unit + integration) on a fresh DB and passed.
 
 **Next:** CP-7 — operator broadcast / announcements to all stores.
+
+---
+
+## 2026-08-12 — CP-7 · Operator broadcast / announcements (control-plane set complete)
+
+**Ticket/branch:** CP-7 · `feature/cp-7-announcements` (founder: *"do the same thing with CP-7"* — plan,
+build, rigorously test, CI green).
+
+**Objective:** The operator posts an announcement (plan/company updates) that every store's owner sees —
+the founder's *"any future changes … I should be able to blast to all stores"*.
+
+**Design (as built):**
+- **Migration 044 (`a4992cd3968d`)** — `announcements` (id, title, body, level info/update/warning,
+  published_at NOT NULL [create = publish], created_by, created_at, archived_at). Deliberately
+  **GLOBAL, no RLS**: a GO→all-stores broadcast is meant to be visible to every tenant, so RLS would be
+  wrong here (documented in the migration). Writes are gated at the operator plane; a partial index
+  `WHERE archived_at IS NULL` serves the active-feed read. Up/down/up verified; `app_rw` can read it
+  (default privileges).
+- **`core/notifications/service.py`**: `create_announcement` / `list_announcements` /
+  `archive_announcement`, and `get_feed` now appends active announcements as
+  `{kind:"announcement", title, body, level, at}`.
+- **`core/notifications/admin.py`** (NEW): operator router `/v1/admin/announcements` — POST publish, GET
+  list (active + archived), POST `/{id}/archive` (404 if unknown/already archived). Gated
+  `platform.tenants:manage`; audited `announcement.published` / `announcement.archived`. Registered in
+  `core/api/main.py`.
+- **Owner side**: no new owner endpoint — announcements ride the existing notification bell
+  (`/v1/notifications`), so **every store (including ones provisioned later) sees active broadcasts**;
+  archive removes them; the bell's `seen_at` gives the unread badge.
+- **web-ops** (`AnnouncementsSection.tsx` NEW + route + Shell nav + `api.ts`): a compose form
+  (title/body/level → publish) + a management list with retract. Gated on the operator perms.
+- **web/ owner app** (`NotificationBell.tsx` + `api.ts` + `lib/notifications.ts`): a new
+  `announcement` feed kind (📣 Megaphone icon, renders the body).
+
+**Migrations/APIs/events/frontend:** migration 044. New operator routes (publish/list/archive). Owner
+feed shape gains an announcement item (backward-compatible). No event/contract change. Both web apps
+touched.
+
+**Security:** `announcements` is intentionally un-RLS'd (global broadcast) — safe because it holds no
+per-tenant data and writes are operator-plane-gated + audited; owners only ever READ active rows. No
+secrets. The isolation guard is unaffected (no `app.platform_admin` policy on the table).
+
+**Commands (CI-relevant gate):** `ruff check .` ✓ · `mypy core` 198 ✓ · `mypy migrations` ✓ ·
+`scripts/guards.py` 0 ✓ · `pytest tests/unit` 504 ✓ · alembic up/down/up ✓ · **fresh scratch-DB
+`pytest tests/integration tests/isolation`** 617 passed, 4 skipped, 0 errors ✓ · web-ops
+`oxlint`+`tsc`+`build`+`vitest` 42 ✓ · web `oxlint`+`tsc`+`build`+`vitest` 69 ✓. New suite:
+`tests/integration/test_announcements.py` 8 (publish reaches BOTH stores' owners, archive removes from
+feed, operator list, unknown-archive 404, invalid-level 422, empty-title 422, non-operator 403,
+plane-off 404).
+
+**Milestone:** CP-7 completes the founder's control-plane set **CP-1..CP-7** (plans, provisioning +
+pack/agents, seat enforcement, channel setup, LLM config, cost/margin, broadcasts).
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** founder review — the control-plane set is complete; awaiting the next directive.

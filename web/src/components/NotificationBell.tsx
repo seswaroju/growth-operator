@@ -4,13 +4,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getNotifications, markNotificationsSeen, type NotificationItem } from "../api";
 import { useAuth } from "../auth";
 import { badge, kindLabel, relativeTime } from "../lib/notifications";
-import { Bell, CheckCircle, Gear, Ticket } from "./icons";
+import { Bell, CheckCircle, Gear, Megaphone, Ticket } from "./icons";
 
 // Drawn icon per feed kind (no emoji). kindLabel/relativeTime stay from lib.
 const KIND_ICON: Record<NotificationItem["kind"], ComponentType<{ className?: string }>> = {
   approval: CheckCircle,
   ticket: Ticket,
   automation: Gear,
+  announcement: Megaphone,
 };
 
 // The notification bell: a unified feed (approvals / tickets / automation alerts) with an unread
@@ -84,6 +85,9 @@ export default function NotificationBell() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-ink">{n.title}</div>
+                      {n.body && (
+                        <div className="mt-0.5 whitespace-pre-wrap text-xs text-ink-2">{n.body}</div>
+                      )}
                       <div className="mt-0.5 text-[11px] text-muted">
                         {kindLabel(n.kind)} · {relativeTime(n.at)}
                       </div>

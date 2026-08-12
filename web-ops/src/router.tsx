@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
 
 import AnalyticsSection from "./components/AnalyticsSection";
+import AnnouncementsSection from "./components/AnnouncementsSection";
 import CustomerSuccessSection from "./components/CustomerSuccessSection";
 import FinancialSection from "./components/FinancialSection";
 import OperationalSection from "./components/OperationalSection";
@@ -56,6 +57,11 @@ const financialRoute = createRoute({
   path: "/financial",
   component: FinancialSection,
 });
+const announcementsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/announcements",
+  component: AnnouncementsSection,
+});
 const debugRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/debug",
@@ -64,7 +70,7 @@ const debugRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   queueRoute, storesRoute, storeReportsRoute, opsRoute, analyticsRoute, healthRoute, financialRoute,
-  debugRoute,
+  announcementsRoute, debugRoute,
 ]);
 
 export const router = createRouter({ routeTree });
