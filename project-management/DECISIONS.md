@@ -1209,3 +1209,38 @@ Founder directions given while working the open-blocker list:
   is likely out for #10 staging).
 
 **Decided by:** Founder (2026-08-12).
+
+---
+
+## 2026-08-12 — Autonomous landing-page capability (approved scope expansion)
+
+**Decision (founder):** build a first-class **autonomous landing-page capability** for paid acquisition
+(Instagram / Google Ads, later others) — GO generates campaign-specific landing pages so the merchant
+owns the conversion surface + captures first-party leads. CLAUDE.md §2 lists "features not required for
+the first jewelry customers" as out-of-scope-unless-approved; **this is that approval.** Not an "AI
+website builder" — a campaign-aware conversion surface GO generates → deploys → measures → experiments
+on → improves, with a closed learning loop. Full design review + build sequence:
+`project-management/LANDING_PAGE_DESIGN.md`.
+
+**Confirmed sub-decisions:** (1) render **static-on-publish** (page requests never invoke an LLM — the
+LLM only plans/writes copy, ~1–3 calls per page, cached); (2) MVP host = **one GO domain, path per
+store** (`pages.<godomain>/<store>/<slug>`); custom merchant subdomains are Phase 2; (3) **owner
+approval** before every publish (autonomous optimization deferred to Phase 4); (4) lead submit → create
+lead + attribute + **concierge auto-drafts a WhatsApp follow-up for approval**; (5) build the MVP,
+**live public serving deferred** to the hosting decision (#8/#10); (6) merchant asset-upload →
+auto-generate trigger is in the MVP.
+
+**Architecture (v2, reconciled with the founder's architecture-delta prompt 2026-08-12):** generic engine
+in `core/landing/` (Rule Zero) + vertical templates/strategy in `verticals/<v>/landing/`; `landing_page.*`
+mediation tools (campaigner). Key refinements: **ExperienceStrategy** is a first-class intermediate
+(`Campaign → ExperienceStrategy → LandingPageSpec` — strategy separate from rendering);
+**TenantBrandProfile (identity)** and **TenantGrowthProfile (learned, evidence-backed, cross-channel)**
+are kept **separate**; an **evidence hierarchy** (raw events → metrics → experiment results → evidence →
+validated insight → GrowthProfile) prevents learning noise; **experiments are modelled subject-agnostic**
+(landing pages the first consumer); publishing is a **risk-aware execution-token side effect**; leads use
+the **existing CRM (no second CRM)**; downstream **lead quality/revenue** (not raw conversion) is the
+optimization target. 5-phase roadmap: Conversion Surface (MVP) → Measurement & Experimentation → Tenant
+Learning → Autonomous CRO → Omnichannel. Full design: `project-management/LANDING_PAGE_DESIGN.md`.
+Reuses approvals/execution-tokens, events/outbox, attribution, media/S3, leads/consent, tenant memory —
+no duplicated subsystems. **Implementation begins at LP-1 on founder go-ahead. Decided by:** Founder
+(2026-08-12).
