@@ -5263,7 +5263,8 @@ external surface.
 generate-3-and-preview-each-differ, single back-compat, variant preview tenant-isolated 404). web
 untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `83edab9` (merge `70051d3`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2b (lifecycle draft→…→published + versioning/rollback + owner select/approve one
 variant via `core/approvals`, HITL #1).

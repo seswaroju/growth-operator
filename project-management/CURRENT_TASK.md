@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-2a · Landing-page variant generation — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-2a · Landing-page variant generation — **COMPLETE — merged `70051d3`, CI green** (2026-08-12)
 
 Branch `feature/lp-2a-variant-generation`. First sub-ticket of the split LP-2 (founder: "split each LP
 into multiple tickets… knock out one by one"). Generates **N (≈3) genuinely-different-UX candidates**
