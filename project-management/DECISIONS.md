@@ -1154,3 +1154,19 @@ declarative `model_catalog` (anthropic sonnet/haiku, openai gpt-4o/gpt-4o-mini) 
 pointed at an unknown model. Config selects **provider+model only**; the key stays central.
 **Deferred to go-live (BLOCKER #26):** multi-provider keys in `llm_client`; failover for overridden
 routes. **Decided by:** Founder (2026-08-11).
+
+---
+
+## 2026-08-12 — Cost & margin view is itemised monthly; LLM folded in via a placeholder FX rate (CP-6)
+
+**Context:** the founder's charge-separation model (already recorded 2026-08-11): platform/API charges
+(Meta/Google/WhatsApp/Instagram) are billed **separately** from the monthly plan; **LLM is the
+exception — baked into the plan** (GO margin). CP-6 renders this per store per month.
+
+**Implementation choices:** (1) the view is **monthly** — `billing_charges.period_month` is monthly, so
+that's the natural grain; weekly is deferred. (2) LLM spend (`costs_lite.cost_usd`, USD) is folded into
+the INR breakdown via a **config `usd_inr_rate`** (default 83.0) — a **placeholder** until a real FX
+source; the operator can override per environment. The authoritative figure is `cost_minor` (INR);
+`cost_usd` is shown for reference (4dp). (3) LLM is a **line with revenue 0** (in-plan cost); each
+platform API is its **own line** (separate from the plan). (4) Revenue comes from **recorded charges**,
+not derived from plan price. **Decided by:** Founder (CP-6 plan approved 2026-08-12).

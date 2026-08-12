@@ -9,6 +9,24 @@ selects and approves the next ticket.
 
 ---
 
+## CP-6 · Per-store cost & margin view (itemised) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/cp-6-cost-margin`. The operator's per-store, per-month **cost & margin** view. Folds
+two sources into one itemised breakdown: recorded `billing_charges` (revenue `amount_minor` + GO cost
+`cost_minor` per type) and the runtime's LLM spend from `costs_lite` (per-run `cost_usd`, surfaced for
+the first time). Charge separation made explicit: **LLM is in-plan** (its own line, revenue 0, pure
+cost — USD→INR at a configurable `usd_inr_rate`, default 83), **each platform API** (whatsapp/instagram/
+google_ads) is its **own line separate from the plan**, plus add-ons (social/seo/campaign). Everything
+nets to `margin = revenue − cost`. No migration (reads existing tables). `core/billing/cost_margin.py`
+(aggregation) + `GET /v1/admin/billing/tenants/{org}/cost-margin?month=YYYY-MM` (gated
+`platform.tenants:read`, target-org context, audited). web-ops: a **Cost & margin** card on the store
+profile (month picker + itemised table + LLM runs/tokens + totals, ₹). **Gate (all green):** ruff ·
+mypy core 197 · guards 0 · unit 504 (+3 conversion) · **fresh-DB integration+isolation 609** (7 new:
+itemised totals, LLM USD→INR, empty month, month filter, org-scoped isolation, 422, 403, plane-off) ·
+web-ops lint+tsc+build+vitest. Deferred: weekly granularity (charges are monthly); real FX source.
+Next: CP-7 operator broadcast.
+
+
 ## CP-5 · Per-tenant / per-agent LLM model config — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-5-llm-config`. The operator picks, per store + per agent-task, which provider+model

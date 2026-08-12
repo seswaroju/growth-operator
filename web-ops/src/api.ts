@@ -391,6 +391,44 @@ export function adminClearModel(token: string, orgId: string, nodeKey: string): 
   });
 }
 
+// ---- Per-store cost & margin, itemised (CP-6) -------------------------------
+// Folds recorded charges (revenue + GO cost per type) with the runtime's LLM spend into one monthly
+// breakdown. LLM is in-plan (revenue 0, pure cost, USD→INR); platform APIs are separate lines.
+
+export interface CostMarginLine {
+  category: string;
+  label: string;
+  revenue_minor: number;
+  cost_minor: number;
+  margin_minor: number;
+}
+
+export interface LlmDetail {
+  cost_usd: string;
+  cost_minor: number;
+  runs: number;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+export interface CostMargin {
+  month: string;
+  currency: string;
+  usd_inr_rate: number;
+  lines: CostMarginLine[];
+  llm: LlmDetail;
+  revenue_minor: number;
+  cost_minor: number;
+  margin_minor: number;
+}
+
+export function adminCostMargin(
+  token: string, orgId: string, month?: string,
+): Promise<CostMargin> {
+  const q = month ? `?month=${month}` : "";
+  return authed<CostMargin>(`/v1/admin/billing/tenants/${orgId}/cost-margin${q}`, token);
+}
+
 // ---- Billing (/v1/admin/billing/*, platform.tenants:read / :manage) ---------
 // Operator-owned per-client revenue. Rollup feeds the Financial dashboard; plans + per-client
 // subscription/charges are the management surface (writes need tenants:manage; audited server-side).

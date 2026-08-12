@@ -15,6 +15,7 @@ import { planByOrg, plansByTier, rankTickets } from "../lib/ticketPriority";
 import StoreBenchmarkCard from "./StoreBenchmarkCard";
 import StoreBudgetsSection from "./StoreBudgetsSection";
 import StoreChannelsSection from "./StoreChannelsSection";
+import StoreCostMarginSection from "./StoreCostMarginSection";
 import StoreInvoicesSection from "./StoreInvoicesSection";
 import StoreModelsSection from "./StoreModelsSection";
 import StorePaymentsSection from "./StorePaymentsSection";
@@ -273,6 +274,11 @@ export default function StoreReportsSection() {
         <StoreModelsSection
           token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
         />
+      )}
+
+      {/* Cost & margin, itemised (LLM + each API) per month (CP-6) */}
+      {canTenants && (
+        <StoreCostMarginSection token={t} orgId={orgId} canRead={canTenants} />
       )}
 
       {/* Budgets & caps by channel (OC7) */}
