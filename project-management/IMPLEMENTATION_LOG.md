@@ -5420,3 +5420,46 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3a (public serving surface — serve the published static/cached page,
 tenant-from-path, CSP/noindex, `/track` rate-limit/bot defence).
+
+---
+
+## 2026-08-12 — LP-3a · Public serving surface
+
+**Ticket:** LP-3a — first LP-3 sub-ticket ([LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md) §10). A
+public (unauth) URL that serves a **published** landing page (the ad click-through target). Founder
+approved the recommended scope ("having basic bot defence is good … go with what you recommended"):
+serving + security headers + in-app rate-limit, **no migration**.
+
+**Files created:** `core/landing/ratelimit.py`, `tests/unit/test_landing_ratelimit.py` (5).
+**Files modified:** `core/landing/api.py` (`public_router` + `GET /p/{page_id}` + security headers +
+`/track` rate-limit), `core/landing/service.py` (`published_spec`), `core/api/main.py` (register the
+public router), `tests/integration/test_landing_page.py` (+5 serve tests; scene resets the limiter),
+tracking docs.
+
+**Behaviour + safety:** `GET /p/{page_id}` (no auth) resolves the org via the existing SECDEF
+`landing_page_org` → `set_org_context` → serves the current version **only if `status='published'`**
+(drafts / paused / other tenants → 404, never leaked) — so **no migration** was needed. Response
+carries security headers (`X-Robots-Tag: noindex,nofollow`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy`, `Cache-Control`); deliberately **no CSP response header** — the rendered HTML
+already carries a per-render nonce'd CSP `<meta>` and a header CSP would break the beacon. In-process
+per-IP 60s sliding-window limiter: serve over cap → **429**; `/track` over cap → **silent 204**
+(records nothing; a 429 would leak a signal). MVP in-process floor; the distributed/edge limit is the
+reverse proxy at hosting (live public serving stays hosting-gated — DNS/proxy).
+
+**Migration:** none. **APIs:** public `GET /p/{page_id}` (unauth, 200 HTML / 404 / 429); `/track` now
+rate-limited. **Events/Frontend:** none.
+
+**Security:** Rule Zero preserved (guards 0). Public unauth surface — published-only via SECDEF +
+status gate (no draft/cross-tenant leak), read-only (serves, mutates nothing), security headers,
+per-IP rate-limit. No external side effect. No migration.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**208**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**555**, +5 ratelimit) · **fresh-DB integration+isolation `verify_fresh_db.sh` —
+647 passed, 4 skipped, 0 errors** (+5: serve published 200 + security headers, only-published-served
+404s incl. paused-after-publish, unknown 404, serve rate-limited 429, `/track` flood silently
+dropped). web untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-3b (public lead capture → contacts/leads + attribution + concierge auto-drafts a
+WhatsApp follow-up for approval; consent).
