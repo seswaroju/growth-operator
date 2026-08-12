@@ -5368,3 +5368,54 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2d (agent `landing_page.*` mediation tools + `campaigner` capability_allowlist/
 tool_grants + publish approval-rule so an agent-initiated publish parks for owner approval).
+
+---
+
+## 2026-08-12 — LP-2d · Agent mediation tools + publish approval rule
+
+**Ticket:** LP-2d — final sub-ticket of LP-2 ("the agent's hands"). Founder chose the full scope
+("I will also lean A"). The `campaigner` (marketing agent) can draft + publish landing pages through
+the mediation proxy, with go-live **gated by owner approval** — closing "agent suggests / human
+approves." Ladder in [LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md) §10.
+
+**Files created:** `migrations/versions/…047_campaigner_landing_allowlist.py`,
+`tests/unit/test_landing_agent_tools.py` (4), `tests/integration/test_landing_agent_publish.py` (3).
+**Files modified:** `core/mediation/tools.py` (`_landing_generate`/`_landing_publish` impls + REGISTRY),
+`core/mediation/manifest.py` (`_NO_TIER_TOOLS += landing_page.generate`), `core/approvals/engine.py`
+(`TOOL_ACTIONS += landing_page.publish`), `core/packs/archetypes.py` +
+`spec/agents/tool-permissions.yaml` (campaigner allowlist +2), `verticals/jewelry/agents/bindings.yaml`
+(campaigner tool_grants +2 + `landing_publish` tier rule), `core/landing/lifecycle.py` (`publish`
+`actor_type`), `tests/integration/test_mediation_proxy.py` (+1 park/execute),
+`tests/integration/test_pack_installer.py` (policy count 8→9), tracking docs.
+
+**Behaviour + safety:** `landing_page.generate` → internal drafts (status `generated`), added to
+`_NO_TIER_TOOLS` (no approval to run; NOT untrusted-narrowing-safe). `landing_page.publish` →
+auto-`requires_tier_eval`; the jewelry pack `landing_publish` rule sets **tier 2, approver role:owner**,
+so an agent publish **parks for owner approval before any side effect** (belt-and-braces: an ungoverned
+publish still fails safe to "needs approval" via `resolve_actions` fallback + the empty-rule fail-safe).
+Publish only runs on an owner-**approved** page (transition map) and audits as an **agent** action.
+Level-1 allowlist ∩ pack grant preserved — a tool absent from the archetype allowlist is dropped.
+
+**Migration:** **047** (`4eafc82635e7 → 16f7981626a1`) — data-only UPDATE of the global
+`agent_archetypes.campaigner.capability_allowlist` to match the constant/yaml (byte-for-byte triple;
+drift tests green). up/down verified. `agent_archetypes` is global (no RLS). **APIs:** none (agent path
+is via the mediation proxy). **Events:** the audit chain records the transition; outbox is LP-3c.
+**Frontend:** none.
+
+**Security:** Rule Zero preserved (guards 0). The agent go-live is gated at the mediation/approval
+boundary, not app code; publish parks + no side effect until approved (proven); untrusted-narrowing
+preserved (generate not narrowing-safe); no external side effect (publish marks+records; live serving
+is LP-3a). **Founder follow-up:** update the vault `docs/agents/tool-permissions.yaml` campaigner
+allowlist to match (BLOCKER #27) — narrative sync only, not test-checked.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**207**) · `mypy migrations` ·
+`guards.py` (**0**) · **alembic 047 up/down** · `pytest tests/unit` (**550**, +4) · **fresh-DB
+integration+isolation `verify_fresh_db.sh` — 642 passed, 4 skipped, 0 errors** (+4: proxy parks
+publish/executes-after-approval, seeded publish rule = tier 2, agent generate→owner select→agent
+publish→published+audited-as-agent, agent can't publish an unapproved page; installer policy count
+8→9). web untouched. **Completes LP-2 (a/b/c/d).**
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-3a (public serving surface — serve the published static/cached page,
+tenant-from-path, CSP/noindex, `/track` rate-limit/bot defence).

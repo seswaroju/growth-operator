@@ -120,9 +120,10 @@ async def test_install_seeds_paused_instances_and_candidate_layers(scene: dict) 
     assert c["schemas"] == 1 and c["layers"] == 9
     conn = await asyncpg.connect(_dsn())
     try:  # pack tier rules seeded into approval_policies (all archetypes' tier_defaults)
+        # 8 base rules + the LP-2d campaigner `landing_publish` rule = 9
         assert await conn.fetchval(
             "SELECT count(*) FROM approval_policies WHERE scope='pack' "
-            "AND pack_id=(SELECT id FROM packs WHERE slug=$1)", slug) == 8
+            "AND pack_id=(SELECT id FROM packs WHERE slug=$1)", slug) == 9
     finally:
         await conn.close()
 

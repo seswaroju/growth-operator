@@ -65,19 +65,20 @@ async def _version_id(session: AsyncSession, page_id: UUID, version_no: int) -> 
 
 async def _audit(
     session: AsyncSession, org_id: UUID, page_id: UUID, actor_id: UUID | None,
-    frm: str, to: str, version_no: int | None = None,
+    frm: str, to: str, version_no: int | None = None, actor_type: str = ACTOR_USER,
 ) -> None:
     payload: dict[str, object] = {"page_id": str(page_id), "from": frm, "to": to}
     if version_no is not None:
         payload["version_no"] = version_no
     await audit_write(session, AuditEntry(
-        org_id=org_id, actor_type=ACTOR_USER, actor_id=str(actor_id) if actor_id else None,
+        org_id=org_id, actor_type=actor_type, actor_id=str(actor_id) if actor_id else None,
         action=LANDING_PAGE_TRANSITION, resource=str(page_id), payload=payload))
 
 
 async def _transition(
     session: AsyncSession, org_id: UUID, page_id: UUID, target: str, actor_id: UUID | None,
     *, extra_sql: str = "", params: dict[str, object] | None = None, version_no: int | None = None,
+    actor_type: str = ACTOR_USER,
 ) -> str | None:
     """Validate current→target, apply status (+ optional extra columns), audit. None → 404 page."""
     await set_org_context(session, org_id)
@@ -89,7 +90,7 @@ async def _transition(
     await session.execute(
         text(f"UPDATE landing_pages SET status = :s{extra_sql} WHERE id = :p"),
         {"s": target, "p": str(page_id), **(params or {})})
-    await _audit(session, org_id, page_id, actor_id, current, target, version_no)
+    await _audit(session, org_id, page_id, actor_id, current, target, version_no, actor_type)
     return target
 
 
@@ -123,10 +124,13 @@ async def select_variant(
 
 
 async def publish(
-    session: AsyncSession, org_id: UUID, page_id: UUID, actor_id: UUID | None = None
+    session: AsyncSession, org_id: UUID, page_id: UUID, actor_id: UUID | None = None,
+    actor_type: str = ACTOR_USER,
 ) -> str | None:
-    """Mark the approved page published (record only — live serving is LP-3a)."""
-    new_status = await _transition(session, org_id, page_id, "published", actor_id)
+    """Mark the approved page published (record only — live serving is LP-3a). `actor_type` is
+    `agent` when the mediation proxy invokes this after an owner approval (LP-2d)."""
+    new_status = await _transition(
+        session, org_id, page_id, "published", actor_id, actor_type=actor_type)
     # `published_at` lives on the version that is now live.
     await session.execute(
         text("UPDATE landing_page_versions SET published_at = now() "

@@ -102,6 +102,49 @@ async def _messages_send(
             "message_id": str(outcome.message_id) if outcome.message_id else None}
 
 
+async def _landing_generate(
+    ctx: RunContext, params: dict[str, Any], session: AsyncSession, audit_id: UUID
+) -> Any:
+    """LP-2d: the marketing agent drafts N candidate landing pages (internal drafts, no approval to
+    run — status 'generated'). The owner reviews + selects one (LP-2b); publishing is separate +
+    approval-gated."""
+    from core.landing import service
+    from core.landing.plan import CampaignContext, ProductRef
+
+    slug = str(params.get("slug") or "")
+    if not slug:
+        raise GrowthOperatorError("config_schema_violation", "landing_page.generate needs a slug")
+    products = [
+        ProductRef(str(p.get("title", "")), str(p.get("price_text", "")), p.get("image_url"))
+        for p in params.get("products", []) if isinstance(p, dict)]
+    campaign = CampaignContext(
+        headline=str(params.get("headline", "")), offer=str(params.get("offer", "")),
+        subheadline=str(params.get("subheadline", "")),
+        objective=str(params.get("objective", "whatsapp")),
+        hero_image_url=params.get("hero_image_url"), products=products,
+        wa_number=str(params.get("wa_number", "")))
+    page_id, rows = await service.generate_variants(
+        session, ctx.org_id, campaign=campaign, slug=slug,
+        n=int(params.get("variants", 3)), use_llm=bool(params.get("use_llm", False)))
+    return {"page_id": str(page_id), "variants": rows}
+
+
+async def _landing_publish(
+    ctx: RunContext, params: dict[str, Any], session: AsyncSession, audit_id: UUID
+) -> Any:
+    """LP-2d: publish an owner-approved landing page. This runs only AFTER the mediation tier gate
+    (the publish parks for owner approval); it audits the transition as an `agent` action."""
+    from core.audit.taxonomy import ACTOR_AGENT
+    from core.landing import lifecycle
+
+    page_id = UUID(str(params["page_id"]))
+    status = await lifecycle.publish(
+        session, ctx.org_id, page_id, actor_id=ctx.instance_id, actor_type=ACTOR_AGENT)
+    if status is None:
+        raise GrowthOperatorError("provider_unavailable", "landing page not found")
+    return {"status": status}
+
+
 def _not_wired(name: str) -> ToolImpl:
     async def _impl(
         ctx: RunContext, params: dict[str, Any], session: AsyncSession, audit_id: UUID
@@ -116,6 +159,8 @@ REGISTRY: dict[str, ToolImpl] = {
     "pricing.compute": _pricing_compute,
     "ledger.read": _ledger_read,
     "messages.send": _messages_send,
+    "landing_page.generate": _landing_generate,
+    "landing_page.publish": _landing_publish,
     "calendar.book": _not_wired("calendar.book"),
     "crm.read": _not_wired("crm.read"),
     "crm.write": _not_wired("crm.write"),
