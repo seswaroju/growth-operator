@@ -8,6 +8,7 @@ from core.approvals.api import router as approvals_router
 from core.billing.api import router as billing_admin_router
 from core.campaigns.api import router as campaigns_router
 from core.catalog.router import router as catalog_router
+from core.channels.admin import router as channel_admin_router
 from core.channels.whatsapp.connect import router as whatsapp_connect_router
 from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
@@ -99,6 +100,7 @@ app.include_router(support_owner_router)
 app.include_router(support_admin_router)
 app.include_router(platform_router)
 app.include_router(tenants_admin_router)
+app.include_router(channel_admin_router)
 app.include_router(ops_admin_router)
 app.include_router(analytics_admin_router)
 app.include_router(customer_health_admin_router)

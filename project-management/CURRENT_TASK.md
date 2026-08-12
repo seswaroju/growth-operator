@@ -9,6 +9,25 @@ selects and approves the next ticket.
 
 ---
 
+## CP-4 · Per-store channel setup (v1 token paste) — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-4-channel-setup`. The GO operator wires any store's channels from web-ops by
+pasting tokens (decisions b1/b2; v1 = paste, not OAuth). New `core/channels/registry.py` (declarative:
+type → required credential fields + which is the external id; whatsapp/instagram/google_ads, extensible
+to tiktok — Rule-Zero safe, types are platform concepts) + `core/channels/admin.py` (operator-gated
+`/v1/admin/tenants/{org_id}/channels`): **POST** validates against the registry, sets the **target**
+org context, upserts one `channels` row per (store,type) + stores creds **Fernet-encrypted** in
+`channel_credentials` (reuses `store_credentials`); **GET** lists type+account+status (**never creds**);
+**DELETE** disconnects (creds cascade). Token never returned or logged; global `UNIQUE(type,external_id)`
+→ 409 if an account is already wired elsewhere. web-ops: a **Channels** card on the store profile
+(`StoreChannelsSection`) with per-type "+ Add" → registry-driven fields (token fields masked) → save;
+list + remove; operator-gated. No migration. **Gate (all green):** ruff · mypy core 194 · guards 0 ·
+unit 501 · **fresh-DB integration+isolation 590** (13 new channel tests incl. encrypted-at-rest
+round-trip, list-omits-creds, missing-field-422, unknown-type-422, re-paste-in-place, delete-cascade,
+cross-store-409, non-operator-403, plane-off-404) · web-ops lint+tsc+build+vitest 42. Deferred (BLOCKER
+#26): adapters read per-store creds at send-time; operator-console auto-logout. Next: CP-5 LLM config.
+
+
 ## CP-3 · Seat enforcement (plan seats cap invites) — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-3-seat-enforcement`. The plan's `max_managers`/`max_staff` (CP-1) now actually

@@ -297,6 +297,50 @@ export function adminStoreReport(
   return authed<StoreReportDetail>(`/v1/admin/tenants/${orgId}/reports/${reportId}`, token);
 }
 
+// ---- Per-store channel setup (CP-4) -----------------------------------------
+// The operator pastes a store's channel tokens (v1 = token paste). Stored encrypted server-side;
+// the token is never returned or logged — the list only ever shows type + account id + status.
+
+export interface ChannelTypeInfo {
+  type: string;
+  label: string;
+  credential_fields: string[];
+  external_id_field: string;
+}
+
+export interface StoreChannel {
+  channel_id: string;
+  type: string;
+  external_id: string;
+  status: string;
+  created_at?: string;
+}
+
+export function adminChannelTypes(token: string): Promise<ChannelTypeInfo[]> {
+  return authed<ChannelTypeInfo[]>("/v1/admin/tenants/channel-types", token);
+}
+
+export function adminListChannels(token: string, orgId: string): Promise<StoreChannel[]> {
+  return authed<StoreChannel[]>(`/v1/admin/tenants/${orgId}/channels`, token);
+}
+
+export function adminConnectChannel(
+  token: string, orgId: string, input: { type: string; credentials: Record<string, string> },
+): Promise<StoreChannel> {
+  return authed<StoreChannel>(`/v1/admin/tenants/${orgId}/channels`, token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function adminDisconnectChannel(
+  token: string, orgId: string, channelId: string,
+): Promise<void> {
+  return authed<void>(`/v1/admin/tenants/${orgId}/channels/${channelId}`, token, {
+    method: "DELETE",
+  });
+}
+
 // ---- Billing (/v1/admin/billing/*, platform.tenants:read / :manage) ---------
 // Operator-owned per-client revenue. Rollup feeds the Financial dashboard; plans + per-client
 // subscription/charges are the management surface (writes need tenants:manage; audited server-side).
