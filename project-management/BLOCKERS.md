@@ -207,6 +207,22 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   chain, so an overridden route loses the global default's provider failover — add failover for
   overrides when wiring live models. Both are gated/simulated until `llm_provider_enabled`.
 
+### 27. LP-2d: vault `tool-permissions.yaml` lands outside the vault (campaigner landing tools)
+
+- **Severity:** Low — narrative/doc sync only. **No runtime or test risk** (the drift test reads the
+  vendored `spec/agents/tool-permissions.yaml`, which IS updated; the vault original is not test-checked
+  — same posture as blockers #17/#21/#23).
+- **Description:** LP-2d extended the `campaigner` archetype's level-1 `capability_allowlist` with
+  `landing_page.generate` + `landing_page.publish`. Kept in byte-for-byte sync across the three
+  test-checked mirrors: `core/packs/archetypes.py` ↔ `spec/agents/tool-permissions.yaml` ↔ the seeded
+  `agent_archetypes` row (**migration 047**). The vault original
+  `docs/agents/tool-permissions.yaml` (read-only from the repo) still lists the old 3-tool campaigner
+  allowlist.
+- **Next action (founder):** update the vault `docs/agents/tool-permissions.yaml` campaigner allowlist to
+  `[segments.query, campaigns.execute, templates.read, landing_page.generate, landing_page.publish]` so
+  the narrative source matches the vendored spec + code + DB. File save is the record (vault is not
+  git-tracked).
+
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 
 - **Severity:** Low — documentation only; the database is correct, migrated, RLS-enforced, and tested (518 pytest). No runtime impact.

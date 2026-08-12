@@ -9,6 +9,35 @@ selects and approves the next ticket.
 
 ---
 
+## LP-2d · Agent mediation tools + publish approval rule — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-2d-agent-mediation`. Final sub-ticket of LP-2 — the agent's "hands." The
+**campaigner** (marketing agent) can now draft + publish landing pages **through the mediation proxy**,
+with go-live **gated by owner approval**. Closes the "agent suggests / human approves" loop.
+
+- **Agent tools** (`core/mediation/tools.py`): `landing_page.generate` (→ `service.generate_variants`,
+  internal drafts, status `generated`) and `landing_page.publish` (→ `lifecycle.publish`, audits as
+  **agent**). `landing_page.generate` added to `manifest._NO_TIER_TOOLS` (drafts → no approval to run,
+  and NOT untrusted-narrowing-safe); `publish` **auto-`requires_tier_eval`**.
+- **Approval routing:** `engine.TOOL_ACTIONS` maps `landing_page.publish → action.landing_page.publish`;
+  jewelry pack `campaigner` **tier rule** `landing_publish` (tier **2**, approver `role:owner`). So an
+  agent-initiated publish **parks for owner approval** and never executes until approved (belt-and-braces:
+  even an ungoverned publish fails safe to "needs approval").
+- **Capability allowlist** (the byte-for-byte triple): `campaigner` gains `landing_page.generate` +
+  `landing_page.publish` in `core/packs/archetypes.py` **and** `spec/agents/tool-permissions.yaml` +
+  **migration 047** (updates the seeded `agent_archetypes` row). Drift tests (constant↔yaml↔DB) stay
+  green. **Founder follow-up:** update the vault original `docs/agents/tool-permissions.yaml` to match
+  (read-only from here) — see BLOCKERS.
+- `core/landing/lifecycle.py`: `publish` gains `actor_type` (default `user`; `agent` on the proxy path).
+
+**Gate (all green):** ruff · mypy core **207** · mypy migrations · guards **0** · **migration 047
+up/down** · unit **550** (+4: campaigner-carries-landing-tools, generate-skips-gate/publish-gated,
+publish→action-mapping, allowlist∩grant) · **fresh-DB integration+isolation 642** (+4: proxy
+**parks publish until approval / executes after**, seeded publish rule = **tier 2**, agent generate
+drafts 3 → owner selects → agent publish → **published + audited as agent**, agent **cannot publish an
+unapproved page**; +installer policy-count 8→9). web untouched. **This completes LP-2 (a/b/c/d).**
+
+
 ## LP-2c · Gated LLM strategy planner — **COMPLETE — merged `92dbef3`, CI green** (2026-08-12)
 
 Branch `feature/lp-2c-llm-planner`. Third sub-ticket of the split LP-2 (founder 2026-08-12 approved

@@ -51,10 +51,15 @@ bindings:
     tool_grants:
       - {name: segments.query}
       - {name: campaigns.execute, params_constraints: {template_status: approved}}
+      - {name: landing_page.generate}
+      - {name: landing_page.publish}
     tier_defaults:
       - {rule_key: any_broadcast, applies_to: action.campaign.execute, condition: "recipients > 0", tier: 3,
          approver: role:owner, confirm: typed_recipient_count,
          description: "Any bulk send, always needs your confirmation"}
+      - {rule_key: landing_publish, applies_to: action.landing_page.publish, condition: "true", tier: 2,
+         approver: role:owner,
+         description: "Publishing a landing page always needs your approval"}
     kpis: [campaign_roi_multiple, quality_rating_status]
 
   - archetype: ops

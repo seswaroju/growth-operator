@@ -25,7 +25,13 @@ ARCHETYPE_ALLOWLISTS: dict[str, list[str]] = {
         "ledger.read",
     ],
     "nurture": ["messages.send", "crm.read", "segments.read"],
-    "campaigner": ["segments.query", "campaigns.execute", "templates.read"],
+    "campaigner": [
+        "segments.query",
+        "campaigns.execute",
+        "templates.read",
+        "landing_page.generate",  # LP-2d: draft candidate landing pages (no approval to run)
+        "landing_page.publish",   # LP-2d: go-live — tier-gated, parks for owner approval
+    ],
     "ops": ["ingestion.review", "catalog.write", "rates.read"],
     "planner": ["bus.route", "digest.compose"],
 }

@@ -292,3 +292,34 @@ async def test_successful_read_tool_executes_and_audits_intent(org: uuid.UUID) -
     assert result.ok and result.output == {"results": [], "nearest": []}
     assert result.audit_id is not None and seen["audit_id"] == result.audit_id
     assert "tool.catalog.search:intent" in await _audit_actions(org)
+
+
+async def test_landing_publish_parks_until_owner_approval(org: uuid.UUID) -> None:
+    # LP-2d: an agent-initiated landing_page.publish is tier-gated. It PARKS for owner approval and
+    # does NOT execute; only an approved (resumed) run skips the gate and runs the impl.
+    m, h = _manifest([{"name": "landing_page.publish", "requires_tier_eval": True}])
+    calls: list[dict] = []
+
+    async def _publish(c: RunContext, p: dict, s: Any, aid: uuid.UUID) -> Any:
+        calls.append(p)
+        return {"status": "published"}
+
+    reg = {"landing_page.publish": _publish}
+    redis = FakeRedis()
+    async with org_scoped_session(org) as s:
+        parked = await proxy.call(
+            _ctx(org, m, h), "landing_page.publish", {"page_id": "x"},
+            session=s, redis=redis, registry=reg, tier_eval=lambda c, t, p: 2)
+        approved_ctx = RunContext(
+            org_id=org, run_id=uuid.uuid4(), instance_id=uuid.uuid4(),
+            manifest=m, manifest_hash=h, approved=frozenset({"landing_page.publish"}))
+        ran = await proxy.call(
+            approved_ctx, "landing_page.publish", {"page_id": "x"},
+            session=s, redis=redis, registry=reg, tier_eval=lambda c, t, p: 2)
+        await s.commit()
+    # parked: pending approval at tier 2, no output
+    assert parked.pending is not None and parked.pending.tier == 2 and parked.output is None
+    # approved: the gate is skipped and the impl executes
+    assert ran.ok and ran.output == {"status": "published"}
+    # the impl ran EXACTLY once — only after approval; the parked call had no side effect
+    assert len(calls) == 1

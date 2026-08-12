@@ -2,7 +2,7 @@
 archetype_allowlists:
   concierge: [messages.send, catalog.search, pricing.compute, calendar.book, crm.read, crm.write, ledger.read]
   nurture:   [messages.send, crm.read, segments.read]
-  campaigner: [segments.query, campaigns.execute, templates.read]
+  campaigner: [segments.query, campaigns.execute, templates.read, landing_page.generate, landing_page.publish]
   ops:       [ingestion.review, catalog.write, rates.read]
   planner:   [bus.route, digest.compose]
 mvp_grants:                                        # jewelry pack level-2 (subset of bindings.yaml, enforced shape)

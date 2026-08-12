@@ -36,7 +36,7 @@ _READ_ONLY_SUFFIXES = (".read", ".search")
 # facing/committing action — no approval to run (only the SEND of the result is tier-gated), so they
 # skip the tier gate. Unlike read-only tools they are NOT auto-added to the untrusted-narrowing
 # allow-list: a run that ingested external content must not drive a quote from bad input.
-_NO_TIER_TOOLS = frozenset({"pricing.compute"})
+_NO_TIER_TOOLS = frozenset({"pricing.compute", "landing_page.generate"})
 
 
 def _seed() -> bytes:

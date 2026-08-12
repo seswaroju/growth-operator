@@ -171,6 +171,7 @@ TOOL_ACTIONS: dict[str, list[str]] = {
     "messages.send": ["action.message.send"],
     "campaigns.execute": ["action.campaign.execute"],
     "catalog.write": ["action.catalog.write"],
+    "landing_page.publish": ["action.landing_page.publish"],
 }
 
 
