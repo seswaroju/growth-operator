@@ -9,6 +9,34 @@ selects and approves the next ticket.
 
 ---
 
+## LP-3b · Public lead capture → CRM + attribution + parked concierge draft — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-3b-lead-capture`. A visitor submits the form on a **published** page → a real
+**contact + lead in the existing CRM** (no second CRM), stamped with the **LEAD-1 origin shape**, and
+the concierge follow-up **parks for owner approval**. **No migration** (LEAD-1's migration 048 already
+provides the attribution columns).
+
+- `core/landing/leads.py` (NEW): `capture_lead(...)` → SECDEF resolve org → **published-only** gate →
+  **upsert contact by (org, phone)** (reuses the store's existing contact; only fills blanks, never
+  overwrites what the store knows) with `consent_status='explicit'` → insert lead
+  (`source='landing_page'` + `landing_page_id` / `landing_version_id` / `variant` / `utm`) → record
+  `landing_page.form_submitted` → **`create_approval` (tier 2) with a deterministic draft** —
+  grounded in the enquiry, inventing no price/discount/stock/promise (§18); **nothing is sent** (§19).
+- `core/landing/api.py`: public **`POST /p/{page_id}/lead`** (unauth, rate-limited **10/min/IP** — PII
+  writes get a much tighter cap than serving). **Consent required → 422** (that's about the body, not
+  the page); an unknown/unpublished page returns the same neutral `202 {ok:true}` and records nothing,
+  so the endpoint never reveals whether a page exists. Phone normalised to digits + plausibility-
+  checked; every field capped; **no PII logged**.
+- `core/landing/service.py`: `_clip`/`_clip_utm` promoted to public `clip`/`clip_utm` (now shared).
+
+**Gate (all green):** ruff · mypy core **210** · guards **0** · unit **564** (+3: phone normalise/
+reject, draft grounded-and-invents-nothing) · **fresh-DB integration+isolation 656** (+7: full capture
+with attribution + explicit consent + **parked** draft + **zero outbound messages**, no-consent 422
+writes nothing, bad phone 422, unpublished/unknown page records nothing, repeat submission reuses the
+**one** contact, rate-limited 429, tenant-isolated + `captured_from` names page & variant). No
+migration. web untouched. **Next:** CP-8 (operator per-tenant lead roster).
+
+
 ## LEAD-1 · Generic lead-origin model ("captured from", every channel) — **COMPLETE — merged `e85c54f`, CI green** (2026-08-12)
 
 Branch `feature/lead-1-origin-model`. **New foundation ticket**, created from the founder's steer while

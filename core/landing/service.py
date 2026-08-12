@@ -30,13 +30,13 @@ _META_STR_KEYS = ("section", "device", "referrer")
 _META_INT_KEYS = ("scroll", "dwell")
 
 
-def _clip(value: object, limit: int) -> str | None:
+def clip(value: object, limit: int) -> str | None:
     if value is None:
         return None
     return str(value)[:limit]
 
 
-def _clip_utm(utm: object) -> dict[str, str]:
+def clip_utm(utm: object) -> dict[str, str]:
     if not isinstance(utm, dict):
         return {}
     out: dict[str, str] = {}
@@ -321,8 +321,8 @@ async def record_public_event(
              "(org_id, page_id, version_id, type, item_ref, variant, session_id, utm, meta) "
              "VALUES (:o,:p,:v,:t,:i,:var,:sid,CAST(:utm AS jsonb),CAST(:meta AS jsonb))"),
         {"o": str(org), "p": str(page_id), "v": str(version_id) if version_id else None,
-         "t": type_, "i": _clip(item_ref, 64), "var": _clip(variant, 64) or "default",
-         "sid": _clip(session_id, 64), "utm": json.dumps(_clip_utm(utm)),
+         "t": type_, "i": clip(item_ref, 64), "var": clip(variant, 64) or "default",
+         "sid": clip(session_id, 64), "utm": json.dumps(clip_utm(utm)),
          "meta": json.dumps(_clip_meta(meta))})
     return True
 
