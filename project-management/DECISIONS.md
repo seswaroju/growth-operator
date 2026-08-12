@@ -1116,3 +1116,23 @@ auto-charge — Razorpay entity undecided, BLOCKERS #6). Platform/API charges bi
 the monthly plan; **LLM cost is inside the plan** (GO margin). Channels use **token paste** (not OAuth)
 for v1. Full design + ticket plan: `project-management/CONTROL_PLANE_DESIGN.md` (tickets CP-1..CP-7).
 **Decided by:** Founder (2026-08-11).
+
+---
+
+## 2026-08-11 — Seat enforcement policy (CP-3)
+
+**Decision (founder, on the CP-3 plan):** the active plan's `max_managers`/`max_staff` (CP-1) are
+enforced when an **invite is created**, and the check **counts outstanding invites in addition to
+current members** (so several invitees accepting can't exceed the cap). A store with **no active
+plan cannot add any non-owner seat** — fail closed. Confirmed both proposed defaults ("count pending:
+yes", "no plan → deny non-owner: yes").
+
+**Effect / derived rules** (`core/tenancy/seats.py::check_seat`, enforced in
+`core/tenancy/invites.py::create_invite` → **HTTP 409**, distinct from the rank-check 403):
+- `owner` is never seat-limited; `viewer` is read-only and **uncapped by the plan schema** (there is
+  no `max_viewers`) but still requires an active plan.
+- Caps are concrete integers (`NOT NULL DEFAULT 0`) — **`0` means the tier grants no seats** of that
+  role (refused), not "unlimited". There is no unlimited sentinel.
+- No new canonical error code was invented (would need founder approval, §13); capacity refusals use
+  plain HTTP 409, matching the existing rank-check's plain 403.
+**Decided by:** Founder (2026-08-11).

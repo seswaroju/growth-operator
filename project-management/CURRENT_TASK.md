@@ -9,6 +9,22 @@ selects and approves the next ticket.
 
 ---
 
+## CP-3 · Seat enforcement (plan seats cap invites) — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-3-seat-enforcement`. The plan's `max_managers`/`max_staff` (CP-1) now actually
+bind. New `core/tenancy/seats.py::check_seat` counts current members **plus** outstanding (unexpired,
+unaccepted) invites of the target role and compares to the plan cap; `create_invite` calls it and
+returns **409** when a seat isn't available (distinct from the rank-check 403). `owner` uncapped;
+`viewer` uncapped by the schema but needs a plan; **no active plan → any non-owner invite refused**
+(fail closed); `0` seats = none granted. Reads FORCE-RLS `user_orgs`/`billing_subscriptions`, so the
+check sets org context (else it fails closed to 0 and would over-permit). Backend-only (invites UI is
+still gated off until Week 5). No migration. **Gate (CI-relevant, all green):** ruff · mypy core 192 ·
+guards 0 · unit 501 · **fresh-DB integration+isolation 577** (10 new seat tests: under-cap, at-cap,
+pending-counts, 0-seats, per-role, viewer-uncapped, owner-uncapped, no-plan-denies, expired-ignored,
+org-scoped) + existing invites flow updated (adds a plan+subscription). Decision recorded in DECISIONS.
+Next: CP-4 channel setup.
+
+
 ## Follow-up · Fix latent test reds + wire isolation/integration into CI — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `chore/fix-latent-reds-wire-isolation-ci`. Resolves BLOCKER #25 (surfaced during CP-2b). The

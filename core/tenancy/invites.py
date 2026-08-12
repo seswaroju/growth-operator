@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.config import Settings, get_settings
 from core.common.db import get_session
-from core.tenancy import repository
+from core.tenancy import repository, seats
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.permissions import MEMBERS_INVITE, ROLE_STAFF, can_grant_role
 from core.tenancy.rbac import requires
@@ -155,6 +155,11 @@ async def create_invite(
             status.HTTP_403_FORBIDDEN,
             f"cannot grant role {body.role!r} — it is not a role at or below your own",
         )
+    # Seat enforcement (CP-3): the active plan caps manager/staff seats (current members + pending
+    # invites). Refuse a seat the plan doesn't grant — capacity → 409, distinct from the 403 above.
+    seat = await seats.check_seat(session, current.org_id, body.role)
+    if not seat.allowed:
+        raise HTTPException(status.HTTP_409_CONFLICT, seat.reason)
     raw = generate_invite_token()
     expires_at = datetime.now(UTC) + INVITE_TTL
     invite_id = await insert_invite(
