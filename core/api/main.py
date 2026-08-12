@@ -27,6 +27,7 @@ from core.payments.api import router as transactions_admin_router
 from core.payments.webhook import router as razorpay_webhook_router
 from core.pricing.api import rates_router
 from core.pricing.api import router as pricing_router
+from core.runtime.models_admin import router as models_admin_router
 from core.runtime.ops_router import router as ops_router
 from core.support.api import admin_router as support_admin_router
 from core.support.api import owner_router as support_owner_router
@@ -101,6 +102,7 @@ app.include_router(support_admin_router)
 app.include_router(platform_router)
 app.include_router(tenants_admin_router)
 app.include_router(channel_admin_router)
+app.include_router(models_admin_router)
 app.include_router(ops_admin_router)
 app.include_router(analytics_admin_router)
 app.include_router(customer_health_admin_router)

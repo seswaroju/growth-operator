@@ -9,6 +9,25 @@ selects and approves the next ticket.
 
 ---
 
+## CP-5 · Per-tenant / per-agent LLM model config — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-5-llm-config`. The operator picks, per store + per agent-task, which provider+model
+the runtime uses (decisions d1 GO holds keys / d2 default Claude Sonnet). `model_routes` is global;
+CP-5 adds a per-store **override** layer. **Migration 043** `org_model_routes` (org-scoped, RLS,
+UNIQUE(org_id,node_key)). `RoutingModel._route` now consults the store's override (exact node_key,
+else the store's `default`) **before** the global default → a store keeps Sonnet unless overridden.
+`core/runtime/model_catalog.py` (declarative: provider+model choices + tunable agent-tasks; Rule-Zero
+safe). Operator API `core/runtime/models_admin.py` (`/v1/admin/tenants/{org}/models`): GET effective
+config (override vs default), PUT set (validated against the catalog → 422/404), DELETE revert;
+audited. web-ops: an **AI models** card on the store profile (`StoreModelsSection`) — per task a model
+dropdown + "custom" tag + Reset. The operator only *selects* a model; keys stay central. **Gate (all
+green):** ruff · mypy core 196 · mypy migrations · guards 0 · unit 501 · alembic up/down/up + RLS ·
+**fresh-DB integration+isolation 602** (3 new routing-override tests: override-wins, default-catches-
+unrouted, org-scoped; 9 new operator-API tests: catalog, effective-defaults, set, clear-reverts,
+404/422, isolation, 403, plane-off) · web-ops lint+tsc+build+vitest 42. Deferred (BLOCKER #26):
+per-provider keys + override failover at go-live. Next: CP-6 cost & margin view.
+
+
 ## CP-4 · Per-store channel setup (v1 token paste) — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-4-channel-setup`. The GO operator wires any store's channels from web-ops by

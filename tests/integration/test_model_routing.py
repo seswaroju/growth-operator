@@ -100,6 +100,7 @@ async def env() -> AsyncIterator[Env]:
     yield Env(org, run_id)
     conn = await asyncpg.connect(_dsn())
     try:
+        await conn.execute("DELETE FROM org_model_routes WHERE org_id=$1", org)
         await conn.execute("DELETE FROM costs_lite WHERE org_id=$1", org)
         await conn.execute("DELETE FROM agent_runs WHERE org_id=$1", org)
         await conn.execute("DELETE FROM agent_instances WHERE org_id=$1", org)
@@ -166,3 +167,59 @@ async def test_unrouted_node_key_uses_the_default_chain(env: Env) -> None:
     model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
     route = await model._route("priya.reason")
     assert route.chain == [("anthropic", "claude-3-5-sonnet"), ("openai", "gpt-4o")]
+
+
+# ---- Per-tenant model override (CP-5) --------------------------------------------------------
+
+
+async def _set_override(org: uuid.UUID, node_key: str, provider: str, model: str) -> None:
+    conn = await asyncpg.connect(_dsn())  # migrator role bypasses RLS
+    try:
+        await conn.execute(
+            "INSERT INTO org_model_routes (org_id, node_key, provider, model) VALUES ($1,$2,$3,$4) "
+            "ON CONFLICT (org_id, node_key) DO UPDATE SET provider=$3, model=$4",
+            org, node_key, provider, model)
+    finally:
+        await conn.close()
+
+
+async def test_org_override_wins_over_global_default(env: Env) -> None:
+    # This store overrides 'converse' to openai/gpt-4o; the global default is anthropic/sonnet.
+    await _set_override(env.org, "converse", "openai", "gpt-4o")
+    model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
+    route = await model._route("converse")
+    assert route.chain == [("openai", "gpt-4o")]  # the store's override, not the seeded sonnet
+    # and the turn actually runs on the overridden provider (cost row attributes to it)
+    await model.turn(node_key="converse", prompt="hi", context={})
+    rows = await _costs(env.org, env.run_id)
+    assert rows[0]["provider"] == "openai" and rows[0]["model"] == "gpt-4o"
+
+
+async def test_org_default_override_applies_to_unrouted_keys(env: Env) -> None:
+    # A store-level 'default' override catches every turn, including the executor's 'priya.reason'.
+    await _set_override(env.org, "default", "openai", "gpt-4o")
+    model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
+    route = await model._route("priya.reason")
+    assert route.chain == [("openai", "gpt-4o")]
+
+
+async def test_override_is_org_scoped(env: Env) -> None:
+    # env.org overrides 'converse'; a DIFFERENT store must still get the global default (RLS).
+    await _set_override(env.org, "converse", "openai", "gpt-4o")
+    other = uuid.uuid4()
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'MR2')", other)
+    finally:
+        await conn.close()
+    try:
+        model = RoutingModel(other, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
+        route = await model._route("converse")
+        assert route.chain == [("anthropic", "claude-3-5-sonnet"), ("openai", "gpt-4o")]
+    finally:
+        conn = await asyncpg.connect(_dsn())
+        try:
+            await conn.execute("DELETE FROM org_model_routes WHERE org_id=$1", other)
+            await conn.execute("DELETE FROM organizations WHERE id=$1", other)
+        finally:
+            await conn.close()
