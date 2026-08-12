@@ -85,7 +85,16 @@ PAYLOAD_SPECS: dict[str, dict[str, str]] = {
         "severity": "string",
         "kind": "string",
         "detail": "object"
+    },
+    "catalog.price_inputs_changed.v1": {
+        "item_id": "uuid",
+        "changed_keys": "array"
+    },
+    "support.ticket.raised.v1": {
+        "ticket_id": "uuid",
+        "priority": "string",
+        "severity": "string"
     }
 }
 
-TOPICS_CHECKSUM = "8c8d50f6e0af7d2b1508151ab29a2bf252dff38cc3bc10c70dd89c44fdbb21c4"
+TOPICS_CHECKSUM = "bffd5dd50a485a601a7d316002f746262e5b6709ee38b8147058ab6b998b270c"

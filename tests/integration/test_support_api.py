@@ -8,6 +8,7 @@ is unreachable.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -109,12 +110,30 @@ async def _raise(scene: Scene, user: uuid.UUID, org: uuid.UUID, **over: object) 
     return await scene.client.post("/v1/support/tickets", headers=scene.hdr(user, org), json=body)
 
 
+async def _raised_events(org: uuid.UUID) -> list[dict]:
+    """`support.ticket.raised.v1` payloads emitted to the outbox for this org (#21)."""
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT payload FROM event_outbox WHERE org_id=$1 "
+            "AND type='support.ticket.raised.v1'", org)
+        return [json.loads(r["payload"]) if isinstance(r["payload"], str) else dict(r["payload"])
+                for r in rows]
+    finally:
+        await conn.close()
+
+
 async def test_owner_raises_ticket_with_defaults(scene: Scene) -> None:
     r = await _raise(scene, scene.user_a, scene.org_a)
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["status"] == "open" and body["priority"] == "normal"  # operator triages priority
     assert "org_name" not in body  # owner view never leaks cross-tenant fields
+    # #21: raising a ticket emits support.ticket.raised.v1 to the outbox
+    events = await _raised_events(scene.org_a)
+    assert len(events) == 1
+    assert events[0]["ticket_id"] == body["id"]
+    assert events[0]["priority"] == "normal" and events[0]["severity"] == "major"
 
 
 async def test_owner_isolation(scene: Scene) -> None:

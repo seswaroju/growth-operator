@@ -9,10 +9,9 @@ Two vertical-agnostic mechanisms over `catalog_items`:
    concierge recomputes before re-asserting a figure. Which attributes matter is derived from the
    strategy's rule ASTs (never hard-coded), keeping this module free of any industry noun.
 
-The typed `catalog.price_inputs_changed` event named in the spec is **deferred**: its payload
-schema lives in the vault's read-only `topics.yaml` and is not yet registered, so emitting it
-would fail the event-catalog drift check. The flag itself (the MVP-visible signal) is written
-synchronously here; see BLOCKERS.
+The typed `catalog.price_inputs_changed.v1` event is now registered (topics.yaml) and **emitted**
+in the same transaction as the flag write, so other consumers (pricing cache, workflows) can react
+(BLOCKER #17 resolved). The flag itself (the MVP-visible signal) is still written synchronously.
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
+from core.events.outbox import emit
 from core.pricing.engine import to_python
 
 AVAILABILITY_STATES = frozenset({"in_stock", "made_to_order", "bookable_slot", "out"})
@@ -158,6 +158,11 @@ async def flag_quotes_if_price_inputs_changed(
     deps: set[str] = set()
     for strategy in await _pack_strategies(session, pack_id):
         deps |= price_input_deps(strategy)
-    if not (changed_keys & deps):
+    changed_price_inputs = changed_keys & deps
+    if not changed_price_inputs:
         return 0
+    # A real price input changed → emit the typed event in the same txn (#17), then flag quotes.
+    await emit(
+        session, org_id=org_id, event_type="catalog.price_inputs_changed.v1", source="catalog",
+        payload={"item_id": str(item_id), "changed_keys": sorted(changed_price_inputs)})
     return await flag_stale_quotes_for_item(session, org_id, item_id)

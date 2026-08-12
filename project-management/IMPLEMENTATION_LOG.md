@@ -5025,3 +5025,36 @@ pack/agents, seat enforcement, channel setup, LLM config, cost/margin, broadcast
 job (2m38s) applied migration 044 and ran the announcement suite on a fresh DB and passed.
 
 **Next:** founder review — the control-plane set is complete; awaiting the next directive.
+
+---
+
+## 2026-08-12 — BLOCKER #17 + #21 (event side): typed events registered + emitted
+
+**Context:** working the open-blocker list. Founder edited the read-only vault (`make schema-doc` to
+refresh `schema.sql`; added two events to `docs/implementation/events/topics.yaml`). This is the code
+half.
+
+**What changed:**
+- **Event catalog synced** — added `catalog.price_inputs_changed.v1` (`item_id: uuid`,
+  `changed_keys: array`) and `support.ticket.raised.v1` (`ticket_id`, `priority`, `severity`) to the
+  vendored `spec/events/topics.yaml`, regenerated `core/events/types.py` (`scripts/gen_events.py`), and
+  added both to `core/events/topics.py::ALLOWED_EVENT_TYPES`. Drift tests
+  (`test_event_types`, `test_events_topics`) green.
+- **#17 emit** — `core/catalog/availability.py::flag_quotes_if_price_inputs_changed` now emits
+  `catalog.price_inputs_changed.v1` in the same transaction as the flag write, **only when a real
+  price input changed** (changed_keys ∩ strategy deps), with those keys in the payload.
+- **#21 emit** — `core/support/service.py::raise_ticket` emits `support.ticket.raised.v1` in the same
+  txn (additive — the operator queue also polls).
+- **Blockers:** #17 **RESOLVED**; #21 + #23 schema parts resolved (founder ran `make schema-doc`),
+  #21 event resolved — only low-value narrative doc reconciliation deferred.
+
+**Tests:** `test_availability_stale.py::test_weight_edit_...` asserts the event fires on a weight edit
+(key present) and NOT on an unrelated edit; `test_support_api.py::test_owner_raises_ticket_with_defaults`
+asserts the ticket event with ticket_id/priority/severity.
+
+**Gate:** ruff · mypy core 198 · guards 0 · unit 504 (incl. event drift) · **fresh-DB
+integration+isolation 617, 0 errors**. No migration; no web change.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** BLOCKER #5 (IBJA gold rate), then #16 (embeddings).

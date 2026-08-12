@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
+from core.events.outbox import emit
 from core.tenancy.platform_admin import log_platform_access
 
 QUEUE_VIEWED_ACTION = "support.queue.viewed"
@@ -88,6 +89,11 @@ async def raise_ticket(
              "subj": subject, "desc": description, "cat": category, "sev": severity},
         )
     ).mappings().one()
+    # Notify the operator plane in the same txn (#21) — the queue also polls, so this is additive.
+    await emit(
+        session, org_id=org_id, event_type="support.ticket.raised.v1", source="support",
+        payload={"ticket_id": str(row["id"]), "priority": row["priority"],
+                 "severity": row["severity"]})
     return dict(row)
 
 
