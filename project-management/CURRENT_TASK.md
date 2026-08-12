@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-2d · Agent mediation tools + publish approval rule — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-2d · Agent mediation tools + publish approval rule — **COMPLETE — merged `f2b2fb6`, CI green** (2026-08-12)
 
 Branch `feature/lp-2d-agent-mediation`. Final sub-ticket of LP-2 — the agent's "hands." The
 **campaigner** (marketing agent) can now draft + publish landing pages **through the mediation proxy**,

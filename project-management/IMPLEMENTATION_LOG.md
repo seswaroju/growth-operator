@@ -5415,7 +5415,8 @@ publish/executes-after-approval, seeded publish rule = tier 2, agent generate→
 publish→published+audited-as-agent, agent can't publish an unapproved page; installer policy count
 8→9). web untouched. **Completes LP-2 (a/b/c/d).**
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `9121477` (merge `f2b2fb6`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3a (public serving surface — serve the published static/cached page,
 tenant-from-path, CSP/noindex, `/track` rate-limit/bot defence).
