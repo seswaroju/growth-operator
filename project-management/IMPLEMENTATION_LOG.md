@@ -5085,6 +5085,6 @@ Rule Zero forbids — the `ibja_gold` key form is allowed) · unit 513 (+9) · *
 integration+isolation 617, 0 errors** (confirmed the local `test_rate_ingestion` failures are the
 pre-existing #22b pollution, not this change).
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `59e4a9c` (merge `318f9a0`). Pushed to `main`; **GitHub CI green**.
 
 **Next:** BLOCKER #16 (OpenAI embeddings + per-store cost metering).
