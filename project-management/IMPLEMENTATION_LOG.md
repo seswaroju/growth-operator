@@ -4858,6 +4858,7 @@ point them at these per-store creds at send-time (gated/simulated until go-live,
 meanwhile); (2) an **operator-console auto-logout / screen-lock** so an unattended logged-in session
 can't be used to replace/remove channels (the write-only design already blocks *reading* a key).
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `d630e81` (merge `6622a5c`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job (2m46s) ran the channel suite + full integration + isolation against a fresh DB and passed.
 
 **Next:** CP-5 — per-tenant / per-agent LLM config (default Claude Sonnet, override) + web-ops dropdown.
