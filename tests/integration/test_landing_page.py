@@ -316,6 +316,28 @@ async def test_generate_three_variants_and_preview_each(scene: Scene) -> None:
     assert "lp-quotes" in bodies["classic"]            # classic keeps it
 
 
+async def _version_planner(page_id: str, version_no: int) -> str:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        sc = await conn.fetchval(
+            "SELECT source_context FROM landing_page_versions "
+            "WHERE page_id=$1::uuid AND version_no=$2", page_id, version_no)
+        return (json.loads(sc) if isinstance(sc, str) else sc)["planner"]
+    finally:
+        await conn.close()
+
+
+async def test_use_llm_falls_back_to_deterministic_when_provider_off(scene: Scene) -> None:
+    # the owner asks for LLM-planned variants, but no provider is wired (default) → safe fallback:
+    # deterministic archetypes, no network, and the provenance says so.
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(variants=3, use_llm=True))
+    assert r.status_code == 201
+    assert [v["variant_label"] for v in r.json()["variants"]] == ["classic", "focused", "story"]
+    assert await _version_planner(r.json()["page_id"], 1) == "deterministic"
+
+
 async def test_single_variant_is_backward_compatible(scene: Scene) -> None:
     r = await scene.client.post(
         "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a), json=_body())

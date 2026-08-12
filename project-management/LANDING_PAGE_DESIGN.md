@@ -222,9 +222,16 @@ Phase-1 remainder (the split of the old "LP-2/3/4"):
 - **LP-2b — Lifecycle + owner approval (HITL #1):** status machine (generated→awaiting_approval→approved
   →published→paused→archived) + **select/approve one** variant (reuse `core/approvals`) + versioning/
   rollback + publish[mark+record, live serving hosting-gated]/pause. Approval gate enforced + tested.
-- **LP-2c — Agent mediation tools:** `landing_page.{plan,generate_spec,validate,publish,pause,rollback}`
-  mediation tools + `campaigner` `capability_allowlist`/`tool_grants` + publish approval-rule + the
-  gated **LLM** planner (×1, simulated in tests) producing ExperienceStrategy→Spec. The agent path.
+- **LP-2c — Gated LLM strategy planner** (founder 2026-08-12: split LP-2c/LP-2d): the marketing
+  agent's *semantic* decisions (section selection/order, framing, depth) → `ExperienceStrategy`,
+  **validated against the schema + component contracts**, with a **deterministic fallback**. Gated
+  **off/simulated by default and in tests** (no network); model output is untrusted → it may only
+  reorder/subset the pack's real sections, **never invent copy or components**. Touches `core/landing`
+  only. Makes LP-2a's variant generation "the marketing agent's suggestions."
+- **LP-2d — Agent mediation tools + approval rule:** `landing_page.{plan,generate,validate,publish,
+  pause,rollback}` in the mediation `REGISTRY` + `campaigner` `capability_allowlist`/`tool_grants` +
+  a **publish approval-rule (tier ≥ 2)** so an agent-initiated publish **parks for owner approval**
+  (HITL #1 on the agent path). Touches `core/mediation`, `core/approvals`, the pack. The agent's hands.
 - **LP-3a — Public serving surface:** public router serves the published static/cached page
   (tenant-from-path) + CSP/noindex + `/track` rate-limit/bot defence. *(Live serving hosting-gated.)*
 - **LP-3b — Lead capture → CRM + concierge draft:** public lead POST → contacts/leads + attribution +

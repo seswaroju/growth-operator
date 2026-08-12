@@ -5318,3 +5318,52 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2c (agent `landing_page.*` mediation tools + campaigner grants + publish
 approval-rule + gated LLM strategy planner, simulated in tests).
+
+---
+
+## 2026-08-12 — LP-2c · Gated LLM strategy planner
+
+**Ticket:** LP-2c — third sub-ticket of the split "LP-2". Founder approved splitting the original LP-2c
+into **LP-2c (gated LLM strategy planner)** + **LP-2d (agent mediation tools + approval rule)** via
+AskUserQuestion ("Split: LP-2c = LLM planner, LP-2d = mediation (Recommended)"). Ladder updated in
+[LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md) §10.
+
+**Approved plan:** founder "Yep, lets start doing LP-2c" → split confirmed. The marketing agent's
+**semantic** contribution — an LLM proposes N landing-page *strategies* → ExperienceStrategy →
+deterministic spec/render. Gated **off by default**; deterministic path runs everywhere incl. tests
+(no network). `core/landing` only; agent mediation/approval wiring is LP-2d. **No new migration.**
+
+**Files created:** `core/landing/planner_llm.py`, `tests/unit/test_landing_planner_llm.py` (8).
+**Files modified:** `core/landing/service.py` (`generate_variants(use_llm=…)` via
+`plan_variants_planned`; `_insert_version` records `planner`+`model` provenance), `core/landing/api.py`
+(`POST /pages` `use_llm:bool=false`), `tests/integration/test_landing_page.py` (+1),
+`project-management/{CURRENT_TASK,LANDING_PAGE_DESIGN}.md`.
+
+**Behaviour + safety (CLAUDE.md §18 — model output is untrusted):** one gated LLM call
+(`llm_client.complete`, off/unconfigured → caught → deterministic). The model decides **structure
+only** — its `section_plan` is intersected with the pack's real sections (reorder/subset only, never
+invent a component or claim), must lead with the hero; `conversion_goal`/`message_match`/trust copy
+come from the facts, not the model; every resulting spec is re-`validate_spec`'d; any malformed/invalid
+output or provider error → the deterministic archetypes (LP-2a). Provenance (`planner`, `model`)
+recorded per version. **No paid provider in tests** — mocked / gated off.
+
+**Migration:** none. **APIs:** `POST /v1/landing/pages {…, use_llm:bool=false}` (campaigns:send) —
+no-op unless a key is wired. **Events/Frontend:** none. **Config:** reuses `llm_provider_enabled` /
+`llm_model` (no new keys).
+
+**Security:** Rule Zero preserved (guards 0); untrusted LLM output never bypasses validation/business
+rules (structure-only, section whitelist ∩ pack, no invented copy, spec re-validated, deterministic
+fallback); no network in tests; gated off by default so production behaviour is unchanged until a
+founder wires a key.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**207**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**546**, +8 planner: valid-parse, injected-sections-stripped, facts-kept,
+malformed-rejected, disabled→deterministic, enabled+mocked→llm+validated, malformed→fallback,
+provider-raises→fallback) · **fresh-DB integration+isolation `verify_fresh_db.sh` — 638 passed, 4
+skipped, 0 errors** (+1: `use_llm` API passthrough → deterministic fallback + provenance). web
+untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-2d (agent `landing_page.*` mediation tools + `campaigner` capability_allowlist/
+tool_grants + publish approval-rule so an agent-initiated publish parks for owner approval).
