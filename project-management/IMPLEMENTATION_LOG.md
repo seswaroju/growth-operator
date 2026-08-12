@@ -5055,6 +5055,6 @@ asserts the ticket event with ticket_id/priority/severity.
 **Gate:** ruff · mypy core 198 · guards 0 · unit 504 (incl. event drift) · **fresh-DB
 integration+isolation 617, 0 errors**. No migration; no web change.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `2a046c5` (merge `b2aa2cf`). Pushed to `main`; **GitHub CI green**.
 
 **Next:** BLOCKER #5 (IBJA gold rate), then #16 (embeddings).
