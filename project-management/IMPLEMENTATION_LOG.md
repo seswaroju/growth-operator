@@ -5363,7 +5363,8 @@ provider-raises→fallback) · **fresh-DB integration+isolation `verify_fresh_db
 skipped, 0 errors** (+1: `use_llm` API passthrough → deterministic fallback + provenance). web
 untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `c4f893a` (merge `92dbef3`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2d (agent `landing_page.*` mediation tools + `campaigner` capability_allowlist/
 tool_grants + publish approval-rule so an agent-initiated publish parks for owner approval).

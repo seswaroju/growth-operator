@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-2c · Gated LLM strategy planner — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-2c · Gated LLM strategy planner — **COMPLETE — merged `92dbef3`, CI green** (2026-08-12)
 
 Branch `feature/lp-2c-llm-planner`. Third sub-ticket of the split LP-2 (founder 2026-08-12 approved
 splitting LP-2c/LP-2d). The marketing agent's **semantic** contribution: an LLM proposes N landing-page
