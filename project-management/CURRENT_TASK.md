@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## CP-8 · Operator per-tenant lead roster — **COMPLETE — awaiting founder review** (2026-08-12)
+## CP-8 · Operator per-tenant lead roster (+ README rewrite) — **COMPLETE — merged `db73ffe`, CI green** (2026-08-12)
 
 Branch `feature/cp-8-operator-lead-roster`. Closes the gap the founder found: leads must be visible in
 the **tenant/operator dashboard** too, not just the store's — web-ops previously showed only an

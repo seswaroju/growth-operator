@@ -5598,7 +5598,11 @@ integration+isolation `verify_fresh_db.sh` — 662 passed, 4 skipped, 0 errors**
 each lead came from across 3 origins, masks PII, scoped to one store, audited, 403 non-operator, 404
 plane-off) · web-ops **tsc + lint + vitest 42 + build**.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `27533c4` (merge `db73ffe`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals). This commit also **rewrote the
+README** — it described only the inbound concierge loop, leaving the actual wedge (reason-conditioned
+**ghost recovery**) invisible despite being fully implemented and tested. See the new
+"## The wedge" + "## The three loops" sections.
 
 **Next action:** founder selects — LP-3c (UTM/variant attribution + outbox `landing_page.*` events) or
 LP-4a (owner web LandingPagesSection + leads "captured from" column).

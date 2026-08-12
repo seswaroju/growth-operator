@@ -241,3 +241,27 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 
 - **Severity:** Low (test-only). **Description:** `test_business_metrics.py` seeded leads with `datetime.now(UTC)` but asserted against `date.today()` (local), a UTC/local off-by-one that went red only when the local/UTC date boundary differed — surfaced when the system date rolled over mid-session (it passed during MVP-073a/b earlier the same day). Confirmed pre-existing (fails on main with the stage-3 work stashed), not a workflow-engine regression.
 - **Resolution:** aligned the test's day basis to `datetime.now(UTC).date()` (MVP-073c change set). Full suite green.
+
+### 28. Ghost-recovery workflow: two refinements never re-enabled after the CAPTURE-GAP migration
+
+- **Severity:** Medium — this is the **product wedge**, so the gap matters commercially even though
+  the core loop runs. No runtime risk: the workflow parses, compiles, and runs gated-simulated today.
+- **Surfaced:** 2026-08-12, while answering the founder's question "is ghost recovery even implemented
+  or silently set aside?" (it **is** implemented — see the README's new "The wedge" section and the
+  MVP-073h/i/j entries; 13 tests pass across unit + integration + RLS isolation).
+- **Description:** `verticals/jewelry/workflows/silent_lead_reactivation.yaml` (v4) still carries a
+  header comment deferring three things "to the CAPTURE-GAP migrations (needs data today's schema
+  lacks; then re-enable)". **Migration 038 subsequently added that data** — `leads.last_customer_msg_at`,
+  `leads.last_outbound_msg_at`, `last_message_direction`, `first_customer_response_at` all exist now —
+  but the workflow was never updated, so two refinements remain off:
+  1. **`classify_ghost`** — distinguishing a genuine ghost from *the shop* stopping replying
+     (needs `last_outbound_msg_at` / `last_message_direction`). Without it, a store that dropped the
+     ball can be mislabelled as a ghosting customer.
+  2. **The 24h post-quote silence window** in the trigger (needs `last_customer_msg_at`). Today the
+     trigger fires on `lead.stage.changed == 'quoted'` with no silence dwell, so timing is coarser
+     than the spec.
+  (The third deferral — writing the owner's pick to `lead_diagnoses` — **is** done: the
+  `approval_gate` has `label_sink: lead_diagnoses`.)
+- **Next action:** a small follow-up ticket — re-enable `classify_ghost` + the silence-window trigger
+  against the now-present columns, extend the eval set with shop-stopped-replying cases, and refresh
+  the workflow header. Founder to schedule.
