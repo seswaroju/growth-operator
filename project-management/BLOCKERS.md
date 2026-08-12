@@ -26,6 +26,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** Per `docs/25-implementation-starter-kit/02-week-1-plan.md`, WABA verification submission should start Day 1, in parallel with code. A decision is required first: Srila's existing number vs. a new number for Priya (porting freezes the number for days).
 - **Code readiness (2026-08-10, MVP-076):** the send/connect/template code path is **real-ready** — `MetaClient` (`core/channels/whatsapp/meta_client.py`) has the real Meta Graph-API httpx calls gated behind `whatsapp_live_enabled` (simulated when off), wrapped by the 5-gate `send()` + bounded 429/5xx retries, and the **live path is now test-covered** (`tests/unit/test_meta_client_live.py`, httpx mocked — real request shape + parse verified with no network). Only the external items below remain; **no code change** is expected to go live.
 - **Next action:** Founder decides the number question, then submits Meta verification. Go-live = flip `GROWTH_OPERATOR_WHATSAPP_LIVE_ENABLED=true` + connect the real number (`POST /v1/channels/whatsapp/connect`, stores real creds per org); sends still require approval + execution token.
+- **Direction (2026-08-12):** leaning **existing store number + apply for WhatsApp API access** (recognized by customers); still debating vs. a fresh Indian number. No code change either way — kept open pending the founder's final call + Meta submission.
 
 ### 4. Missing dependencies for planned modules
 
@@ -40,6 +41,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder
 - **Description:** Open question: scrape vs. paid API vs. manual-first. `fetch_spec` currently assumes an API exists; manual-entry is the documented hedge.
 - **Next action:** Founder decides; manual-first can unblock MVP-051 without waiting on an API integration decision.
+- **Direction (2026-08-12):** use the community IBJA API (`0xSaurabhx/IBJA-API`, hosted at `https://ibja-api.vercel.app/latest`, GET, no key) **for now** to unblock. Fallback order the founder set: **(1) the repo API → (2) manual daily entry → (3) IBJA's official API [contacted, no response yet] → (4) another paid third-party.** Kept OPEN (community endpoint is best-effort). Engineering: wire `HttpRateFetcher` (already a gated stub) to that endpoint behind `rates_provider_enabled`, keep the manual-entry path as the fallback.
 
 ### 6. Razorpay account entity undecided
 
@@ -47,13 +49,14 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder + counsel
 - **Description:** Personal account vs. new company entity; ties to an open founder-IP legal question.
 - **Next action:** Founder + counsel decide before payment-link work starts.
+- **Direction (2026-08-12):** founder will **add "software services" to the existing (beverage) Pvt Ltd company (MEA)** and open the **Razorpay account under that entity** — a company entity, not personal. Founder-side action (incorporation amendment + Razorpay onboarding); no code change (the payment adapter already records manual/UPI meanwhile). Kept open until the Razorpay account + keys exist.
 
-### 7. React 18 (spec) vs. React 19 (as scaffolded) unresolved
+### ~~7. React 18 (spec) vs. React 19 (as scaffolded) unresolved~~ — RESOLVED 2026-08-12 (bless React 19)
 
 - **Severity:** Low
 - **Owner:** Founder / Engineering
 - **Description:** `docs/25-implementation-starter-kit/06-backend-plan.md` specifies React 18; `npm create vite@latest` installed React 19.2.7 (latest at scaffold time) into `web/package.json`.
-- **Next action:** Decide to pin `web/` to React 18 or update the authoritative doc to React 19.
+- **Resolution (2026-08-12):** Founder blessed **React 19** ("*feels latest*"). No code change — `web/` + `web-ops/` already run React 19 (tsc + build + vitest green throughout). Recorded in DECISIONS. **Vault reconciliation (founder-side, read-only):** update `docs/25-implementation-starter-kit/06-backend-plan.md` to say React 19.
 
 ### 8. Data residency (Hetzner EU vs. India VPS) undecided
 
@@ -61,6 +64,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder
 - **Description:** DPDP posture question; not blocking for pilot tenants.
 - **Next action:** Decide before MVP-098 (production infra) / before scaling past pilot tenants.
+- **Direction (2026-08-12):** founder leans **India-resident hosting** if it's cleaner for DPDP + not much pricier (target very low cost). Provider pricing guidance given to the founder (India regions of DigitalOcean/AWS/OVH + budget Indian hosts; a realistic small VPS running Postgres+Redis+app is ~₹400–700/mo, not ₹150 — ₹150 only buys shared hosting that can't run this stack). Founder to pick a provider; #10 (staging) follows.
 
 ### ~~9. Git commit identity auto-detected, not explicitly configured~~ — RESOLVED 2026-07-30
 
@@ -75,6 +79,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Owner:** Founder
 - **Description:** MVP-009 Terraform (`infra/terraform/staging/`) + `deploy-staging.yml` are written but **un-applied**. Blocked on: a Hetzner Cloud account + API token; a domain + DNS provider (`api.staging.<domain>`); the data-residency decision (see #8 — Hetzner EU vs India VPS); and Meta WhatsApp test-number access (pending, tied to #3). terraform is also not installed locally, so the scaffold is not `fmt`/`plan`-validated.
 - **Next action:** Founder creates the Hetzner token, picks a domain + residency, sets repo secrets (`STAGING_HOST`, `STAGING_SSH_KEY`, vars `STAGING_ENABLED`/`STAGING_DOMAIN`); then `terraform plan` review before any apply (§8/§10.5 — provisioning needs explicit approval).
+- **Direction (2026-08-12):** blocked on #8 (residency) — founder leans India-resident, which means **Hetzner (EU) is likely NOT the host** (DPDP prefers India-resident; Hetzner has no India region). Founder still needs to **pick a company name + register a domain**. Once the provider (India VPS) + domain exist, engineering rewrites the Terraform target for that provider + does a `terraform plan` for review. Kept open.
 
 ### ~~11. RLS is defined but NOT enforced for the app (app connects as a superuser)~~ — RESOLVED 2026-07-29 (MVP-016)
 
@@ -130,6 +135,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Description:** MVP-048 ships a **deterministic simulated embedder** (no paid API) so the hybrid pipeline (kNN HNSW + RRF + empty→nearest) is fully built and tested. The real hosted embedding provider is **not chosen/wired** — enabling `embeddings_provider_enabled` fails closed (`NotImplementedError`).
 - **Partially resolved (2026-08-04, #16 worker/scheduler wiring):** the process entrypoints are now real — `core/scheduler.py` installs + fires `embeddings_batch` (every 5 min, `SimulatedEmbedder`) alongside the approval ladder / trust settle / dedupe prune under the per-(job, minute) lock, and `core/worker.py` runs the outbox publisher + registered consumers. Verified with a live-broker boot smoke (`approval_ladder` fired, both processes shut down gracefully). **Still open (this blocker):** the *real* embedding provider — a founder decision.
 - **Next action (remaining):** Founder picks an embedding provider (OpenAI / Voyage / Cohere / self-hosted), approves the client dep (§9) + credentials; then implement the real `Embedder` behind the `embeddings_provider_enabled` flag. The batch is already wired to fire — only the simulated→real embedder swap remains. The 1024-dim column + HNSW index are already in place (012).
+- **Direction (2026-08-12):** founder chose **OpenAI `text-embedding-3-small`** (cheap, 1536-dim → project uses 1024 via `dimensions` param). Requirement: **meter the cost per store in the ledger** (which store used how much) — same posture as CP-6 LLM costs. Engineering: add a gated `OpenAiEmbedder` (behind `embeddings_provider_enabled`, operator-held key) + record per-org embedding spend so it surfaces in the CP-6 cost/margin view. Recorded in DECISIONS.
 
 ### 17. `catalog.price_inputs_changed` typed event deferred (MVP-049)
 
