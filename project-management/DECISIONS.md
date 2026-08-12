@@ -1186,3 +1186,26 @@ endpoint). Create = publish; `archived_at` retracts from all feeds. So a store p
 announcement still sees it while it's active. This is a deliberate, documented exception to the
 "org tables have RLS" rule, safe because the table is not org-owned. **Decided by:** Founder (CP-7 part
 of the approved control-plane scope; plan approved 2026-08-12).
+
+---
+
+## 2026-08-12 — Blocker-clearing directions (gold rate, embeddings, React, Razorpay entity)
+
+Founder directions given while working the open-blocker list:
+
+- **Gold rate (BLOCKER #5):** use the community **IBJA API** (`0xSaurabhx/IBJA-API`, hosted
+  `https://ibja-api.vercel.app/latest`, no key) to unblock the MVP. **Fallback order:** repo API →
+  manual daily entry → IBJA's official API (contacted, no reply) → another paid third-party. The
+  gated `HttpRateFetcher` will call it; manual entry stays the fallback. Blocker kept open (community
+  endpoint is best-effort).
+- **Embeddings (BLOCKER #16):** **OpenAI `text-embedding-3-small`** (cheap; 1024 dims via the
+  `dimensions` param). Must **meter per-store embedding cost in the ledger** so it appears in the CP-6
+  cost/margin view (same treatment as LLM spend). Operator holds the key (like CP-5).
+- **React (BLOCKER #7):** **React 19** blessed (already scaffolded); vault doc reconciliation is a
+  founder-side edit.
+- **Razorpay entity (BLOCKER #6):** open the account under a **company entity** — the founder's
+  existing (beverage) Pvt Ltd, amended to add software services — not a personal account.
+- **Data residency (BLOCKER #8):** lean **India-resident hosting** for DPDP cleanliness (so Hetzner/EU
+  is likely out for #10 staging).
+
+**Decided by:** Founder (2026-08-12).
