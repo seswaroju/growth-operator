@@ -5658,3 +5658,55 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1b (re-enable `classify_ghost` + the 24h silence window + extend the eval set —
 BLOCKER #28), then LP-4a.
+
+---
+
+## 2026-08-12 — GHOST-1b · Silent-lead classification + daily sweep
+
+**Ticket:** GHOST-1b. The founder rejected the one-shot model mid-planning: *"how come after 24 or
+within 24 hours if the customer responds and stops again then also its a ghost? We should come up with
+a plan on how to truly classify. Maybe owners intervention if the lead can be removed from ghost as
+they contacted?"* — a correct catch: judging "ever replied" would exclude a re-ghosting lead forever.
+
+**Approved model (AskUserQuestion):** silence threshold **owner-configurable, default 72h**;
+`shop_stopped_replying` → **alert the owner, never chase the customer**. Recorded in DECISIONS with
+the deliberate deviation from the spec's `classify_ghost` agent step (same semantics obtained
+deterministically — no model call to compute a date difference).
+
+**Files created:** `core/customers/recovery.py`, `tests/unit/test_recovery_classify.py` (10).
+**Files modified:** `spec/events/topics.yaml` + `core/events/topics.py` + regenerated
+`core/events/types.py` (new `lead.went_silent.v1`), `core/tenancy/settings.py`
+(`recovery.silence_hours` default 72), `core/scheduler.py` (register the daily sweep),
+`verticals/jewelry/workflows/silent_lead_reactivation.yaml` (trigger → `lead.went_silent.v1`),
+`tests/integration/test_ghost_ignition.py` (+5; GHOST-1a's start-on-quote test rewritten to assert
+the corrected semantics), `tests/unit/test_scheduler_entrypoint.py` (job-set drift guard),
+tracking docs.
+
+**Model:** `classify()` is pure and deterministic. `ghost` = we spoke last **and** silence ≥ threshold
+measured from the **customer's** last message (falling back to our own for a lead that never messaged,
+e.g. captured from a landing form). `shop_stopped_replying` = the customer spoke last and was never
+answered → surfaced to the owner via `waiting_on_store()`, never chased. `active` / `excluded`
+otherwise. Because state is recomputed by the daily `recovery_sweep` (07:30 UTC), a lead that replies
+and goes quiet again **re-enters** `ghost` — the founder's case — while `touch_cap(3, 30d)` in the
+playbook bounds actual contact.
+
+**Migration:** none. **Events:** new `lead.went_silent.v1` (lead_id, stage, silence_hours,
+last_customer_msg_at) — the playbook's new trigger. `lead.stage_changed.v1` remains the lifecycle
+signal but no longer starts recovery (at quote time there has been no silence). **Config:** tenant
+setting `recovery.silence_hours` (default 72). **APIs/Frontend:** none (owner intervention = GHOST-1c;
+the "customers waiting on you" notification surfaces in a follow-up).
+
+**Security:** Rule Zero preserved (guards 0) — `core/customers/recovery.py` is generic CRM. Org-scoped
+throughout; the sweep runs per org and isolates failures. No autonomous customer contact added: the
+sweep only emits an event; the playbook it starts still parks at its approval gate.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**212**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**574**, +10 classifier incl. replied-then-quiet-again, clock-from-customer,
+boundary, configurable threshold, landing-form fallback, terminal stages) · **fresh-DB
+integration+isolation `verify_fresh_db.sh` — 671 passed, 4 skipped, 0 errors** (+5 sweep: emits for a
+real ghost, never chases a customer waiting on the store while still surfacing it, leaves engaged
+leads alone, honours the store's threshold, and the sweep event actually starts the playbook).
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** GHOST-1c (owner intervention: exclude / snooze / "they contacted me"), then LP-4a.

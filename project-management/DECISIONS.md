@@ -1334,3 +1334,31 @@ so the model was defined clean — no legacy convention, no backfill.
 **LP-3b** consumes it for landing capture; **LP-4a** adds the owner-facing column; **CP-8** (new) adds
 the **operator per-tenant lead roster** — web-ops previously showed only an aggregate "New inquiries"
 count, with no per-lead list for any store. **Decided by:** Founder (2026-08-12).
+
+---
+
+### 2026-08-12 — Ghosting is a re-enterable state; classification is deterministic, diagnosis is the LLM's job
+
+**Decision (founder):** rejected the initial one-shot design (fire at quote delivery, exit forever on
+the first reply). Their case: *"if the customer responds and stops again then also its a ghost."* So a
+lead's recovery state is **recomputed on a schedule** and a lead can leave `ghost` by replying and
+**re-enter** it later; the playbook's `touch_cap(3, 30d)` — not the detector — bounds how often a lead
+is ever contacted.
+
+**Approved model (AskUserQuestion):** silence threshold **owner-configurable, default 72h**
+(`recovery.silence_hours`); a customer who spoke last and was never answered is
+**`shop_stopped_replying`** → **alert the owner, never chase the customer** (these are warm leads the
+store is actively losing, and an automated "why did you go quiet?" would be wrong when the fault is
+ours).
+
+**Split of responsibility:** classification is **deterministic** (who spoke last + elapsed time since
+the *customer's* last message) — no model call to compute a date difference. The LLM's job is the
+**why** (the 8-reason diagnosis in the pack). This also resolves the spec's `classify_ghost` agent
+step: the same semantics are obtained deterministically, so the agent call was dropped in favour of
+facts. Recorded here as a deliberate deviation from
+`docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md` line 80.
+
+**Consequent tickets:** **GHOST-1a** (lifecycle writer + ignition), **GHOST-1b** (classifier + daily
+sweep + `lead.went_silent.v1`), **GHOST-1c** (owner intervention: exclude / snooze / "they contacted
+me" — the founder's ask that a lead can be pulled out of recovery). **Decided by:** Founder
+(2026-08-12).

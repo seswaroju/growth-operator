@@ -82,6 +82,8 @@ PLATFORM_DEFAULTS: dict[str, PlatformDefault] = {
     "autonomy.campaigns": PlatformDefault("auto", schema_ref="core.autonomy"),
     # Global "pause all autonomy" panic switch — on ⇒ every capability forces approval.
     "autonomy.paused": PlatformDefault(False, schema_ref="core.bool"),
+    # GHOST-1b: hours of customer silence before a lead is treated as a ghost (owner-configurable).
+    "recovery.silence_hours": PlatformDefault(72, schema_ref="core.int"),
     # Per-capability value threshold (C1): even when a capability is on `auto`, an action whose
     # amount (a quote total / a priced reply) is **at or above** this many minor units is forced to
     # review — "auto under ₹X, ask above". 0 (default) = no threshold, so it changes nothing until

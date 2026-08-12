@@ -20,6 +20,7 @@ ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
         "approval.resolved.v1",
         "approval.expired.v1",
         "lead.stage_changed.v1",
+        "lead.went_silent.v1",
         "lead.reengaged.v1",
         "quote.created.v1",
         "rate.updated.v1",

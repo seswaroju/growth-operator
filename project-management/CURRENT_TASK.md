@@ -9,6 +9,38 @@ selects and approves the next ticket.
 
 ---
 
+## GHOST-1b · Silent-lead classification + daily sweep — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/ghost-1b-refinements`. The founder rejected a one-shot verdict: *"how come after 24 or
+within 24 hours if the customer responds and stops again then also its a ghost? We should come up with
+a plan on how to truly classify."* **Ghosting is now a re-enterable STATE, recomputed daily**, not a
+decision made when the quote went out.
+
+- `core/customers/recovery.py` (NEW) — `classify(lead, now, threshold_hours)`: **pure, deterministic
+  date/direction arithmetic, no model call.** `shop_stopped_replying` (customer spoke last, unanswered
+  ≥ threshold) → **the owner is told, the customer is NEVER chased**; `ghost` (we spoke last, silent
+  ≥ threshold **since the customer's last message**) → recovery; `active`; `excluded` (won/lost).
+  The clock runs from the **customer's** last message, which is exactly what makes re-ghosting work.
+- **Daily sweep** `recovery_sweep` (07:30 UTC ≈ 13:00 IST) classifies every engaged lead per org and
+  emits **`lead.went_silent.v1`** for genuine ghosts; one org's failure never stops the rest.
+  `waiting_on_store()` exposes the shop-stopped-replying set for the owner notification.
+- **Threshold is owner-configurable** — tenant setting `recovery.silence_hours`, platform default
+  **72** (founder's choice), read per org with a fail-safe fallback.
+- **Trigger corrected:** the playbook now starts on `lead.went_silent.v1`, not on quote delivery —
+  at quote time there has been no silence yet. GHOST-1a's `lead.stage_changed.v1` remains the
+  lifecycle signal that makes a lead a candidate (its test was rewritten to assert the new semantics).
+- New event `lead.went_silent.v1` registered in `spec/events/topics.yaml` + `ALLOWED_EVENT_TYPES` +
+  regenerated types. **Founder follow-up:** mirror both event lines in the vault (BLOCKER #29).
+
+**Gate (all green):** ruff · mypy core **212** · guards **0** · unit **574** (+10 classifier, incl.
+**replied-then-quiet-again is a ghost again**, clock-runs-from-customer's-message, threshold boundary,
+owner-configurable threshold, landing-form lead with no customer message, terminal stages) · **fresh-DB
+integration+isolation 671** (+5 sweep: emits for a real ghost, **never chases a customer waiting on the
+store** while still surfacing it to the owner, leaves engaged leads alone, honours the store's
+threshold, and the sweep event **actually starts the playbook**). No migration. **Next:** GHOST-1c
+(owner intervention — exclude / snooze / "they walked in"), then LP-4a.
+
+
 ## GHOST-1a · Ghost-recovery ignition (make the wedge actually fire) — **COMPLETE — merged `d8fed6c`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1a-ignition`. Founder asked whether ghost recovery was "even implemented or
