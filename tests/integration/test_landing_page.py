@@ -262,3 +262,77 @@ async def test_track_clamps_untrusted_body(scene: Scene) -> None:
     assert "evil" not in row["meta"] and "evil" not in row["utm"]
     assert len(row["meta"]["section"]) <= 120 and row["meta"]["scroll"] <= 100000
     assert len(row["utm"]["source"]) <= 120
+
+
+# ---- LP-2a: multi-variant generation -----------------------------------------------------------
+
+async def _versions(page_id: str) -> list[dict]:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT version_no, variant_label FROM landing_page_versions "
+            "WHERE page_id=$1::uuid ORDER BY version_no", page_id)
+        return [{"version_no": r["version_no"], "variant_label": r["variant_label"]} for r in rows]
+    finally:
+        await conn.close()
+
+
+async def test_generate_three_variants_and_preview_each(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(variants=3))
+    assert r.status_code == 201, r.text
+    page_id = r.json()["page_id"]
+    variants = r.json()["variants"]
+    assert [v["variant_label"] for v in variants] == ["classic", "focused", "story"]
+    assert all(v["preview_url"].endswith(f"/versions/{v['version_no']}/preview") for v in variants)
+
+    # 3 immutable version rows persisted
+    assert await _versions(page_id) == [
+        {"version_no": 1, "variant_label": "classic"},
+        {"version_no": 2, "variant_label": "focused"},
+        {"version_no": 3, "variant_label": "story"}]
+
+    # the list endpoint agrees
+    lst = await scene.client.get(
+        f"/v1/landing/pages/{page_id}/variants", headers=_owner(scene.owner_a, scene.org_a))
+    assert lst.status_code == 200 and len(lst.json()) == 3
+
+    # each variant previews as real, DIFFERENT HTML (focused drops testimonials; classic keeps them)
+    bodies = {}
+    for v in variants:
+        p = await scene.client.get(
+            f"/v1/landing/pages/{page_id}/versions/{v['version_no']}/preview",
+            headers=_owner(scene.owner_a, scene.org_a))
+        assert p.status_code == 200 and "Everyday Diamond Pendants" in p.text
+        bodies[v["variant_label"]] = p.text
+    assert len({*bodies.values()}) == 3  # three genuinely different pages
+    assert "lp-testimonials" not in bodies["focused"]  # focused trims social proof
+    assert "lp-quotes" in bodies["classic"]            # classic keeps it
+
+
+async def test_single_variant_is_backward_compatible(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a), json=_body())
+    assert r.status_code == 201
+    assert r.json()["variants"] == [
+        {"version_no": 1, "variant_label": "default",
+         "preview_url": r.json()["preview_url"].replace("/preview", "/versions/1/preview")}]
+    assert len(await _versions(r.json()["page_id"])) == 1
+
+
+async def test_variant_preview_is_tenant_isolated(scene: Scene) -> None:
+    page_id = (await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(variants=3))).json()["page_id"]
+    # org B cannot list or preview org A's variants
+    assert (await scene.client.get(
+        f"/v1/landing/pages/{page_id}/variants",
+        headers=_owner(scene.owner_b, scene.org_b))).status_code == 404
+    assert (await scene.client.get(
+        f"/v1/landing/pages/{page_id}/versions/2/preview",
+        headers=_owner(scene.owner_b, scene.org_b))).status_code == 404
+    # a non-existent version → 404 (own org)
+    assert (await scene.client.get(
+        f"/v1/landing/pages/{page_id}/versions/9/preview",
+        headers=_owner(scene.owner_a, scene.org_a))).status_code == 404

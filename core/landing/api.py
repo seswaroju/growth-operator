@@ -47,12 +47,21 @@ class LandingCreate(BaseModel):
     hero_image_url: str | None = None
     products: list[ProductIn] = Field(default_factory=list)
     campaign_id: UUID | None = None
+    # LP-2a: >1 generates that many genuinely-different-UX candidate versions for the owner to pick.
+    variants: int = Field(default=1, ge=1, le=3)
+
+
+class VariantRow(BaseModel):
+    version_no: int
+    variant_label: str
+    preview_url: str
 
 
 class LandingCreated(BaseModel):
     page_id: UUID
     slug: str
     preview_url: str
+    variants: list[VariantRow] = Field(default_factory=list)
 
 
 class LandingPageRow(BaseModel):
@@ -103,13 +112,27 @@ async def create_page(
         objective=body.objective, hero_image_url=body.hero_image_url,
         products=[ProductRef(p.title, p.price_text, p.image_url) for p in body.products])
     try:
-        page_id, slug = await service.create_landing_page(
-            session, current.org_id, campaign=campaign, slug=body.slug,
-            created_by=current.user_id, campaign_id=body.campaign_id)
+        if body.variants > 1:
+            page_id, rows = await service.generate_variants(
+                session, current.org_id, campaign=campaign, slug=body.slug, n=body.variants,
+                created_by=current.user_id, campaign_id=body.campaign_id)
+        else:
+            page_id, _slug = await service.create_landing_page(
+                session, current.org_id, campaign=campaign, slug=body.slug,
+                created_by=current.user_id, campaign_id=body.campaign_id)
+            rows = [{"version_no": 1, "variant_label": "default"}]
     except SpecInvalid as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"invalid page: {exc}") from exc
     return LandingCreated(
-        page_id=page_id, slug=slug, preview_url=f"/v1/landing/pages/{page_id}/preview")
+        page_id=page_id, slug=body.slug, preview_url=f"/v1/landing/pages/{page_id}/preview",
+        variants=_variant_rows(page_id, rows))
+
+
+def _variant_rows(page_id: UUID, rows: list[dict[str, Any]]) -> list[VariantRow]:
+    return [
+        VariantRow(version_no=r["version_no"], variant_label=r["variant_label"],
+                   preview_url=f"/v1/landing/pages/{page_id}/versions/{r['version_no']}/preview")
+        for r in rows]
 
 
 @router.get("/pages", response_model=list[LandingPageRow],
@@ -137,6 +160,39 @@ async def preview_page(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "page not found")
     spec, _version_id = result
     return HTMLResponse(render_html(spec, page_id=str(page_id), track_url=_TRACK_URL))
+
+
+@router.get("/pages/{page_id}/variants", response_model=list[VariantRow],
+            summary="List the page's candidate variants for the owner to choose from (owner)")
+async def list_variants(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[VariantRow]:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    rows = await service.list_variants(session, current.org_id, page_id)
+    if rows is None:  # RLS-scoped → unknown/other-org both 404
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "page not found")
+    return _variant_rows(page_id, rows)
+
+
+@router.get("/pages/{page_id}/versions/{version_no}/preview", response_class=HTMLResponse,
+            summary="Preview a specific candidate variant (owner)")
+async def preview_version(
+    page_id: UUID,
+    version_no: int,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> HTMLResponse:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    result = await service.version_spec(session, current.org_id, page_id, version_no)
+    if result is None:  # RLS-scoped → unknown/other-org both 404
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "variant not found")
+    spec, variant_label = result
+    return HTMLResponse(render_html(
+        spec, page_id=str(page_id), track_url=_TRACK_URL, variant=variant_label))
 
 
 @router.get("/pages/{page_id}/insights", response_model=PageInsights,

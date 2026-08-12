@@ -9,7 +9,7 @@ from `verticals/<v>/landing/template.yaml`, never from here.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -163,3 +163,63 @@ def plan_page(
     strategy = build_experience_strategy(campaign, cfg)
     spec = build_spec(campaign, strategy, brand, cfg)
     return strategy, spec
+
+
+# --- Multi-variant generation (LP-2a) -------------------------------------------------------------
+# Generic UX archetypes — each reshapes the base section plan + strategy dials into a DIFFERENT page
+# experience. No vertical nouns, no invented copy: variants differ by composition/order/depth, not
+# by fabricating claims. `plan_variants` gives the owner N candidates to pick from (picker = LP-4;
+# the LLM strategy-selector is LP-2c — this is the deterministic default + the tests' path).
+
+
+@dataclass(frozen=True)
+class VariantArchetype:
+    label: str
+    page_depth: str
+    visual_strategy: str
+    social_proof_strategy: str
+    drop: frozenset[str] = frozenset()      # section kinds to remove
+    lead: tuple[str, ...] = ()              # section kinds to pull to the front (when present)
+
+
+_VARIANT_ARCHETYPES: tuple[VariantArchetype, ...] = (
+    # full-length, lifestyle-led — the pack's own order.
+    VariantArchetype("classic", "medium", "lifestyle", "testimonials"),
+    # short + punchy — trims to the essentials, product-forward, one strong CTA.
+    VariantArchetype("focused", "short", "product", "trust_bar",
+                     drop=frozenset({"benefits", "testimonials", "faq"})),
+    # social-proof / benefit-led — leads with trust + story before the grid.
+    VariantArchetype("story", "long", "editorial", "testimonials",
+                     lead=("hero", "trust_bar", "benefits", "testimonials")),
+)
+
+
+def _variant_section_plan(base_plan: list[str], arche: VariantArchetype) -> list[str]:
+    plan = [s for s in base_plan if s not in arche.drop]
+    if arche.lead:
+        lead = [s for s in arche.lead if s in plan]
+        plan = lead + [s for s in plan if s not in lead]
+    return plan
+
+
+def plan_variants(
+    campaign: CampaignContext, brand: BrandTokens, vertical: str, n: int = 3
+) -> list[tuple[str, ExperienceStrategy, LandingPageSpec]]:
+    """N deterministic, genuinely-different-UX candidates → [(variant_label, strategy, spec)].
+
+    Every variant is built from the same campaign facts + pack data (message-match preserved, no
+    invented claims); they differ in section composition/order, page depth, and strategy dials."""
+    cfg = load_landing_strategy(vertical)
+    base = build_experience_strategy(campaign, cfg)
+    archetypes = _VARIANT_ARCHETYPES[: max(1, n)]
+    out: list[tuple[str, ExperienceStrategy, LandingPageSpec]] = []
+    for arche in archetypes:
+        strategy = replace(
+            base,
+            section_plan=_variant_section_plan(base.section_plan, arche),
+            page_depth=arche.page_depth,
+            visual_strategy=arche.visual_strategy,
+            social_proof_strategy=arche.social_proof_strategy,
+        )
+        out.append((arche.label, strategy, build_spec(campaign, strategy, brand, cfg)))
+    return out
