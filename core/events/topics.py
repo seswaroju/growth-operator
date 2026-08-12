@@ -34,6 +34,8 @@ ALLOWED_EVENT_TYPES: frozenset[str] = frozenset(
         "attribution.confirm_requested.v1",
         "attribution.confirmed.v1",
         "alert.ops.v1",
+        "catalog.price_inputs_changed.v1",
+        "support.ticket.raised.v1",
     }
 )
 

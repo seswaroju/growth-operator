@@ -93,6 +93,19 @@ async def _is_stale(quote_id: uuid.UUID) -> bool:
         await conn.close()
 
 
+async def _price_events(org: uuid.UUID) -> list[dict]:
+    """`catalog.price_inputs_changed.v1` payloads emitted to the outbox for this org (#17)."""
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT payload FROM event_outbox WHERE org_id=$1 "
+            "AND type='catalog.price_inputs_changed.v1'", org)
+        return [json.loads(r["payload"]) if isinstance(r["payload"], str) else dict(r["payload"])
+                for r in rows]
+    finally:
+        await conn.close()
+
+
 @pytest.fixture()
 async def scene() -> AsyncIterator[Scene]:
     if not await _db_ready():
@@ -203,6 +216,7 @@ async def test_weight_edit_flags_dependent_quote_unrelated_edit_does_not(scene: 
         )
         await s.commit()
     assert not await _is_stale(weight_quote)
+    assert await _price_events(scene.org) == []  # #17: an unrelated edit emits nothing
 
     # Editing net_weight_g (a rule-referenced input) flags the dependent open quote.
     async with org_scoped_session(scene.org) as s:
@@ -213,3 +227,8 @@ async def test_weight_edit_flags_dependent_quote_unrelated_edit_does_not(scene: 
         )
         await s.commit()
     assert await _is_stale(weight_quote)
+    # #17: a real price-input change emits catalog.price_inputs_changed.v1 with the changed key.
+    events = await _price_events(scene.org)
+    assert len(events) == 1
+    assert events[0]["item_id"] == str(item_id)
+    assert "net_weight_g" in events[0]["changed_keys"]

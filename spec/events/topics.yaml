@@ -36,4 +36,8 @@ topics:
   - {type: attribution.confirmed.v1, producer: api, consumers: [metrics]}
   - {type: alert.ops.v1,           producer: any, consumers: [notifier],
      payload: {severity: string, kind: string, detail: object}}
+  - {type: catalog.price_inputs_changed.v1, producer: catalog, consumers: [pricing, workflows],
+     payload: {item_id: uuid, changed_keys: array}}
+  - {type: support.ticket.raised.v1,        producer: support, consumers: [notifier],
+     payload: {ticket_id: uuid, priority: string, severity: string}}
 consumer_rules: {idempotency: dedupe_table(consumer,event_id), retry: exp_backoff_5, dlq_after: 5, tolerant_reader: true}
