@@ -22,6 +22,7 @@ import yaml
 
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.customers import recovery
 from core.customers.lifecycle import STAGE_CHANGED_EVENT, mark_quoted
 from core.tenancy.middleware import org_scoped_session
 from core.workflows import store as wf_store
@@ -159,24 +160,108 @@ async def test_no_open_lead_is_a_no_op(scene: Scene) -> None:
     assert (await _lead_row(scene.lead))["stage"] == "won"  # terminal stage untouched
 
 
-async def test_the_emitted_event_actually_starts_ghost_recovery(scene: Scene) -> None:
-    """The proof the wedge fires: the pack's real workflow, seeded active, is started by the very
-    event `mark_quoted` emits — the chain that was broken end to end before GHOST-1a."""
+async def test_quote_delivery_alone_does_not_start_recovery(scene: Scene) -> None:
+    """GHOST-1b corrected GHOST-1a: the quote-delivery event makes a lead a recovery *candidate*,
+    but it must NOT start the playbook — at quote time there has been no silence yet. Recovery
+    starts only once the sweep detects real silence (see the sweep tests below)."""
     parsed = parse(yaml.safe_load(_JEWELRY_WF.read_text()))
-    assert parsed.trigger_spec["event_type"] == STAGE_CHANGED_EVENT  # canonical name, exact match
-
     async with org_scoped_session(scene.org) as s:
         await wf_store.seed_definition(
             s, org_id=scene.org, pack_id=None, parsed=parsed, status="active")
         await s.commit()
 
-    # the payload `mark_quoted` produces
     payload = {"lead_id": str(scene.lead), "contact_id": str(scene.contact), "stage": "quoted",
                "last_customer_msg_at": None, "previous_stage": "new"}
-    started = await match_and_start(scene.org, STAGE_CHANGED_EVENT, payload)
-    assert len(started) == 1, "the ghost-recovery workflow did not start"
+    assert await match_and_start(scene.org, STAGE_CHANGED_EVENT, payload) == []
 
-    # and a lead still in `new` must NOT start it (the trigger condition holds)
-    none_started = await match_and_start(
-        scene.org, STAGE_CHANGED_EVENT, {**payload, "stage": "new"})
-    assert none_started == []
+
+# ---- GHOST-1b: the daily sweep detects silence and starts recovery ------------------------------
+
+async def _set_touch(lead: uuid.UUID, *, direction: str, customer_hours_ago: float | None,
+                     outbound_hours_ago: float | None = 1) -> None:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute(
+            "UPDATE leads SET stage='quoted', last_message_direction=$2, "
+            "last_customer_msg_at = CASE WHEN $3::float IS NULL THEN NULL "
+            "  ELSE now() - make_interval(hours => $3::int) END, "
+            "last_outbound_msg_at = CASE WHEN $4::float IS NULL THEN NULL "
+            "  ELSE now() - make_interval(hours => $4::int) END "
+            "WHERE id=$1", lead, direction, customer_hours_ago, outbound_hours_ago)
+    finally:
+        await conn.close()
+
+
+async def _silent_events(org: uuid.UUID) -> list[dict]:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT payload FROM event_outbox WHERE org_id=$1 AND type=$2", org,
+            recovery.WENT_SILENT_EVENT)
+        return [json.loads(r["payload"]) if isinstance(r["payload"], str) else r["payload"]
+                for r in rows]
+    finally:
+        await conn.close()
+
+
+async def test_sweep_emits_went_silent_for_a_real_ghost(scene: Scene) -> None:
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=100)
+    async with org_scoped_session(scene.org) as s:
+        counts = await recovery.sweep_org(s, scene.org)
+        await s.commit()
+    assert counts[recovery.GHOST] == 1
+    events = await _silent_events(scene.org)
+    assert len(events) == 1 and events[0]["lead_id"] == str(scene.lead)
+    assert events[0]["silence_hours"] == recovery.DEFAULT_SILENCE_HOURS
+
+
+async def test_sweep_never_chases_a_customer_waiting_on_the_store(scene: Scene) -> None:
+    # the customer spoke last and the store never replied → our failure, not a ghost
+    await _set_touch(scene.lead, direction="inbound", customer_hours_ago=100,
+                     outbound_hours_ago=None)
+    async with org_scoped_session(scene.org) as s:
+        counts = await recovery.sweep_org(s, scene.org)
+        waiting = await recovery.waiting_on_store(s, scene.org)
+        await s.commit()
+    assert counts[recovery.SHOP_STOPPED_REPLYING] == 1 and counts[recovery.GHOST] == 0
+    assert await _silent_events(scene.org) == []          # the customer is never chased
+    assert len(waiting) == 1                              # but the owner can be told
+
+
+async def test_sweep_leaves_an_engaged_lead_alone(scene: Scene) -> None:
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=6)
+    async with org_scoped_session(scene.org) as s:
+        counts = await recovery.sweep_org(s, scene.org)
+        await s.commit()
+    assert counts[recovery.ACTIVE] == 1 and await _silent_events(scene.org) == []
+
+
+async def test_owner_configured_threshold_is_honoured(scene: Scene) -> None:
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=30)
+    async with org_scoped_session(scene.org) as s:
+        assert (await recovery.sweep_org(s, scene.org))[recovery.GHOST] == 0  # default 72h
+        await s.commit()
+    conn = await asyncpg.connect(_dsn())
+    try:  # this store chases sooner
+        await conn.execute(
+            "INSERT INTO tenant_settings (org_id, key, value, schema_ref, version) "
+            "VALUES ($1,'recovery.silence_hours','24'::jsonb,'core.int',1)", scene.org)
+    finally:
+        await conn.close()
+    async with org_scoped_session(scene.org) as s:
+        assert (await recovery.sweep_org(s, scene.org))[recovery.GHOST] == 1
+        await s.commit()
+
+
+async def test_the_sweep_event_starts_ghost_recovery(scene: Scene) -> None:
+    """End to end: silence detected → the pack's recovery playbook actually starts."""
+    parsed = parse(yaml.safe_load(_JEWELRY_WF.read_text()))
+    assert parsed.trigger_spec["event_type"] == recovery.WENT_SILENT_EVENT
+    async with org_scoped_session(scene.org) as s:
+        await wf_store.seed_definition(
+            s, org_id=scene.org, pack_id=None, parsed=parsed, status="active")
+        await s.commit()
+    payload = {"lead_id": str(scene.lead), "contact_id": str(scene.contact), "stage": "quoted",
+               "silence_hours": 72, "last_customer_msg_at": None}
+    started = await match_and_start(scene.org, recovery.WENT_SILENT_EVENT, payload)
+    assert len(started) == 1, "silence detected but the recovery playbook did not start"

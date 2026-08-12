@@ -17,7 +17,8 @@ from core.events import scheduler as sched
 
 EXPECTED_JOBS = {"approval_ladder", "trust_ledger_settle", "embeddings_batch",
                  "business_metrics_rollup", "campaign_fanout", "import_batch_reaper",
-                 "workflow_wait_sweep", "razorpay_webhook_sweep", "dedupe_prune", "audit_anchor"}
+                 "workflow_wait_sweep", "razorpay_webhook_sweep", "dedupe_prune", "audit_anchor",
+                 "recovery_sweep"}  # GHOST-1b: daily silent-lead detection
 
 
 class FakeRedis:

@@ -16,6 +16,8 @@ topics:
   - {type: approval.expired.v1,    producer: scheduler.approval_ladder, consumers: [runtime, notifier]}
   - {type: lead.stage_changed.v1,  producer: crm, consumers: [workflows],
      payload: {lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}}
+  - {type: lead.went_silent.v1,    producer: crm, consumers: [workflows],
+     payload: {lead_id: uuid, stage: string, silence_hours: int, last_customer_msg_at: rfc3339|null}}
   - {type: lead.reengaged.v1,      producer: workflows, consumers: [crm, metrics]}
   - {type: quote.created.v1,       producer: pricing, consumers: [crm, metrics],
      payload: {quote_id: uuid, total_minor: int, strategy: string}}
