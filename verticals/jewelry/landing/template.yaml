@@ -1,0 +1,33 @@
+# Jewelry landing-page strategy (L1 — vertical pack). The generic engine (core/landing) reads this;
+# all jewelry-specific nouns/trust copy live here, never in core.
+vertical: jewelry
+default_conversion_goal: whatsapp
+
+cta:
+  whatsapp: "Enquire on WhatsApp"
+
+# Trust signals that matter for jewelry buyers.
+trust_signals:
+  - "BIS Hallmarked gold"
+  - "Certified diamonds"
+  - "Lifetime exchange & buyback"
+  - "Free insured shipping"
+
+benefits:
+  - {title: "Certified & hallmarked", detail: "Every piece is BIS hallmarked and independently certified."}
+  - {title: "Book a private viewing", detail: "See it in person at the showroom before you decide."}
+  - {title: "Transparent buyback", detail: "Lifetime exchange and buyback on all jewellery."}
+
+faq:
+  - {q: "Is the gold BIS hallmarked?", a: "Yes — every piece is BIS hallmarked with its purity certified."}
+  - {q: "Do you offer easy EMI?", a: "Yes, no-cost EMI is available on eligible orders."}
+  - {q: "Can I book a showroom visit?", a: "Absolutely — tap Enquire on WhatsApp to book a private viewing."}
+
+testimonials:
+  - {quote: "Bought my wedding set here — the craftsmanship is stunning.", author: "Ananya, Hyderabad"}
+  - {quote: "Loved being able to book a private viewing over WhatsApp.", author: "Meera, Bengaluru"}
+
+# Ordered component plan per conversion goal.
+section_plan:
+  whatsapp: [hero, offer_banner, product_grid, trust_bar, benefits, testimonials, faq, whatsapp_cta, footer]
+  lead_form: [hero, offer_banner, product_grid, trust_bar, benefits, lead_form, faq, footer]

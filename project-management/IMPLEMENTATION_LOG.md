@@ -5125,3 +5125,96 @@ errors**. No migration; no web change.
 **Next:** the three build-blockers (#5, #16) + the two event-blockers (#17, #21) are cleared; remaining
 open blockers are founder-side (#3 WhatsApp, #6 Razorpay, #8/#10 hosting) or low-value narrative
 (#4, #14, #21/#23 vault docs, #22b local pollution).
+
+---
+
+## 2026-08-12 — LP-1 · Landing-page foundation (deterministic vertical slice)
+
+**Ticket:** Landing-page capability, phase LP-1 of the founder-approved **v2 reconciled architecture**
+([LANDING_PAGE_DESIGN.md](LANDING_PAGE_DESIGN.md); [DECISIONS.md](DECISIONS.md) 2026-08-12 landing-page
+scope expansion). Autonomous, tenant-branded landing pages for paid acquisition (Instagram/Google Ads)
+so merchants own the conversion surface + capture first-party leads.
+
+**Approved plan (founder, verbatim adjustments):** Proceed with LP-1; keep **ExperienceStrategy
+embedded/versioned inside the landing-page version** (not a separate table); add **the smallest safe
+preview/demo-serving path** so LP-1 renders a real jewelry page end-to-end (visibly demonstrable, not
+only schemas/tests); keep TenantGrowthProfile + evidence graduation **architecturally defined but not
+implemented**; do **not** expand into custom domains, Meta/Google APIs, A/B, autonomous CRO,
+SEO/AEO/GEO, Shopify/Woo, or advanced learning; preserve all RLS/audit/validation/sanitization rules.
+The presentation-critical slice: **campaign context → ExperienceStrategy → LandingPageSpec →
+deterministic renderer → tenant-branded jewelry page → CTA interaction → Growth Operator event.**
+
+**Files created:**
+- `migrations/versions/05d61bad2e04_045_landing_pages.py` — migration 045.
+- `migrations/versions/4eafc82635e7_046_landing_event_item_capture.py` — migration 046 (LP-1b).
+- `core/landing/__init__.py`, `spec.py`, `validate.py`, `plan.py`, `render.py`, `service.py`, `api.py`.
+- `verticals/jewelry/landing/template.yaml` — jewelry (L1) landing strategy.
+- `tests/unit/test_landing.py` (14), `tests/integration/test_landing_page.py` (8).
+
+**Files modified:** `core/api/main.py` (register `landing_router`).
+
+**UX overhaul + bolder pass (founder review round).** Used the vendored craft skills as guidance
+(impeccable craft-floor + Persuade mode, apple-design, design-taste — installed guidance-only, so read
+directly, not run as `/impeccable`). Premium redesign of `render.py`/`spec.py` defaults: system serif
+display, brand-hue-tinted neutrals via `color-mix`, real offset+blur depth, authored SVG icons,
+translucent sticky mobile CTA, themed browser surfaces, CSS-only motion gated behind
+`@supports(animation-timeline)` + `prefers-reduced-motion`. On feedback ("plain without accent"): a
+bolder pass — deep-accent destination CTA panel, filled offer, accent trust band, benefit icon-chips,
+tinted testimonials, hero ambient glow + wordmark + ornament, on-brand imagery. Zero external assets
+under the page CSP.
+
+**LP-1b · per-item data capture (founder-approved fold-in).** Product tiles carry a stable `item_ref`;
+the beacon captures per-item view/click + a first-party context bundle (utm, referrer, device class,
+scroll depth, dwell, session, variant); WhatsApp CTA deep-links prefilled with the last-engaged item.
+`record_public_event` whitelists + size-clamps the untrusted body; new `GET /pages/{id}/insights`
+returns "top items by interest" + funnel counts. Migration 046 adds `item_ref` + `meta jsonb` (+ index)
+to `landing_page_events`. Funnel-sink vocabulary gains `landing_page.item_viewed` + `.item_clicked`
+(local sink, NOT the event outbox — outbox fan-out stays LP-3).
+
+**Migrations:** **045** on `044` (`a4992cd3968d → 05d61bad2e04`). Tables `landing_pages`,
+`landing_page_versions`, `landing_page_events` — all org-scoped, **RLS + FORCE**. Version row embeds
+`experience_strategy` + validated `spec` (jsonb), immutable, `UNIQUE(page_id, version_no)`. FK
+`landing_pages.current_version_id → landing_page_versions(id)`. **SECURITY-DEFINER `landing_page_org(uuid)`**
+(REVOKE PUBLIC / GRANT EXECUTE app_rw) resolves tenant from a page id so the public track beacon never
+trusts the request. **Upgrade + downgrade + re-upgrade verified**; FORCE RLS on all 3; app_rw can
+call `landing_page_org`. **046** on `045` (`05d61bad2e04 → 4eafc82635e7`): `ALTER landing_page_events
+ADD item_ref text, ADD meta jsonb DEFAULT '{}'` + partial index `(org_id,page_id,item_ref)`; FORCE-RLS
+preserved; **up/down/up verified** (columns added, dropped on downgrade, re-added).
+
+**APIs:** `POST /v1/landing/pages` (campaigns:send) → `{page_id, slug, preview_url}` 201;
+`GET /v1/landing/pages` (campaigns:read); **`GET /v1/landing/pages/{id}/preview`** (campaigns:read) →
+real tenant-branded HTML; **`GET /v1/landing/pages/{id}/insights`** (campaigns:read) → top items by
+interest + funnel counts (RLS-scoped → 404 cross-org); public **`POST /v1/landing/track`** (no auth) →
+204 (records only allowed event types on a real page; body whitelisted + clamped; unknown page/type
+records nothing, never leaks existence).
+
+**Events:** `landing_page_events` funnel sink — page (`viewed`/`cta_clicked`/`form_submitted`) **plus
+per-item** (`item_viewed`/`item_clicked`) with a first-party context bundle (`item_ref`, `variant`,
+`session_id`, `utm`, `meta`{section,device,referrer,scroll,dwell}). This is the **local sink, not the
+transactional outbox** — outbox `landing_page.*` fan-out + attribution stay LP-3.
+
+**Frontend:** none (owner web LandingPagesSection + asset-upload → 3-variant-choice trigger is LP-4).
+
+**Security:** Rule Zero preserved (`core/` generic; all jewelry nouns in the pack — guards 0). All
+rendered copy **HTML-escaped** (incl. `item_ref`/titles); spec **validated + sanitized** (rejects
+`<script>`/`<iframe>`/`javascript:`/event handlers → 422); strict **CSP** with a per-render nonce for
+our own beacon only; `noindex` for paid pages; public tenant resolution via SECDEF (request never
+trusted); the public `/track` body is **whitelisted + size-clamped** (no PII, bounded, always 204);
+RLS-scoped everywhere; preview + insights tenant-isolated (org B → 404). First-party capture only — no
+third-party trackers; PII only via the consented lead form / user-initiated WhatsApp handoff.
+
+**Commands run / gate (all green):** `ruff check .` (All checks passed) · `mypy core` (**205**) ·
+`mypy migrations` · `python scripts/guards.py` (**0**) · `pytest tests/unit` (**531**, +14 landing) ·
+alembic up/down/up + FORCE-RLS check (045 & 046) · **fresh-DB integration+isolation `verify_fresh_db.sh`
+— 627 passed, 4 skipped, 0 errors** (+8 landing: create→preview→CTA-event, isolation 404, 422 bad slug,
+unknown-page/disallowed-type record nothing, viewer 403, **item capture persists + ranks by interest,
+insights tenant-isolated, untrusted-body clamped**). web untouched.
+
+**Known issues / deferred:** custom domains, Meta/Google publishing, A/B, autonomous CRO, SEO/AEO/GEO,
+Shopify/Woo, TenantGrowthProfile + evidence graduation, outbox events + attribution, `/track`
+rate-limiting/bot-defence, owner web section + asset-upload → **3-variant-choice** trigger — all
+LP-2/3/4.
+
+**Commit hash:** _pending — awaiting founder review/commit._
+
+**Next action:** founder review; then LP-2 (lifecycle + agent capability + LLM planner).

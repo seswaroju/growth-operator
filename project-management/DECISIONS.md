@@ -1244,3 +1244,64 @@ Learning → Autonomous CRO → Omnichannel. Full design: `project-management/LA
 Reuses approvals/execution-tokens, events/outbox, attribution, media/S3, leads/consent, tenant memory —
 no duplicated subsystems. **Implementation begins at LP-1 on founder go-ahead. Decided by:** Founder
 (2026-08-12).
+
+---
+
+### 2026-08-12 — LP-1b: per-item data capture folded into LP-1 (data-hungry landing page)
+
+**Decision (founder):** the landing page must be a **first-party data-capture engine** — "know which
+item the customer liked" and "extract the maximum information from a single click." Fold a **focused**
+per-item capture into LP-1 now (recommended option chosen), not deferred to LP-3.
+
+**Scope approved:** (1) product tiles carry a **stable `item_ref`**; the beacon records per-item
+view/click plus a first-party context bundle — `utm`, `referrer`, device class, scroll depth, dwell,
+`session_id`, `variant`; (2) the WhatsApp CTA **deep-links prefilled with the last-engaged item**
+(item intent + a real contact from one click) when a number is present; (3) **migration 046** adds
+`item_ref` + `meta jsonb` to `landing_page_events`; (4) new `landing_page.item_viewed` /
+`item_clicked` event types on the **local funnel sink** — explicitly **NOT** the transactional outbox
+(`ALLOWED_EVENT_TYPES`/topics.yaml unchanged); outbox `landing_page.*` fan-out + attribution remain
+LP-3; (5) `GET /pages/{id}/insights` → "top items by interest" + funnel counts (RLS-scoped); (6) the
+public `/track` body is **whitelisted + size-clamped** (untrusted-input hardening, always 204).
+
+**Privacy posture:** first-party only — no third-party trackers; anonymous engagement signal (item
+clicks, scroll, dwell) needs no PII; PII is captured only via the **consented** lead form or the
+**user-initiated** WhatsApp handoff. `/track` rate-limiting/bot-defence is LP-3.
+
+**Also directed (product, LP-4 — not built yet):** on media-asset **upload** the owner dashboard
+triggers auto-generation of **~3 candidate landing pages (variants)**; the owner **picks one** and we
+proceed. The `variant` field + `landing_page_versions` already accommodate this; the generator +
+picker UI + upload/notification trigger are LP-4.
+
+**UX direction (this review round):** the generated page must read **premium with real accent**, not
+plain. Applied the vendored craft skills (impeccable craft-floor + Persuade mode, apple-design,
+design-taste) as guidance; deterministic renderer redesigned + a **bolder** pass (deep-accent CTA
+panel, filled offer, accent bands, imagery, sticky mobile CTA). Still zero external assets under the
+page CSP; per-brand webfont embedding is LP-2.
+
+**Decided by:** Founder (2026-08-12).
+
+---
+
+### 2026-08-12 — End-to-end landing-page → ad-campaign flow (agent-suggested, owner-approved)
+
+**Decision (founder, "lets move forward … Is this clear?"):** the full loop the landing capability
+serves is **agent-suggests / human-approves**, in two HITL gates:
+
+1. GO generates **several landing pages with different UX** (~3 variants) from the campaign context +
+   the **marketing agent's** suggestions.
+2. Owner **reviews and approves one** landing page — **HITL gate #1**.
+3. GO **runs the ad campaign** on the approved page + creative, per the marketing agent's
+   targeting/budget recommendation — via the **gated Instagram / Google Ads adapters** (B1/B2,
+   simulated until go-live is explicitly approved).
+4. Campaign runs for the **marketing agent's analysis period**, capturing the LP-1b data-hungry
+   signals (per-item interest, utm, dwell, WhatsApp intents, conversions).
+5. Owner **approves to continue / adjust / stop** — **HITL gate #2** — then move on.
+
+**Invariants:** the agent only *suggests*; every outward action (publish a page, launch/modify an ad
+campaign, spend budget) is a **human-approved execution-token side effect** on the existing
+approvals/trust ladder — no autonomous ad spend or publishing. First-party data capture (LP-1b) is the
+measurement layer; downstream **lead quality / revenue** is the optimization target (not raw
+conversion). **Ticket mapping:** variant generation + marketing-agent planner = **LP-2**; upload →
+3-variant → owner-picks trigger + notification = **LP-4**; public serving + outbox events + attribution
+= **LP-3**; ad launch reuses B1/B2 adapters + approvals (a later campaign-orchestration ticket). Not
+built yet — recorded as the approved target flow. **Decided by:** Founder (2026-08-12).
