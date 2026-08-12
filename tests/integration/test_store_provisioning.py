@@ -5,6 +5,7 @@ Rigorous corner-case coverage. Skips when the DB is unreachable.
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -62,9 +63,13 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
                            operator, f"op+{tag}@example.test")
         await conn.execute("INSERT INTO platform_admins (user_id, role) VALUES ($1,'admin')",
                            operator)
+        # The plan switches on the concierge + nurture agents (CP-2b): provisioning installs the
+        # store's pack and activates exactly these.
         plan_id = await conn.fetchval(
-            "INSERT INTO billing_plans (name, price_minor, active, max_managers, max_staff) "
-            "VALUES ($1, 500000, true, 1, 2) RETURNING id", f"Plan-{tag}")
+            "INSERT INTO billing_plans "
+            "(name, price_minor, active, max_managers, max_staff, config) "
+            "VALUES ($1, 500000, true, 1, 2, $2::jsonb) RETURNING id",
+            f"Plan-{tag}", json.dumps({"agents": ["concierge", "nurture"]}))
     finally:
         await conn.close()
     from core.api.main import app
@@ -73,8 +78,14 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
         yield Scene(client, operator, plan_id, tag)
     conn = await asyncpg.connect(_dsn())
     try:
-        # Provisioned orgs cascade user_orgs + subscriptions; owner users + the plan cleaned by tag.
+        # Provisioned orgs cascade user_orgs + subscriptions + pack_installations + agent_instances
+        # + audit_log (pack.installed). audit_log is append-only, so its immutability trigger must
+        # be off for the cascade DELETE. Owner users + the plan cleaned by tag.
+        await conn.execute(
+            "ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM organizations WHERE name LIKE $1", f"Store-{tag}%")
+        await conn.execute(
+            "ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM users WHERE email LIKE $1", f"%@{tag}.test")
         await conn.execute("DELETE FROM billing_plans WHERE id=$1", plan_id)
         await conn.execute(
@@ -104,6 +115,20 @@ async def _membership(org_id: str) -> tuple[str, str] | None:
         await conn.close()
 
 
+async def _active_agent_slugs(org_id: str) -> set[str]:
+    """Archetype slugs of the org's ACTIVE agent instances."""
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT ar.slug FROM agent_instances ai "
+            "JOIN agent_bindings ab ON ab.id = ai.binding_id "
+            "JOIN agent_archetypes ar ON ar.id = ab.archetype_id "
+            "WHERE ai.org_id = $1 AND ai.status = 'active'", org_id)
+        return {r["slug"] for r in rows}
+    finally:
+        await conn.close()
+
+
 async def test_provision_creates_org_owner_membership_and_subscription(scene: Scene) -> None:
     email = f"priya@{scene.tag}.test"
     r = await scene.client.post(
@@ -113,6 +138,7 @@ async def test_provision_creates_org_owner_membership_and_subscription(scene: Sc
     body = r.json()
     org_id, owner_id = body["org_id"], body["owner_id"]
     assert body["owner_existed"] is False and body["plan_id"] == str(scene.plan_id)
+    assert body["agents_activated"] == 2  # concierge + nurture (from the plan config)
 
     conn = await asyncpg.connect(_dsn())
     try:
@@ -126,8 +152,13 @@ async def test_provision_creates_org_owner_membership_and_subscription(scene: Sc
             "SELECT plan_id, status FROM billing_subscriptions WHERE org_id=$1", org_id)
         assert sub is not None and str(sub["plan_id"]) == str(scene.plan_id)
         assert sub["status"] == "active"
+        # CP-2b: the vertical pack is installed (active) and the plan's agents are switched on;
+        # agents the plan did NOT list stay paused (the pack also binds campaigner + ops).
+        assert await conn.fetchval(
+            "SELECT status FROM pack_installations WHERE org_id=$1", org_id) == "active"
     finally:
         await conn.close()
+    assert await _active_agent_slugs(org_id) == {"concierge", "nurture"}
 
 
 async def test_provision_reuses_an_existing_owner(scene: Scene) -> None:
@@ -164,6 +195,10 @@ async def test_one_owner_can_run_multiple_stores(scene: Scene) -> None:
     assert r1.status_code == 201 and r2.status_code == 201
     assert r1.json()["org_id"] != r2.json()["org_id"]
     assert r1.json()["owner_id"] == r2.json()["owner_id"]  # same person
+    # each store installs its own pack + activates the plan's agents (shared pack row, per-org
+    # installation) — the second provision must not skip activation.
+    assert r1.json()["agents_activated"] == 2 and r2.json()["agents_activated"] == 2
+    assert await _active_agent_slugs(r2.json()["org_id"]) == {"concierge", "nurture"}
     conn = await asyncpg.connect(_dsn())
     try:
         assert await conn.fetchval("SELECT count(*) FROM users WHERE email=$1", email) == 1
@@ -188,6 +223,29 @@ async def test_unknown_plan_404_and_creates_nothing(scene: Scene) -> None:
     assert r.status_code == 404
     conn = await asyncpg.connect(_dsn())
     try:  # atomic — the org was NOT created despite the name being valid
+        after = await conn.fetchval(
+            "SELECT count(*) FROM organizations WHERE name LIKE $1", f"Store-{scene.tag}%")
+    finally:
+        await conn.close()
+    assert after == before
+
+
+async def test_unknown_vertical_404_and_creates_nothing(scene: Scene) -> None:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        before = await conn.fetchval(
+            "SELECT count(*) FROM organizations WHERE name LIKE $1", f"Store-{scene.tag}%")
+    finally:
+        await conn.close()
+    # A store on a vertical with no pack must fail-fast (before any write) — you can't provision a
+    # store the platform can't actually set up.
+    r = await scene.client.post(
+        "/v1/admin/tenants", headers=_op(scene.operator),
+        json={"name": f"Store-{scene.tag}-V", "owner_email": f"v@{scene.tag}.test",
+              "plan_id": str(scene.plan_id), "vertical": "no-such-vertical"})
+    assert r.status_code == 404
+    conn = await asyncpg.connect(_dsn())
+    try:  # atomic — nothing created despite valid name/email/plan
         after = await conn.fetchval(
             "SELECT count(*) FROM organizations WHERE name LIKE $1", f"Store-{scene.tag}%")
     finally:

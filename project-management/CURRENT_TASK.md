@@ -9,6 +9,32 @@ selects and approves the next ticket.
 
 ---
 
+## CP-2b · Install vertical pack + activate plan's agents on provision — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `feature/cp-2b-install-pack-activate-agents`. Closes the CP-2 shell-store gap: a provisioned
+store now gets its **vertical pack installed** and the **plan's agents switched on**, so it isn't an
+empty org. Flow is two-phase because `install()` owns its own transaction: `provision_store` writes
+the shell (org + owner + subscription) *and validates the vertical's pack dir exists* (unknown vertical
+→ 404, nothing written — atomic); the handler commits; then `finalize_store_setup` runs `install()`
+(idempotent by digest) + `activate_plan_agents` (flips the plan's `config.agents` archetypes from
+`paused`→`active`). Response gains `agents_activated`. A real install failure after commit → 500 with
+the shell retained (retryable — install is idempotent). Rule Zero preserved: the vertical is data
+(request param or `organizations.vertical` column default), never a literal in `core/`.
+
+**Gate (CI-relevant, all green):** ruff · mypy core 191 · guards 0 · unit 501 · e2e 5 ·
+provisioning 9 (adds unknown-vertical-atomic + pack-installed + agents-activated + second-store
+activation) · web-ops lint+tsc+build+vitest 42.
+
+**Surfaced (NOT CP-2b):** the full `tests/integration` + `tests/isolation` suites have 4 pre-existing
+failures on `main` (verified by stashing CP-2b) that **GitHub CI does not run** (ci.yml runs only
+unit+e2e; the isolation/eval jobs are non-executing placeholders — MVP-097). Most important:
+`tests/isolation/test_platform_admin_scope` fails because the soft-erase migration (041) added an
+`app.platform_admin` operator-read policy on `erased_customer_archive` but never added that table to
+`ALLOWED_CROSS_TENANT_TABLES`. Recommend a small follow-up: add the table to the allowlist (its
+isolation coverage already exists in `test_customer_dpdp.py`) **and wire the isolation suite into CI**
+so this class of latent red is caught. See BLOCKERS.md. Next: CP-3 seat enforcement.
+
+
 ## CP-2 · Store provisioning — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-2-store-provisioning`. `POST /v1/admin/tenants` (operator-gated) atomically creates

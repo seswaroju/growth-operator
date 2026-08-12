@@ -163,6 +163,7 @@ export interface StoreCreated {
   owner_id: string;
   owner_existed: boolean;
   plan_id: string;
+  agents_activated: number; // archetypes the plan switched on (CP-2b)
 }
 
 // Provision a store: creates the org + owner + subscription and emails the owner a setup link (CP-2).
