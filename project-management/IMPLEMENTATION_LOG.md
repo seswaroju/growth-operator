@@ -5088,3 +5088,40 @@ pre-existing #22b pollution, not this change).
 **Commit hash:** `59e4a9c` (merge `318f9a0`). Pushed to `main`; **GitHub CI green**.
 
 **Next:** BLOCKER #16 (OpenAI embeddings + per-store cost metering).
+
+---
+
+## 2026-08-12 — BLOCKER #16 (code): OpenAI embeddings + per-store cost metering
+
+**Direction:** founder chose OpenAI `text-embedding-3-small`; per-store embedding spend must be
+metered in the ledger (→ CP-6 cost/margin view).
+
+**What changed (`core/catalog/embed.py`):**
+- `Embedder` protocol → **async** (`SimulatedEmbedder` + the 2 call sites — `embed_pending` and
+  `search.hybrid_search` — updated; tests use the async wrappers, so no churn).
+- **`OpenAiEmbedder`** (NEW): async POST `/v1/embeddings`, `model=text-embedding-3-small`,
+  `dimensions=EMBED_DIM` (1024). Key from `embeddings_api_key`; missing key / HTTP error / wrong dim
+  count → `EmbeddingError` (fail-closed). `default_embedder` returns it when
+  `embeddings_provider_enabled`, else `SimulatedEmbedder` (default off → deterministic, no network).
+- **Per-store cost metering:** `embed_pending` estimates the batch's tokens (~4 chars/token) and, when
+  the provider is on, writes a `costs_lite` row (`node_key='embeddings'`, `provider='openai'`,
+  `tokens_in`, `cost_usd = tokens/1M × price`) under the org's tenant context — so embedding spend
+  shows up per-store in the CP-6 cost/margin view (the LLM-cost line).
+- **Config:** `embeddings_api_key`, `embeddings_model`, `embeddings_api_base`,
+  `embeddings_price_per_1m_usd` (0.02).
+
+**Tests:** `tests/unit/test_openai_embedder.py` (4 — request shape/dims/auth header, missing-key/HTTP/
+wrong-dim fail-closed; httpx mocked, no network); `test_catalog_embed.py` — cost metered to `costs_lite`
+when the provider is on (injected simulated embedder + flag), **none** when off. Existing embed/search
+tests still pass under the async switch.
+
+**Blocker #16 RESOLVED (code wired, gated):** go-live is a flag flip + the operator's OpenAI key.
+
+**Gate:** ruff · mypy core 198 · guards 0 · unit 517 (+4) · **fresh-DB integration+isolation 619, 0
+errors**. No migration; no web change.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** the three build-blockers (#5, #16) + the two event-blockers (#17, #21) are cleared; remaining
+open blockers are founder-side (#3 WhatsApp, #6 Razorpay, #8/#10 hosting) or low-value narrative
+(#4, #14, #21/#23 vault docs, #22b local pollution).

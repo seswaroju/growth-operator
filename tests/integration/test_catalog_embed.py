@@ -112,6 +112,39 @@ async def test_embed_pending_fills_vectors(scene: uuid.UUID) -> None:
         await conn.close()
 
 
+async def test_embed_pending_meters_cost_when_provider_on(
+    scene: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _seed(scene)
+    monkeypatch.setenv("GROWTH_OPERATOR_EMBEDDINGS_PROVIDER_ENABLED", "true")
+    # Inject the deterministic embedder so there's no real API call — the metering path still fires
+    # because the provider flag is on (BLOCKER #16: per-store embedding spend → costs_lite).
+    async with org_scoped_session(scene) as s:
+        assert await embed.embed_pending(s, embedder=embed.SimulatedEmbedder()) == 3
+    conn = await asyncpg.connect(_dsn())
+    try:
+        row = await conn.fetchrow(
+            "SELECT node_key, provider, model, tokens_in, cost_usd FROM costs_lite "
+            "WHERE org_id=$1 AND node_key='embeddings'", scene)
+    finally:
+        await conn.close()
+    assert row is not None  # this store's embedding spend is now in the ledger (CP-6 view)
+    assert row["provider"] == "openai" and row["model"] == "text-embedding-3-small"
+    assert row["tokens_in"] > 0 and row["cost_usd"] >= 0
+
+
+async def test_no_cost_metered_when_provider_off(scene: uuid.UUID) -> None:
+    await _seed(scene)
+    async with org_scoped_session(scene) as s:
+        await embed.embed_pending(s)  # simulated (default off) → free, nothing metered
+    conn = await asyncpg.connect(_dsn())
+    try:
+        assert await conn.fetchval(
+            "SELECT count(*) FROM costs_lite WHERE org_id=$1 AND node_key='embeddings'", scene) == 0
+    finally:
+        await conn.close()
+
+
 async def test_hybrid_returns_bm25_matches(scene: uuid.UUID) -> None:
     await _seed(scene)
     async with org_scoped_session(scene) as s:
