@@ -4760,6 +4760,8 @@ Local gate: `ruff check .` ✓ · `mypy core` 191 ✓ · guards 0 ✓ · `pytest
 `tests/integration/test_onboarding.py`, `tests/integration/test_dashboard_overview.py`,
 `.github/workflows/ci.yml`, `project-management/{BLOCKERS,CURRENT_TASK}.md`. No `core/` change.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `2c5a853` (merge `7305461`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job now genuinely runs (2m40s: isolation + integration suites against a fresh migrated DB), no longer
+a placeholder. BLOCKER #25 resolved.
 
 **Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
