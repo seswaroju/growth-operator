@@ -1305,3 +1305,32 @@ conversion). **Ticket mapping:** variant generation + marketing-agent planner = 
 3-variant → owner-picks trigger + notification = **LP-4**; public serving + outbox events + attribution
 = **LP-3**; ad launch reuses B1/B2 adapters + approvals (a later campaign-orchestration ticket). Not
 built yet — recorded as the approved target flow. **Decided by:** Founder (2026-08-12).
+
+---
+
+### 2026-08-12 — Lead attribution is generic across channels (LEAD-1), not landing-page-specific
+
+**Decision (founder):** every captured lead must be visible in the **store owner's dashboard and the
+operator/tenant dashboard**, showing **where it was captured from** and **which landing page, if any**.
+Crucially the founder corrected an initial landing-only design: *"this includes other channels where
+they could contact the store owner through word of mouth or directly from the link of WhatsApp in the
+Instagram description … there are several channels."* So "captured from" is an attribute of the
+**lead**, modelled generically for every origin.
+
+**Approved (AskUserQuestion):** (1) **LEAD-1 foundation first, then LP-3b consumes it** — a generic
+lead-origin model for all channels, rather than bolting landing columns onto LP-3b; (2) the **full
+origin vocabulary**: `landing_page, whatsapp, instagram, campaign, walk_in, referral, manual`.
+
+**Shape:** `leads.source` (canonical origin) + optional `channel_id` (the wired channel it arrived on),
+`landing_page_id` / `landing_version_id` / `variant` (only when it came from a page), and `utm` jsonb
+(link parameters from any origin — an ad, a campaign link, or a WhatsApp link in an IG bio). The
+vocabulary is a **code constant with no DB CHECK**, so adding an origin later needs no migration. One
+shape ⇒ a single uniform "captured from" column in both consoles.
+
+**Audit finding:** no production code created leads at any point before this (only tests seeded rows),
+so the model was defined clean — no legacy convention, no backfill.
+
+**Consequent tickets:** **LEAD-1** (this — migration 048 + vocabulary + `GET /v1/leads` surfacing);
+**LP-3b** consumes it for landing capture; **LP-4a** adds the owner-facing column; **CP-8** (new) adds
+the **operator per-tenant lead roster** — web-ops previously showed only an aggregate "New inquiries"
+count, with no per-lead list for any store. **Decided by:** Founder (2026-08-12).

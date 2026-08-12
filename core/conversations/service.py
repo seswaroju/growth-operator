@@ -89,9 +89,15 @@ async def list_leads(session: AsyncSession, org_id: UUID) -> list[dict[str, Any]
                 """
                 SELECT l.id, l.stage, l.source, l.score,
                        l.next_followup_at, l.last_touch_at, l.created_at, l.updated_at,
-                       ct.full_name AS contact_name, ct.phone AS contact_phone
+                       ct.full_name AS contact_name, ct.phone AS contact_phone,
+                       -- LEAD-1: where this lead was captured from (any origin)
+                       l.landing_page_id, l.variant, l.utm,
+                       lp.slug AS landing_slug,
+                       ch.type AS channel_type
                 FROM leads l
                 LEFT JOIN contacts ct ON ct.id = l.contact_id
+                LEFT JOIN landing_pages lp ON lp.id = l.landing_page_id
+                LEFT JOIN channels ch ON ch.id = l.channel_id
                 WHERE l.org_id = :o
                 ORDER BY l.updated_at DESC
                 LIMIT 200

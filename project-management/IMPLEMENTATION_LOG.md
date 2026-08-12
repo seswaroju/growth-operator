@@ -5464,3 +5464,54 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3b (public lead capture → contacts/leads + attribution + concierge auto-drafts a
 WhatsApp follow-up for approval; consent).
+
+---
+
+## 2026-08-12 — LEAD-1 · Generic lead-origin model ("captured from", every channel)
+
+**Ticket:** LEAD-1 — a **new foundation ticket**, created mid-planning of LP-3b. The founder asked that
+captured leads be visible with "where this lead was captured from and what landing page if any" in both
+the store and operator dashboards, then corrected the scope: *"this includes other channels where they
+could contact the store owner through word of mouth or directly from the link of WhatsApp in the
+Instagram description … there are several channels."* Attribution therefore belongs to the **lead**,
+generically. Founder approved via AskUserQuestion: **"LEAD-1 foundation first, then LP-3b consumes it"**
++ the **full origin vocabulary**.
+
+**Audit finding that shaped it:** **no production code creates leads yet** (only tests seed rows;
+`leads.source` was read but never written) — so the origin model was defined clean, with no legacy
+convention to preserve and no backfill.
+
+**Files created:** `migrations/versions/…048_lead_origin_attribution.py`,
+`core/customers/origins.py`, `tests/unit/test_lead_origins.py` (6).
+**Files modified:** `core/conversations/service.py` (`list_leads` joins `landing_pages` + `channels`),
+`core/conversations/api.py` (`LeadSummary` + `captured_from`; **`source` typed `str | None`** — it was
+`str` while the column is nullable, which would have 500'd on any lead without a recorded origin),
+`tests/integration/test_conversations_api.py` (+2), `project-management/{CURRENT_TASK,
+LANDING_PAGE_DESIGN}.md`.
+
+**Model:** `leads` gains `channel_id` / `landing_page_id` / `landing_version_id` / `variant` / `utm`
+(all nullable/defaulted → additive + safe; `leads` already has RLS). Canonical vocabulary is a **code**
+constant (`landing_page, whatsapp, instagram, campaign, walk_in, referral, manual`) with **no DB
+CHECK**, so adding an origin needs no migration. `describe()` renders one uniform **"captured from"**
+for any origin — landing → `Landing page · diwali-diamond (story)`; campaign → `Campaign · diwali-push`;
+channel → `WhatsApp`; unrecorded → `Unknown` (never raises). One shape ⇒ one dashboard column for every
+channel, including non-landing ones.
+
+**Migration:** **048** (`16f7981626a1 → cf4e8cff464d`) + 2 indexes; **up/down/up verified**.
+**APIs:** `GET /v1/leads` returns `captured_from`, `landing_page_id`, `landing_slug`, `variant`,
+`channel_type`, `utm`. **Events/Frontend:** none (owner UI column = LP-4a; operator roster = **CP-8**,
+newly recorded).
+
+**Security:** Rule Zero preserved (guards 0) — channel *types* are platform concepts, no vertical
+nouns. Org-scoped (RLS) and tested cross-tenant. No PII added (attribution is origin metadata, not
+personal data); junk `source` values are normalised away rather than persisted as real.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**209**) · `mypy migrations` ·
+`guards.py` (**0**) · **alembic 048 up/down/up** · `pytest tests/unit` (**561**, +6) · **fresh-DB
+integration+isolation `verify_fresh_db.sh` — 649 passed, 4 skipped, 0 errors** (+2: pipeline reports
+where each lead came from across 4 mixed origins; org-scoped). web untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-3b (public landing lead capture consuming this shape: `source='landing_page'` +
+page/version/variant/utm, consent-gated, concierge draft parks for approval).

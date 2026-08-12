@@ -234,8 +234,20 @@ Phase-1 remainder (the split of the old "LP-2/3/4"):
   (HITL #1 on the agent path). Touches `core/mediation`, `core/approvals`, the pack. The agent's hands.
 - **LP-3a — Public serving surface:** public router serves the published static/cached page
   (tenant-from-path) + CSP/noindex + `/track` rate-limit/bot defence. *(Live serving hosting-gated.)*
-- **LP-3b — Lead capture → CRM + concierge draft:** public lead POST → contacts/leads + attribution +
-  concierge auto-drafts a WhatsApp follow-up for approval (consent).
+- **LEAD-1 — Generic lead-origin model (DONE):** *not landing-specific* (founder 2026-08-12: leads also
+  arrive by word of mouth, the WhatsApp link in an Instagram bio, a direct message, a campaign, or
+  manual entry). **Migration 048** adds `channel_id` / `landing_page_id` / `landing_version_id` /
+  `variant` / `utm` to `leads`; `core/customers/origins.py` holds the canonical vocabulary
+  (`landing_page, whatsapp, instagram, campaign, walk_in, referral, manual` — code constant, **no DB
+  CHECK**, so a new origin needs no migration) + a uniform `captured_from` presentation;
+  `GET /v1/leads` returns it. **Every** origin (incl. non-landing) shares one shape, so the owner and
+  operator consoles get a single "captured from" column.
+- **LP-3b — Lead capture → CRM + concierge draft:** public lead POST → contacts/leads **using the
+  LEAD-1 shape** (`source='landing_page'` + page/version/variant/utm) + concierge auto-drafts a
+  WhatsApp follow-up for approval (consent).
+- **CP-8 — Operator per-tenant lead roster:** web-ops currently shows only an aggregate "New
+  inquiries" count — no per-lead list for any store. Add an operator roster (each store's captured
+  leads + `captured_from` + landing page), reusing LEAD-1. *(Founder-requested 2026-08-12.)*
 - **LP-3c — Attribution + outbox events:** UTM/campaign/variant into `attributions`; `landing_page.*`
   outbox events (vault + `spec/` sync) into the existing campaign attribution.
 - **LP-4a — Owner web `LandingPagesSection`:** view pages/variants, preview, pick/approve, funnel analytics.

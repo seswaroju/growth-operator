@@ -10,10 +10,11 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.conversations import service
+from core.customers import origins
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CONVERSATIONS_READ
@@ -62,12 +63,22 @@ class ConversationDetail(BaseModel):
 class LeadSummary(BaseModel):
     id: UUID
     stage: str
-    source: str
+    # LEAD-1: `source` is the canonical origin (core.customers.origins) and is NULL for a lead whose
+    # origin was never recorded → `captured_from` presents that as "Unknown".
+    source: str | None
     score: int | None
     contact_name: str | None
     contact_phone: str | None
     next_followup_at: datetime | None
     updated_at: datetime
+    # Where this lead was captured from — uniform across every origin (landing page, WhatsApp link
+    # in an IG bio, direct message, campaign, walk-in, referral, manual).
+    captured_from: str
+    landing_page_id: UUID | None = None
+    landing_slug: str | None = None
+    variant: str | None = None
+    channel_type: str | None = None
+    utm: dict[str, str] = Field(default_factory=dict)
 
 
 @router.get("/conversations", response_model=list[ConversationSummary], summary="Inbox")
@@ -124,6 +135,10 @@ async def list_leads(
             id=r["id"], stage=r["stage"], source=r["source"], score=r["score"],
             contact_name=r["contact_name"], contact_phone=r["contact_phone"],
             next_followup_at=r["next_followup_at"], updated_at=r["updated_at"],
+            captured_from=origins.describe(r),
+            landing_page_id=r.get("landing_page_id"), landing_slug=r.get("landing_slug"),
+            variant=r.get("variant"), channel_type=r.get("channel_type"),
+            utm=r.get("utm") or {},
         )
         for r in rows
     ]
