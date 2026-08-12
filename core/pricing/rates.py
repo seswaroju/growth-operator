@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
+import httpx
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,13 +57,51 @@ class SimulatedRateFetcher:
         return self._values[source_key]
 
 
+# IBJA fineness → our purity key. IBJA publishes ₹/gram per fineness (999/916/750/585); we store
+# paise/gram (value × 100), matching the pricing engine + the SimulatedRateFetcher shape.
+_IBJA_PURITY: dict[str, str] = {"999": "24K", "916": "22K", "750": "18K", "585": "14K"}
+_HTTP_TIMEOUT = httpx.Timeout(10.0)
+
+
+def parse_ibja_gold(data: dict[str, Any]) -> RateValue:
+    """Parse an IBJA-API `/latest` body into a paise/gram `RateValue`. Prefers the PM (closing)
+    session, falls back to AM. Raises if no usable rate is present."""
+    out: RateValue = {}
+    for fineness, key in _IBJA_PURITY.items():
+        raw = data.get(f"lblGold{fineness}_PM") or data.get(f"lblGold{fineness}_AM")
+        if raw in (None, ""):
+            continue
+        try:
+            out[key] = round(float(raw) * 100)  # ₹/gram → paise/gram
+        except (TypeError, ValueError):
+            continue
+    if not out:
+        raise PricingError("provider_unavailable", "IBJA response carried no usable rate")
+    return out
+
+
 class HttpRateFetcher:
-    """The real per-`fetch_spec` HTTP source. Gated: fails closed until IBJA is wired (#5)."""
+    """The real HTTP rate source (BLOCKER #5): the community IBJA API. Gated on
+    `rates_provider_enabled` (fails closed when off); only `ibja_gold` is wired — other sources stay
+    on manual entry. A network/parse failure raises `provider_unavailable` so ingestion fails
+    safe."""
 
     async def fetch(self, source_key: str, fetch_spec: dict[str, Any]) -> RateValue:
-        if not get_settings().rates_provider_enabled:
+        settings = get_settings()
+        if not settings.rates_provider_enabled:
             raise PricingError("provider_unavailable", "real rate provider disabled")
-        raise NotImplementedError("IBJA HTTP source not wired — see BLOCKERS #5")
+        if source_key != "ibja_gold":
+            raise PricingError(
+                "provider_unavailable", f"no HTTP source for {source_key!r} (use manual entry)")
+        url = str((fetch_spec or {}).get("url") or settings.rates_ibja_url)
+        try:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PricingError("provider_unavailable", f"IBJA fetch failed: {exc}") from exc
+        return parse_ibja_gold(data)
 
 
 def default_fetcher() -> RateFetcher:

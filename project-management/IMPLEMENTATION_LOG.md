@@ -5058,3 +5058,33 @@ integration+isolation 617, 0 errors**. No migration; no web change.
 **Commit hash:** `2a046c5` (merge `b2aa2cf`). Pushed to `main`; **GitHub CI green**.
 
 **Next:** BLOCKER #5 (IBJA gold rate), then #16 (embeddings).
+
+---
+
+## 2026-08-12 — BLOCKER #5 (code): wire the IBJA rate HTTP source
+
+**Direction:** founder chose the community IBJA API (`0xSaurabhx/IBJA-API`, `https://ibja-api.vercel.app/latest`, no key) to unblock; fallback order repo → manual → official → paid.
+
+**What changed:** `core/pricing/rates.py::HttpRateFetcher.fetch` (previously a `NotImplementedError`
+stub) now GETs the endpoint (config `rates_ibja_url`, `fetch_spec.url` override) and `parse_ibja_gold`
+maps `/latest` finenesses → paise/gram (`999→24K, 916→22K, 750→18K, 585→14K`; PM session preferred, AM
+fallback; ×100 for ₹/g→paise). Gated on `rates_provider_enabled` (off by default → `SimulatedRateFetcher`,
+so tests/CI stay deterministic + no network). Only `ibja_gold` is wired; other sources → manual. Any
+HTTP/parse failure → `PricingError("provider_unavailable")` (ingestion fails safe). New config
+`rates_ibja_url`.
+
+**Tests:** `tests/unit/test_ibja_rate.py` (9) — parse (PM-preferred, AM-fallback, blank/unparseable
+skipped, empty→raise), gated-off→raise, mocked live fetch, `fetch_spec.url` override, non-gold-source
+raise, 5xx→fail-safe. httpx mocked via `monkeypatch.setattr(httpx.AsyncClient, "get", …)` (no network).
+
+**Blocker:** #5 kept OPEN (community endpoint is best-effort) but the **code is wired** — go-live is a
+flag flip + a founder sanity-check of a known day's rate (per-gram unit assumption).
+
+**Gate:** ruff · mypy core 198 · guards 0 (reworded 2 core comments/strings to avoid the bare noun that
+Rule Zero forbids — the `ibja_gold` key form is allowed) · unit 513 (+9) · **fresh-DB
+integration+isolation 617, 0 errors** (confirmed the local `test_rate_ingestion` failures are the
+pre-existing #22b pollution, not this change).
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** BLOCKER #16 (OpenAI embeddings + per-store cost metering).

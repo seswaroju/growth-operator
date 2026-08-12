@@ -219,6 +219,10 @@ class Settings(BaseSettings):
     # must first pick/confirm the IBJA endpoint (BLOCKERS #5); enabling it before then fails
     # closed (NotImplementedError). Manual entry works regardless.
     rates_provider_enabled: bool = Field(default=False)
+    # The rate HTTP source used when the provider is enabled (BLOCKER #5): the community IBJA API
+    # (0xSaurabhx/IBJA-API), no key, for the `ibja_gold` source. A per-source `fetch_spec.url`
+    # overrides this. Best-effort — manual entry stays the fallback (repo → manual → official).
+    rates_ibja_url: str = Field(default="https://ibja-api.vercel.app/latest")
 
     # Real LLM provider (MVP-055). Off = deterministic SimulatedModel (no paid API). The provider
     # is chosen at go-live (provider-agnostic decision) — enabling this before a provider is wired
