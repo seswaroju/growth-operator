@@ -5313,7 +5313,8 @@ audit chain is append-only + tamper-evident. No external side effect (publish re
 approval 409, illegal-transition 409, rollback repoints, select-unknown-version 404, tenant-isolated
 404, viewer 403). web untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `df5a246` (merge `70b82d6`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-2c (agent `landing_page.*` mediation tools + campaigner grants + publish
 approval-rule + gated LLM strategy planner, simulated in tests).

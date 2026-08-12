@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-2b · Landing-page lifecycle + owner approval (HITL #1) — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-2b · Landing-page lifecycle + owner approval (HITL #1) — **COMPLETE — merged `70b82d6`, CI green** (2026-08-12)
 
 Branch `feature/lp-2b-lifecycle-approval`. Second sub-ticket of the split LP-2. The owner reviews the
 LP-2a candidate variants and **approves one** (HITL gate #1); the page then moves through a **validated,
