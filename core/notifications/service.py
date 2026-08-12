@@ -64,6 +64,16 @@ async def get_feed(
                       "title": f"Automation ‘{r['workflow_key']}’ {r['status']}",
                       "at": r["updated_at"]})
 
+    # Operator broadcasts (CP-7): global GO→all-stores announcements. `announcements` has no RLS, so
+    # every store's owner sees the active ones — that's the "blast to all stores".
+    for r in (await session.execute(
+        text("SELECT id, title, body, level, published_at FROM announcements "
+             "WHERE archived_at IS NULL ORDER BY published_at DESC LIMIT :n"),
+        {"n": _PER_SOURCE})).mappings():
+        items.append({"kind": "announcement", "ref": str(r["id"]),
+                      "title": r["title"], "body": r["body"], "level": r["level"],
+                      "at": r["published_at"]})
+
     items.sort(key=lambda i: i["at"], reverse=True)
     items = items[:limit]
     unread = sum(1 for i in items if seen is None or i["at"] > seen)
@@ -77,3 +87,36 @@ async def mark_seen(session: AsyncSession, org_id: UUID, user_id: UUID) -> None:
         text("INSERT INTO notification_reads (org_id, user_id, seen_at) VALUES (:o, :u, now()) "
              "ON CONFLICT (org_id, user_id) DO UPDATE SET seen_at = now()"),
         {"o": str(org_id), "u": str(user_id)})
+
+
+# ---- Operator broadcasts / announcements (CP-7) --------------------------------------------------
+# `announcements` is a GLOBAL GO→all-stores table (no RLS): the operator writes; every store's owner
+# reads the active rows through `get_feed`. Only operator-plane routes reach these writers.
+
+_ANNOUNCEMENT_COLS = "id, title, body, level, published_at, archived_at, created_at"
+
+
+async def create_announcement(
+    session: AsyncSession, *, title: str, body: str, level: str, created_by: UUID
+) -> dict[str, Any]:
+    """Publish a broadcast (create = publish; `archived_at` retracts it later)."""
+    return dict((await session.execute(
+        text(f"INSERT INTO announcements (title, body, level, created_by) "
+             f"VALUES (:t, :b, :l, :c) RETURNING {_ANNOUNCEMENT_COLS}"),
+        {"t": title, "b": body, "l": level, "c": str(created_by)})).mappings().one())
+
+
+async def list_announcements(session: AsyncSession) -> list[dict[str, Any]]:
+    """All broadcasts (active + archived), newest first — the operator's management list."""
+    rows = (await session.execute(
+        text(f"SELECT {_ANNOUNCEMENT_COLS} FROM announcements ORDER BY published_at DESC")
+    )).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def archive_announcement(session: AsyncSession, announcement_id: UUID) -> bool:
+    """Retract a broadcast (drops it from every owner feed). False if unknown/already archived."""
+    return (await session.execute(
+        text("UPDATE announcements SET archived_at = now() "
+             "WHERE id = :id AND archived_at IS NULL RETURNING id"),
+        {"id": str(announcement_id)})).first() is not None

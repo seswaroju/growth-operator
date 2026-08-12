@@ -429,6 +429,36 @@ export function adminCostMargin(
   return authed<CostMargin>(`/v1/admin/billing/tenants/${orgId}/cost-margin${q}`, token);
 }
 
+// ---- Operator broadcasts / announcements (CP-7) -----------------------------
+// The operator posts an announcement that every store's owner sees in their notification bell.
+
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  level: "info" | "update" | "warning";
+  published_at: string;
+  archived_at: string | null;
+  created_at: string;
+}
+
+export function adminListAnnouncements(token: string): Promise<Announcement[]> {
+  return authed<Announcement[]>("/v1/admin/announcements", token);
+}
+
+export function adminPublishAnnouncement(
+  token: string, input: { title: string; body: string; level: string },
+): Promise<Announcement> {
+  return authed<Announcement>("/v1/admin/announcements", token, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function adminArchiveAnnouncement(token: string, id: string): Promise<void> {
+  return authed<void>(`/v1/admin/announcements/${id}/archive`, token, { method: "POST" });
+}
+
 // ---- Billing (/v1/admin/billing/*, platform.tenants:read / :manage) ---------
 // Operator-owned per-client revenue. Rollup feeds the Financial dashboard; plans + per-client
 // subscription/charges are the management surface (writes need tenants:manage; audited server-side).

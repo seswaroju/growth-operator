@@ -656,10 +656,12 @@ export function listOwnerDefinitions(token: string): Promise<{ definitions: Owne
 // A unified feed derived from existing signals: pending approvals, ticket updates, automation alerts.
 
 export interface NotificationItem {
-  kind: "approval" | "ticket" | "automation";
+  kind: "approval" | "ticket" | "automation" | "announcement";
   ref: string;
   title: string;
   tier?: number;
+  body?: string; // announcements carry the full message + a level
+  level?: string;
   at: string;
 }
 

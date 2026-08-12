@@ -1170,3 +1170,19 @@ source; the operator can override per environment. The authoritative figure is `
 `cost_usd` is shown for reference (4dp). (3) LLM is a **line with revenue 0** (in-plan cost); each
 platform API is its **own line** (separate from the plan). (4) Revenue comes from **recorded charges**,
 not derived from plan price. **Decided by:** Founder (CP-6 plan approved 2026-08-12).
+
+---
+
+## 2026-08-12 — Announcements table is intentionally global / no-RLS (CP-7)
+
+**Context:** the founder wants to "blast to all stores" any plan/company change. CP-7 delivers this via
+`announcements` (migration 044).
+
+**Decision:** unlike every org-owned table (§15.3 RLS rule), `announcements` is **global with NO RLS** —
+by design. A broadcast is meant to be visible to *every* tenant, holds no per-tenant data, and its
+writes are gated at the **operator plane** (`platform.tenants:manage`) + audited; store owners only
+ever READ the active rows, and they do so through the existing notification feed (no new owner
+endpoint). Create = publish; `archived_at` retracts from all feeds. So a store provisioned *after* an
+announcement still sees it while it's active. This is a deliberate, documented exception to the
+"org tables have RLS" rule, safe because the table is not org-owned. **Decided by:** Founder (CP-7 part
+of the approved control-plane scope; plan approved 2026-08-12).

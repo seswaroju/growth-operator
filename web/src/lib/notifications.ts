@@ -7,12 +7,14 @@ export const KIND_ICON: Record<NotificationItem["kind"], string> = {
   approval: "✅",
   ticket: "🎫",
   automation: "⚙️",
+  announcement: "📣",
 };
 
 export const KIND_LABEL: Record<NotificationItem["kind"], string> = {
   approval: "Approval",
   ticket: "Support",
   automation: "Automation",
+  announcement: "Announcement",
 };
 
 export function kindIcon(kind: NotificationItem["kind"]): string {

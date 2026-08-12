@@ -9,6 +9,23 @@ selects and approves the next ticket.
 
 ---
 
+## CP-7 · Operator broadcast / announcements — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/cp-7-announcements`. The operator posts an announcement (plan/company updates) that
+**every store's owner** sees in their notification bell — the "blast to all stores". **Migration 044**
+`announcements` (deliberately **GLOBAL, no RLS** — a GO→all-stores broadcast, not org-owned; writes
+gated at the operator plane, owners only read active rows). Operator API `core/notifications/admin.py`
+(`/v1/admin/announcements`): POST publish, GET list (active + archived), POST `/{id}/archive` retract;
+gated `platform.tenants:manage`, audited. Owner side: active announcements join the existing
+notification feed (`get_feed` adds `kind:"announcement"`) — new + future stores all see them; archive
+drops them; the bell's seen-state gives the unread badge. web-ops: an **Announcements** nav section
+(compose title/body/level + publish, list, retract). web/ owner app: `NotificationBell` gains an
+announcement kind (📣 Megaphone + body). **Gate (all green):** ruff · mypy core 198 · mypy migrations ·
+guards 0 · unit 504 · alembic up/down/up · **fresh-DB integration+isolation 617** (8 new: publish
+reaches BOTH stores' owners, archive removes from feed, operator list, 404/422/403, plane-off) ·
+web-ops + web lint/tsc/build/vitest (42 + 69). **This completes the control-plane set CP-1..CP-7.**
+
+
 ## CP-6 · Per-store cost & margin view (itemised) — **COMPLETE — awaiting founder review** (2026-08-12)
 
 Branch `feature/cp-6-cost-margin`. The operator's per-store, per-month **cost & margin** view. Folds
