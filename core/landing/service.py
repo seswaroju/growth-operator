@@ -264,6 +264,35 @@ async def list_pages(session: AsyncSession, org_id: UUID) -> list[dict[str, Any]
     return [dict(r) for r in rows]
 
 
+async def published_spec(
+    session: AsyncSession, page_id: UUID
+) -> tuple[LandingPageSpec, str] | None:
+    """The current version's spec for a **published** page, for public (unauth) serving (LP-3a).
+
+    Tenant is resolved from `page_id` via the SECURITY-DEFINER `landing_page_org` (never a request
+    value); the read is then RLS-scoped and gated on `status='published'` — so drafts, paused, and
+    other tenants' pages all return `None` (→ 404), never leaked."""
+    org = (
+        await session.execute(
+            text("SELECT landing_page_org(CAST(:p AS uuid))"), {"p": str(page_id)})
+    ).scalar()
+    if org is None:
+        return None
+    await set_org_context(session, org)
+    row = (
+        await session.execute(
+            text("SELECT v.spec, v.variant_label FROM landing_pages p "
+                 "JOIN landing_page_versions v ON v.id = p.current_version_id "
+                 "WHERE p.id = :id AND p.status = 'published'"),
+            {"id": str(page_id)})
+    ).mappings().first()
+    if row is None:
+        return None  # unknown / not published / no current version → 404
+    spec = row["spec"]
+    parsed = LandingPageSpec.from_dict(json.loads(spec) if isinstance(spec, str) else spec)
+    return parsed, row["variant_label"]
+
+
 async def record_public_event(
     session: AsyncSession, page_id: UUID, type_: str, *,
     item_ref: object = None, session_id: object = None, variant: object = None,

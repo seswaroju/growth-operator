@@ -15,6 +15,8 @@ import pytest
 
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.landing import api as landing_api
+from core.landing import ratelimit
 from core.tenancy import auth
 
 
@@ -53,6 +55,7 @@ class Scene:
 async def scene() -> AsyncIterator[Scene]:
     if not await _db_ready():
         pytest.skip("Postgres/landing not ready")
+    ratelimit.reset()  # LP-3a: isolate the in-process rate-limiter across tests
     dbmod.get_engine.cache_clear()
     dbmod.get_sessionmaker.cache_clear()
     org_a, owner_a, org_b, owner_b = (uuid.uuid4() for _ in range(4))
@@ -468,3 +471,61 @@ async def test_lifecycle_requires_campaign_permission(scene: Scene) -> None:
         json={"version_no": 1})).status_code == 403
     assert (await scene.client.post(
         f"/v1/landing/pages/{page_id}/publish", headers=h)).status_code == 403
+
+
+# ---- LP-3a: public serving surface -------------------------------------------------------------
+
+async def _publish_page(scene: Scene) -> str:
+    """Generate 3 variants → owner selects one → publish → return the page id (now live)."""
+    page_id = await _make_page(scene)
+    await _act(scene, page_id, "select", json={"version_no": 1})
+    await _act(scene, page_id, "publish")
+    return page_id
+
+
+async def test_serve_published_page_public(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    r = await scene.client.get(f"/p/{page_id}")  # NO auth header — public
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert "Everyday Diamond Pendants" in r.text and "Enquire on WhatsApp" in r.text
+    assert 'content="noindex' in r.text  # the page's own meta
+    # HTTP security headers reinforce it
+    assert r.headers["x-robots-tag"] == "noindex, nofollow"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert "strict-origin" in r.headers["referrer-policy"]
+
+
+async def test_only_published_pages_are_served(scene: Scene) -> None:
+    page_id = await _make_page(scene)  # 'generated'
+    assert (await scene.client.get(f"/p/{page_id}")).status_code == 404
+    await _act(scene, page_id, "select", json={"version_no": 1})  # 'approved' (not published)
+    assert (await scene.client.get(f"/p/{page_id}")).status_code == 404
+    await _act(scene, page_id, "publish")  # now live
+    assert (await scene.client.get(f"/p/{page_id}")).status_code == 200
+    await _act(scene, page_id, "pause")  # taken down → no longer served
+    assert (await scene.client.get(f"/p/{page_id}")).status_code == 404
+
+
+async def test_serve_unknown_page_is_404(scene: Scene) -> None:
+    assert (await scene.client.get(f"/p/{uuid.uuid4()}")).status_code == 404
+
+
+async def test_serve_is_rate_limited(scene: Scene, monkeypatch: pytest.MonkeyPatch) -> None:
+    page_id = await _publish_page(scene)
+    ratelimit.reset()
+    monkeypatch.setattr(landing_api, "SERVE_PER_MIN", 3)
+    for _ in range(3):
+        assert (await scene.client.get(f"/p/{page_id}")).status_code == 200
+    assert (await scene.client.get(f"/p/{page_id}")).status_code == 429  # 4th over the cap
+
+
+async def test_track_flood_is_silently_dropped(
+    scene: Scene, monkeypatch: pytest.MonkeyPatch) -> None:
+    page_id = await _publish_page(scene)
+    ratelimit.reset()
+    monkeypatch.setattr(landing_api, "TRACK_PER_MIN", 2)
+    for _ in range(2):
+        assert await _track(scene.client, page_id=page_id, type="landing_page.viewed") == 204
+    # 3rd is over the cap → still 204 (never a 429 that leaks a signal), but records nothing
+    assert await _track(scene.client, page_id=page_id, type="landing_page.viewed") == 204
+    assert await _events(page_id) == ["landing_page.viewed", "landing_page.viewed"]

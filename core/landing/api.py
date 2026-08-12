@@ -12,13 +12,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.db import get_session
-from core.landing import lifecycle, service
+from core.landing import lifecycle, ratelimit, service
 from core.landing.lifecycle import InvalidTransition
 from core.landing.plan import CampaignContext, ProductRef
 from core.landing.render import render_html
@@ -29,8 +29,30 @@ from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/landing", tags=["landing"])
+public_router = APIRouter(tags=["landing-public"])  # LP-3a: unauth public serving
 
 _TRACK_URL = "/v1/landing/track"  # where the rendered page's beacon posts
+
+# In-app flood/bot defence caps (per IP, 60s window). The robust distributed limit is the reverse
+# proxy at hosting time; these are the MVP in-process floor.
+SERVE_PER_MIN = 120
+TRACK_PER_MIN = 90
+
+# Security headers for the served page. NOTE: no CSP header — the rendered HTML already carries a
+# per-render nonce'd CSP in a <meta>; a header CSP (different/no nonce) would break the beacon.
+_SECURITY_HEADERS = {
+    "X-Robots-Tag": "noindex, nofollow",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Cache-Control": "public, max-age=120",
+}
+
+
+def _client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 class ProductIn(BaseModel):
@@ -237,14 +259,37 @@ async def get_insights(
              summary="Public funnel beacon (view / item / CTA) — tenant resolved from page_id")
 async def track(
     body: TrackIn,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> None:
     # Best-effort + fail-closed: unknown page or disallowed type simply records nothing (still 204,
     # so the beacon never leaks whether a page exists). The untrusted body is whitelisted + clamped
-    # in the service. LP-3 adds rate-limiting + bot defence.
+    # in the service. LP-3a: a per-IP flood is silently dropped (still 204 — a 429 leaks a signal).
+    if not ratelimit.allow(f"track:{_client_ip(request)}", TRACK_PER_MIN):
+        return
     await service.record_public_event(
         session, body.page_id, body.type, item_ref=body.item_ref, session_id=body.session_id,
         variant=body.variant, utm=body.utm, meta=body.meta)
+
+
+@public_router.get("/p/{page_id}", response_class=HTMLResponse,
+                   summary="Public: serve a published landing page (no auth)")
+async def serve_public_page(
+    page_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    # Public, unauthenticated. A per-IP flood → 429; only PUBLISHED pages are ever served (drafts,
+    # paused, other tenants → 404 via the SECDEF + status gate — no leak). Live public serving is
+    # hosting-gated (DNS/reverse proxy); the route itself is complete + tested here.
+    if not ratelimit.allow(f"serve:{_client_ip(request)}", SERVE_PER_MIN):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "rate limited")
+    result = await service.published_spec(session, page_id)
+    if result is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+    spec, variant = result
+    html = render_html(spec, page_id=str(page_id), track_url=_TRACK_URL, variant=variant)
+    return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
 # --- Lifecycle + owner approval (LP-2b) -----------------------------------------------------------

@@ -9,6 +9,31 @@ selects and approves the next ticket.
 
 ---
 
+## LP-3a · Public serving surface — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-3a-public-serving`. First LP-3 sub-ticket. A real, shareable **public (unauth) URL**
+that serves a **published** landing page — the click-through target for an ad. **No migration**
+(reuses the existing `landing_page_org` SECDEF + a `status='published'` gate). Live public serving stays
+hosting-gated (DNS/reverse proxy); the route is complete + tested.
+
+- `core/landing/api.py` (new `public_router`): **`GET /p/{page_id}`** (no auth) → resolve org via the
+  SECDEF → `set_org_context` → serve the current version **only if `status='published'`** (drafts,
+  paused, other tenants → **404**, never leaked); render + **security headers** (`X-Robots-Tag:
+  noindex,nofollow`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, short `Cache-Control`; **no
+  CSP header** — the HTML already carries a per-render nonce'd CSP `<meta>`, a header would break the
+  beacon). Registered in `core/api/main.py`.
+- `core/landing/service.py`: `published_spec(session, page_id)` (SECDEF → context → published-only).
+- `core/landing/ratelimit.py` (new, in-process per-IP 60s sliding window): flood/bot defence — the
+  serve route over cap → **429**; `/track` over cap → **silent 204** (records nothing; a 429 would leak
+  a signal). MVP in-process floor; the distributed/edge limit is the reverse proxy at hosting.
+
+**Gate (all green):** ruff · mypy core **208** · guards **0** · unit **555** (+5 ratelimit:
+cap/slide/isolation/disable/deny-no-consume) · **fresh-DB integration+isolation 647** (+5: serve
+published 200 + security headers, only-published-served 404s incl. paused-after-publish, unknown 404,
+serve rate-limited 429, `/track` flood silently dropped). No migration. web untouched. **Next:** LP-3b
+(public lead capture → contacts/leads + concierge draft).
+
+
 ## LP-2d · Agent mediation tools + publish approval rule — **COMPLETE — merged `f2b2fb6`, CI green** (2026-08-12)
 
 Branch `feature/lp-2d-agent-mediation`. Final sub-ticket of LP-2 — the agent's "hands." The

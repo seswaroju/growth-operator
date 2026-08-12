@@ -21,6 +21,7 @@ from core.customers.api import router as customers_router
 from core.ingestion.api import router as imports_router
 from core.insights.api import insight_admin_router, insights_router
 from core.insights.api import router as dashboard_router
+from core.landing.api import public_router as landing_public_router
 from core.landing.api import router as landing_router
 from core.notifications.admin import router as announcements_admin_router
 from core.notifications.api import router as notifications_router
@@ -98,6 +99,7 @@ app.include_router(ops_router)
 app.include_router(approvals_router)
 app.include_router(imports_router)
 app.include_router(landing_router)
+app.include_router(landing_public_router)  # LP-3a: public GET /p/{page_id} (no auth)
 app.include_router(workflows_router)
 app.include_router(notifications_router)
 app.include_router(support_owner_router)
