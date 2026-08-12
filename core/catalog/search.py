@@ -132,7 +132,7 @@ async def hybrid_search(
     fsql, fparams = _filter_sql(filters)
     bm25 = await search_items(session, org_id, query, k=k * 2, filters=filters)
     knn = await _knn(
-        session, to_pgvector(embedder.embed(query)), k * 2,
+        session, to_pgvector(await embedder.embed(query)), k * 2,
         filter_sql=fsql, filter_params=fparams,
     )
     bm25_ids = [r["id"] for r in bm25]

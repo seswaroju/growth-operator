@@ -209,10 +209,14 @@ class Settings(BaseSettings):
     # digests match and a valid ed25519 signature over it before a pack is accepted.
     packs_dev_mode: bool = Field(default=True)
 
-    # Catalog embeddings (MVP-048). OFF → a deterministic simulated embedder (dev/tests, no
-    # paid API). Turning it on selects the real hosted embedding provider, which is not wired
-    # yet (founder picks one, §9) — enabling it before then fails closed (NotImplementedError).
+    # Catalog embeddings (MVP-048 / BLOCKER #16). OFF → a deterministic simulated embedder
+    # (dev/tests, no paid API). ON → the OpenAI embedder (operator-held key). Per-store spend is
+    # metered to `costs_lite` so it surfaces in the CP-6 cost/margin view.
     embeddings_provider_enabled: bool = Field(default=False)
+    embeddings_api_key: str = Field(default="")  # OpenAI key (operator-held); required when enabled
+    embeddings_model: str = Field(default="text-embedding-3-small")
+    embeddings_api_base: str = Field(default="https://api.openai.com")
+    embeddings_price_per_1m_usd: float = Field(default=0.02)  # text-embedding-3-small list price
 
     # Real IBJA rate fetch (MVP-051). Off = deterministic SimulatedRateFetcher (no external
     # call). Turning it on selects the real HTTP source, which is not wired yet — the founder
