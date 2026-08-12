@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-1 · Landing-page foundation (deterministic vertical slice) — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-1 · Landing-page foundation (deterministic vertical slice) — **COMPLETE — merged `27530f1`, CI green** (2026-08-12)
 
 Branch `feature/lp-1-foundation`. First landing-page ticket (approved v2 architecture, `LANDING_PAGE_DESIGN.md`).
 Delivers the **presentation-critical vertical slice** end-to-end, fully deterministic (**no LLM, no

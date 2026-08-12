@@ -5215,6 +5215,10 @@ Shopify/Woo, TenantGrowthProfile + evidence graduation, outbox events + attribut
 rate-limiting/bot-defence, owner web section + asset-upload → **3-variant-choice** trigger — all
 LP-2/3/4.
 
-**Commit hash:** _pending — awaiting founder review/commit._
+**Commit hash:** `b8262fe` (merge `27530f1`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
-**Next action:** founder review; then LP-2 (lifecycle + agent capability + LLM planner).
+**Next action:** founder selects the next landing ticket — recommended **LP-2** (variant generation +
+marketing-agent planner: the "3 different-UX pages" engine behind the approved end-to-end flow), then
+LP-4 (owner upload → 3-variant → pick → activate) and LP-3 (public serving + outbox events +
+attribution + /track rate-limit).
