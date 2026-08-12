@@ -265,3 +265,17 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Next action:** a small follow-up ticket — re-enable `classify_ghost` + the silence-window trigger
   against the now-present columns, extend the eval set with shop-stopped-replying cases, and refresh
   the workflow header. Founder to schedule.
+
+### 29. Vault `topics.yaml` lands outside the vault (lead.stage_changed.v1 nullable widening)
+
+- **Severity:** Low — narrative/doc sync only. **No runtime or test risk** (the drift tests read the
+  vendored `spec/events/topics.yaml`, which IS updated; the vault original is not test-checked — same
+  posture as #17/#21/#23/#27).
+- **Description:** GHOST-1a widened `lead.stage_changed.v1`'s `last_customer_msg_at` from `rfc3339` to
+  **`rfc3339|null`** (founder-approved) so a lead with no customer message yet — e.g. captured from a
+  landing form — can still emit the transition that starts ghost recovery. Updated in
+  `spec/events/topics.yaml` + regenerated `core/events/types.py`; the vault original still says
+  `rfc3339`.
+- **Next action (founder):** in the vault `docs/implementation/events/topics.yaml`, change the
+  `lead.stage_changed.v1` payload to
+  `{lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}`. File save is the record.

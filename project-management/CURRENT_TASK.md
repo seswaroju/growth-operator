@@ -9,6 +9,45 @@ selects and approves the next ticket.
 
 ---
 
+## GHOST-1a · Ghost-recovery ignition (make the wedge actually fire) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/ghost-1a-ignition`. Founder asked whether ghost recovery was "even implemented or
+silently set aside". **It was implemented — but it could never fire.** Three independent breaks in the
+ignition path, all found by inspection and now closed:
+
+1. **No stage writer** — no `UPDATE leads SET stage` existed anywhere in production code, so a lead
+   never reached `quoted`.
+2. **No producer** — nothing emitted `lead.stage_changed.v1` (registered in topics.yaml with
+   `producer: crm`, but the producer was never written).
+3. **Trigger name mismatch** — the pack triggered on `lead.stage.changed` while the canonical event is
+   `lead.stage_changed.v1`; routing is an **exact** SQL match (`trigger_spec->>'event_type'`), so it
+   could not have matched even if the event existed.
+
+- `core/customers/lifecycle.py` (NEW) — `mark_quoted()`: advances the contact's open (non-terminal)
+  lead to `quoted`, stamps `last_outbound_msg_at` / `last_message_direction` / `last_touch_at` (the
+  columns the diagnosis playbooks read), and emits **`lead.stage_changed.v1`** through the outbox in
+  the caller's transaction. **Idempotent** — a second quote refreshes the touch but does **not**
+  re-emit, so it can't spawn a duplicate recovery run. Generic (Rule Zero: stages/leads are CRM
+  concepts).
+- **Ignition point** (founder decision): the **send path** — `core/channels/whatsapp/send.py` calls
+  `mark_quoted` only when a delivered message carried **ledgered figures** (`figure_refs`), i.e. the
+  customer really did receive a quote. Never on merely *computing* a quote, so a rejected draft can
+  never mark a lead quoted.
+- **Trigger fixed** in `verticals/jewelry/workflows/silent_lead_reactivation.yaml` → `lead.stage_changed.v1`.
+- **Event contract widened** (founder-approved): `last_customer_msg_at` → `rfc3339|null` in
+  `spec/events/topics.yaml` + regenerated `core/events/types.py` — a lead captured from a landing form
+  legitimately has no customer message yet, and the event previously failed validation. Widening,
+  backward-compatible, no existing consumer (nothing ever emitted it). **Founder follow-up:** mirror
+  the line in the vault `docs/implementation/events/topics.yaml` (BLOCKER #29).
+
+**Gate (all green):** ruff · mypy core **211** · guards **0** · unit **564** (event drift tests green
+after regeneration) · **fresh-DB integration+isolation 666** (+4 ignition: lead advances + event
+emitted with the touch columns stamped, second quote is idempotent, no-open-lead is a no-op,
+**the emitted event actually STARTS the pack's ghost-recovery workflow** and a `new` lead does not)
+· **e2e 5** (send path unchanged for the existing journey). No migration. **Next:** GHOST-1b
+(classify_ghost + 24h silence window + eval extension — BLOCKER #28), then LP-4a.
+
+
 ## CP-8 · Operator per-tenant lead roster (+ README rewrite) — **COMPLETE — merged `db73ffe`, CI green** (2026-08-12)
 
 Branch `feature/cp-8-operator-lead-roster`. Closes the gap the founder found: leads must be visible in

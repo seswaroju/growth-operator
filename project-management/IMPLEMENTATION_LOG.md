@@ -5606,3 +5606,54 @@ README** — it described only the inbound concierge loop, leaving the actual we
 
 **Next action:** founder selects — LP-3c (UTM/variant attribution + outbox `landing_page.*` events) or
 LP-4a (owner web LandingPagesSection + leads "captured from" column).
+
+---
+
+## 2026-08-12 — GHOST-1a · Ghost-recovery ignition (make the wedge actually fire)
+
+**Ticket:** GHOST-1a — from the founder's question "is ghost recovery even implemented or silently set
+aside?" and the README audit. **Finding: it was implemented but could never fire.** Three independent
+breaks in the ignition path: (1) no production code ever advanced a lead's stage (no
+`UPDATE leads SET stage` anywhere); (2) nothing emitted `lead.stage_changed.v1` — registered in
+topics.yaml with `producer: crm`, producer never written; (3) the pack triggered on
+`lead.stage.changed` while the canonical event is `lead.stage_changed.v1`, and routing is an **exact**
+match on `trigger_spec->>'event_type'`. The machinery (diagnosis, taxonomy, templates, approval gate,
+labels, eval) was real and tested — it was wired to an ignition that was never connected.
+
+**Founder decisions (AskUserQuestion):** (a) transition **on quote delivery, in the send path** — a
+lead must never be marked `quoted` for a draft the owner rejected; (b) **widen the event contract**
+`last_customer_msg_at` → `rfc3339|null` rather than skip-emitting or faking a timestamp.
+
+**Files created:** `core/customers/lifecycle.py`, `tests/integration/test_ghost_ignition.py` (4).
+**Files modified:** `core/channels/whatsapp/send.py` (call `mark_quoted` when a delivered message
+carried `figure_refs`), `verticals/jewelry/workflows/silent_lead_reactivation.yaml` (canonical trigger
+type + comment), `spec/events/topics.yaml` + regenerated `core/events/types.py` (nullable widening),
+tracking docs.
+
+**Behaviour:** `mark_quoted()` advances the contact's most recent **non-terminal** lead to `quoted`,
+stamps `last_outbound_msg_at` / `last_message_direction` / `last_touch_at`, and emits
+`lead.stage_changed.v1` via the transactional outbox in the caller's transaction. **Idempotent**: an
+already-`quoted` lead gets its outbound touch refreshed but does **not** re-emit, so a second quote
+cannot spawn a duplicate recovery run. A contact with no open lead (or a `won`/`lost` lead) is a no-op.
+
+**Migration:** none. **Events:** `lead.stage_changed.v1` is now actually **produced** (payload:
+lead_id, stage, last_customer_msg_at, contact_id, message_id, previous_stage); its declared type for
+`last_customer_msg_at` widened to `rfc3339|null` (widening, backward-compatible, no existing consumer).
+**APIs/Frontend:** none.
+
+**Security:** Rule Zero preserved (guards 0) — `core/customers/lifecycle.py` is generic CRM. RLS-scoped
+(the writer runs inside the caller's org context). No new external side effect: the transition happens
+*after* an already-approved, already-gated send succeeded. No autonomous customer contact is added —
+the recovery workflow it starts still parks at its approval gate.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**211**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**564**, event drift tests green after regeneration) · **fresh-DB
+integration+isolation `verify_fresh_db.sh` — 666 passed, 4 skipped, 0 errors** (+4 ignition: lead
+advances + event emitted with touch columns stamped, second quote idempotent, no-open-lead no-op, and
+**the emitted event actually STARTS the pack's ghost-recovery workflow** while a `new` lead does not)
+· **`pytest tests/e2e` 5** (the changed send path did not regress the journey).
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** GHOST-1b (re-enable `classify_ghost` + the 24h silence window + extend the eval set —
+BLOCKER #28), then LP-4a.
