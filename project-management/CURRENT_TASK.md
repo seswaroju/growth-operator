@@ -9,6 +9,37 @@ selects and approves the next ticket.
 
 ---
 
+## LEAD-1 · Generic lead-origin model ("captured from", every channel) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lead-1-origin-model`. **New foundation ticket**, created from the founder's steer while
+planning LP-3b: leads don't only come from landing pages — they also arrive by **word of mouth, the
+WhatsApp link in an Instagram bio, a direct message, a campaign, or manual entry**. So "captured from"
+belongs to the **lead**, generically, not to the landing page. **Finding:** no production code creates
+leads yet (only tests seed them), so the model was defined clean.
+
+- **Migration 048** — `leads` gains `channel_id` (FK channels), `landing_page_id` (FK landing_pages),
+  `landing_version_id` (FK versions), `variant`, `utm jsonb` — all nullable/defaulted (additive, safe
+  on a populated table; `leads` already has RLS) + indexes `(org_id, source, created_at)` and a partial
+  `(org_id, landing_page_id)`. **Deliberately no DB CHECK on `source`** → adding an origin is a code
+  change, not a migration. Up/down/up verified.
+- `core/customers/origins.py` (NEW) — canonical vocabulary (founder-approved full set):
+  `landing_page · whatsapp · instagram · campaign · walk_in · referral · manual`, owner-facing labels,
+  `is_valid`/`normalize` (junk is never persisted as real), and **`describe()`** → one uniform
+  **"captured from"** line for any origin (landing → `Landing page · diwali-diamond (story)`; campaign
+  → `Campaign · diwali-push`; channel → `WhatsApp`; unrecorded → `Unknown`, never raises).
+- `GET /v1/leads` now returns `captured_from` + `landing_page_id` / `landing_slug` / `variant` /
+  `channel_type` / `utm` (query joins `landing_pages` + `channels`). **Fixed:** `LeadSummary.source`
+  was typed `str` but the column is nullable → a lead without a recorded origin would 500; now
+  `str | None` presented as "Unknown".
+
+**Gate (all green):** ruff · mypy core **209** · mypy migrations · guards **0** · **alembic 048
+up/down/up** · unit **561** (+6 vocabulary/labels/normalise/landing+variant/campaign/channel/bad-shapes)
+· **fresh-DB integration+isolation 649** (+2: pipeline reports where each lead came from across 4
+mixed origins incl. page+variant+utm and the wired channel; org-scoped). web untouched (owner UI column
+is LP-4a). **Next:** LP-3b (landing lead capture, consuming this shape); **CP-8** recorded for the
+operator per-tenant lead roster.
+
+
 ## LP-3a · Public serving surface — **COMPLETE — merged `7375e7d`, CI green** (2026-08-12)
 
 Branch `feature/lp-3a-public-serving`. First LP-3 sub-ticket. A real, shareable **public (unauth) URL**

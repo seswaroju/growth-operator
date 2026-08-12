@@ -172,3 +172,64 @@ async def test_conversations_forbidden_without_permission(scene: Scene) -> None:
     r = await scene.client.get("/v1/conversations",
                                headers=scene.hdr(scene.user_a, scene.org_a, roles=()))
     assert r.status_code == 403
+
+# ---- LEAD-1: "captured from" for every origin ---------------------------------------------------
+
+async def test_lead_pipeline_reports_where_each_lead_came_from(scene: Scene) -> None:
+    """Leads arrive from many paths — a landing page, the WhatsApp link in an IG bio, a campaign,
+    word of mouth. The pipeline reports a uniform `captured_from` for all of them."""
+    conn = await asyncpg.connect(_dsn())
+    try:
+        ct = await conn.fetchval(
+            "SELECT id FROM contacts WHERE org_id=$1 LIMIT 1", scene.org_a)
+        ch = await conn.fetchval(
+            "SELECT id FROM channels WHERE org_id=$1 AND type='whatsapp' LIMIT 1", scene.org_a)
+        # a published landing page + version (the ad path)
+        page = await conn.fetchval(
+            "INSERT INTO landing_pages (org_id, vertical, slug, status, conversion_goal) "
+            "VALUES ($1,'jewelry','diwali-diamond','published','whatsapp') RETURNING id",
+            scene.org_a)
+        ver = await conn.fetchval(
+            "INSERT INTO landing_page_versions (page_id, org_id, version_no, spec, variant_label) "
+            "VALUES ($1,$2,1,'{}'::jsonb,'story') RETURNING id", page, scene.org_a)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage, landing_page_id, "
+            "landing_version_id, variant, utm) VALUES "
+            "($1,$2,'landing_page','new',$3,$4,'story','{\"source\":\"instagram\"}'::jsonb)",
+            scene.org_a, ct, page, ver)
+        # the WhatsApp link in an Instagram bio → a WhatsApp lead on the wired channel
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage, channel_id) "
+            "VALUES ($1,$2,'whatsapp','new',$3)", scene.org_a, ct, ch)
+        # a campaign link, and pure word of mouth
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage, utm) "
+            "VALUES ($1,$2,'campaign','new','{\"campaign\":\"diwali-push\"}'::jsonb)",
+            scene.org_a, ct)
+        await conn.execute(
+            "INSERT INTO leads (org_id, contact_id, source, stage) VALUES ($1,$2,'walk_in','new')",
+            scene.org_a, ct)
+    finally:
+        await conn.close()
+
+    r = await scene.client.get("/v1/leads", headers=scene.hdr(scene.user_a, scene.org_a))
+    assert r.status_code == 200, r.text
+    captured = {lead["captured_from"] for lead in r.json()}
+    assert "Landing page · diwali-diamond (story)" in captured  # which page AND which variant
+    assert "WhatsApp" in captured
+    assert "Campaign · diwali-push" in captured
+    assert "Walk-in" in captured
+
+    landing = next(x for x in r.json() if x["source"] == "landing_page")
+    assert landing["landing_slug"] == "diwali-diamond" and landing["variant"] == "story"
+    assert landing["landing_page_id"] == str(page) and landing["utm"] == {"source": "instagram"}
+
+    wa = next(x for x in r.json() if x["source"] == "whatsapp" and x["channel_type"])
+    assert wa["channel_type"] == "whatsapp"
+
+
+async def test_lead_origin_is_org_scoped(scene: Scene) -> None:
+    # org B never sees org A's leads or their attribution
+    r = await scene.client.get("/v1/leads", headers=scene.hdr(scene.user_b, scene.org_b))
+    assert r.status_code == 200
+    assert all(lead["landing_slug"] is None for lead in r.json())
