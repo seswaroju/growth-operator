@@ -9,6 +9,32 @@ selects and approves the next ticket.
 
 ---
 
+## LP-2b · Landing-page lifecycle + owner approval (HITL #1) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-2b-lifecycle-approval`. Second sub-ticket of the split LP-2. The owner reviews the
+LP-2a candidate variants and **approves one** (HITL gate #1); the page then moves through a **validated,
+audited status machine**. RBAC-gated + RLS-scoped. **No new migration** (statuses + `current_version_id`
+on `landing_pages`; `approved_by`/`published_at` on `landing_page_versions` — all from migration 045).
+
+- `core/landing/lifecycle.py`: fail-closed transition map + `select_variant` (owner approves+picks →
+  `approved`, sets page `current_version_id` + the version's `approved_by`), `submit_for_approval`
+  (→`awaiting_approval`), `publish` (→`published`, sets the live version's `published_at` — **mark+record
+  only; live serving is LP-3a**), `pause`, `rollback(version_no)` (repoint current version → `approved`),
+  `archive`. Invalid transition → **409**; unknown page/version → **404**.
+- `core/audit/taxonomy.py`: new `landing_page.transition`; **every** transition writes an immutable
+  `audit_log` entry (actor, from→to, version). A rejected transition writes nothing.
+- `core/landing/api.py`: owner routes (`campaigns:send`) `select/submit/publish/pause/rollback/archive`
+  + `GET /pages/{id}` detail (status + current variant). `core/landing/service.py`: `page_detail`.
+- **Execution-token gating deferred to where it gates a real side effect** (LP-3a serving / LP-2c agent
+  publish); LP-2b's HITL is the audited owner decision — no ceremony that gates nothing.
+
+**Gate (all green):** ruff · mypy core **206** · guards **0** · unit **538** (+3 transition-map:
+happy/illegal/unknown-fails-closed) · **fresh-DB integration+isolation 637** (+7: happy path + audited
+×5, publish-before-approval 409, illegal-transition 409, rollback repoints, select-unknown-version 404,
+tenant-isolated 404, viewer 403). No migration. web untouched. **Next:** LP-2c (agent mediation tools +
+gated LLM planner).
+
+
 ## LP-2a · Landing-page variant generation — **COMPLETE — merged `70051d3`, CI green** (2026-08-12)
 
 Branch `feature/lp-2a-variant-generation`. First sub-ticket of the split LP-2 (founder: "split each LP

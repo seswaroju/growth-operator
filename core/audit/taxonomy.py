@@ -27,6 +27,7 @@ AGENT_CIRCUIT_CLOSE = "agent.circuit_close"
 WORKFLOW_ACTIVATED = "workflow.activated"
 WORKFLOW_COMPENSATED = "workflow.compensated"
 MANIFEST_VIOLATION = "manifest.violation"
+LANDING_PAGE_TRANSITION = "landing_page.transition"  # LP-2b lifecycle (select/publish/pause/…)
 
 # Actor types.
 ACTOR_USER = "user"

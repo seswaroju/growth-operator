@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.db import get_session
-from core.landing import service
+from core.landing import lifecycle, service
+from core.landing.lifecycle import InvalidTransition
 from core.landing.plan import CampaignContext, ProductRef
 from core.landing.render import render_html
 from core.landing.validate import SpecInvalid
@@ -96,6 +97,25 @@ class PageInsights(BaseModel):
     events: dict[str, int]
     total_events: int
     top_items: list[ItemInterest]
+
+
+class VersionSelect(BaseModel):
+    version_no: int = Field(..., ge=1)
+
+
+class LandingStatus(BaseModel):
+    page_id: UUID
+    status: str
+
+
+class LandingPageDetail(BaseModel):
+    id: UUID
+    slug: str
+    status: str
+    conversion_goal: str
+    current_version_no: int | None = None
+    current_variant_label: str | None = None
+    created_at: datetime
 
 
 @router.post("/pages", response_model=LandingCreated, status_code=status.HTTP_201_CREATED,
@@ -222,3 +242,127 @@ async def track(
     await service.record_public_event(
         session, body.page_id, body.type, item_ref=body.item_ref, session_id=body.session_id,
         variant=body.variant, utm=body.utm, meta=body.meta)
+
+
+# --- Lifecycle + owner approval (LP-2b) -----------------------------------------------------------
+
+@router.get("/pages/{page_id}", response_model=LandingPageDetail,
+            summary="Page status + the currently-selected variant (owner)")
+async def get_page(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingPageDetail:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    data = await service.page_detail(session, current.org_id, page_id)
+    if data is None:  # RLS-scoped → unknown/other-org both 404
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "page not found")
+    return LandingPageDetail(**data)
+
+
+def _status_or_404(page_id: UUID, new_status: str | None) -> LandingStatus:
+    if new_status is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "page not found")
+    return LandingStatus(page_id=page_id, status=new_status)
+
+
+@router.post("/pages/{page_id}/select", response_model=LandingStatus,
+             summary="Owner approves + selects one candidate variant — HITL gate #1 (owner)")
+async def select_page_variant(
+    page_id: UUID,
+    body: VersionSelect,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.select_variant(
+            session, current.org_id, page_id, body.version_no, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)  # None → page/version not found
+
+
+@router.post("/pages/{page_id}/submit", response_model=LandingStatus,
+             summary="Submit a page for approval (owner)")
+async def submit_page(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.submit_for_approval(
+            session, current.org_id, page_id, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)
+
+
+@router.post("/pages/{page_id}/publish", response_model=LandingStatus,
+             summary="Publish an approved page — mark + record (live serving is LP-3a) (owner)")
+async def publish_page(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.publish(session, current.org_id, page_id, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)
+
+
+@router.post("/pages/{page_id}/pause", response_model=LandingStatus,
+             summary="Pause a published page (owner)")
+async def pause_page(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.pause(session, current.org_id, page_id, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)
+
+
+@router.post("/pages/{page_id}/rollback", response_model=LandingStatus,
+             summary="Roll the current version back to an earlier candidate → approved (owner)")
+async def rollback_page(
+    page_id: UUID,
+    body: VersionSelect,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.rollback(
+            session, current.org_id, page_id, body.version_no, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)
+
+
+@router.post("/pages/{page_id}/archive", response_model=LandingStatus,
+             summary="Archive a page (owner)")
+async def archive_page(
+    page_id: UUID,
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingStatus:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        new_status = await lifecycle.archive(session, current.org_id, page_id, current.user_id)
+    except InvalidTransition as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return _status_or_404(page_id, new_status)

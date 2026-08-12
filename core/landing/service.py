@@ -175,6 +175,23 @@ async def generate_variants(
     return page_id, rows
 
 
+async def page_detail(
+    session: AsyncSession, org_id: UUID, page_id: UUID
+) -> dict[str, Any] | None:
+    """Page status + the currently-selected variant (RLS-scoped; None → 404)."""
+    await set_org_context(session, org_id)
+    row = (
+        await session.execute(
+            text("SELECT p.id, p.slug, p.status, p.conversion_goal, p.created_at, "
+                 "v.version_no AS current_version_no, v.variant_label AS current_variant_label "
+                 "FROM landing_pages p "
+                 "LEFT JOIN landing_page_versions v ON v.id = p.current_version_id "
+                 "WHERE p.id = :id"),
+            {"id": str(page_id)})
+    ).mappings().first()
+    return dict(row) if row else None
+
+
 async def list_variants(
     session: AsyncSession, org_id: UUID, page_id: UUID
 ) -> list[dict[str, Any]] | None:
