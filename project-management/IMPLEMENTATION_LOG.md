@@ -5021,6 +5021,7 @@ plane-off 404).
 **Milestone:** CP-7 completes the founder's control-plane set **CP-1..CP-7** (plans, provisioning +
 pack/agents, seat enforcement, channel setup, LLM config, cost/margin, broadcasts).
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `19931ba` (merge `98a0a28`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job (2m38s) applied migration 044 and ran the announcement suite on a fresh DB and passed.
 
 **Next:** founder review — the control-plane set is complete; awaiting the next directive.
