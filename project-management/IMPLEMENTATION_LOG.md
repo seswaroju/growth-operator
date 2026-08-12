@@ -4913,6 +4913,8 @@ multi-provider keys are needed if a store mixes anthropic + openai; (b) an overr
 chain (v1), so an overridden store loses the global default's failover. Both are gated/simulated until
 `llm_provider_enabled`, so no runtime impact now.
 
-**Commit hash:** _to be recorded after commit._
+**Commit hash:** `85e4ab2` (merge `d1d83e2`). Pushed to `main`; **GitHub CI green** — the `isolation`
+job (2m54s) applied migration 043 and ran the routing-override + operator-API suites on a fresh DB and
+passed.
 
 **Next:** CP-6 — per-store cost & margin view (itemised LLM + each API) + charge separation.
