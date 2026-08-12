@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.db import get_session
-from core.landing import lifecycle, ratelimit, service
+from core.landing import leads, lifecycle, ratelimit, service
+from core.landing.leads import LeadRejected
 from core.landing.lifecycle import InvalidTransition
 from core.landing.plan import CampaignContext, ProductRef
 from core.landing.render import render_html
@@ -37,6 +38,7 @@ _TRACK_URL = "/v1/landing/track"  # where the rendered page's beacon posts
 # proxy at hosting time; these are the MVP in-process floor.
 SERVE_PER_MIN = 120
 TRACK_PER_MIN = 90
+LEAD_PER_MIN = 10  # form submissions are rare + write PII → a much tighter cap
 
 # Security headers for the served page. NOTE: no CSP header — the rendered HTML already carries a
 # per-render nonce'd CSP in a <meta>; a header CSP (different/no nonce) would break the beacon.
@@ -290,6 +292,45 @@ async def serve_public_page(
     spec, variant = result
     html = render_html(spec, page_id=str(page_id), track_url=_TRACK_URL, variant=variant)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
+
+
+class LeadIn(BaseModel):
+    """The public lead form. PII — validated + capped here, never logged."""
+    phone: str = Field(..., min_length=6, max_length=32)
+    name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, max_length=200)
+    consent: bool = False
+    item_ref: str | None = Field(default=None, max_length=64)
+    session_id: str | None = Field(default=None, max_length=64)
+    utm: dict[str, str] = Field(default_factory=dict)
+
+
+class LeadAccepted(BaseModel):
+    ok: bool = True
+
+
+@public_router.post("/p/{page_id}/lead", response_model=LeadAccepted,
+                    status_code=status.HTTP_202_ACCEPTED,
+                    summary="Public: submit the lead form on a published page (no auth)")
+async def submit_lead(
+    page_id: UUID,
+    body: LeadIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> LeadAccepted:
+    # Public + unauthenticated + PII. Consent is required (422 without it — that's about the body,
+    # not the page). An unknown/unpublished page records nothing but still answers neutrally, so the
+    # endpoint never reveals whether a page exists.
+    if not ratelimit.allow(f"lead:{_client_ip(request)}", LEAD_PER_MIN):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "rate limited")
+    try:
+        await leads.capture_lead(
+            session, page_id, phone=body.phone, name=body.name, email=body.email,
+            consent=body.consent, item_ref=body.item_ref, utm=body.utm,
+            session_id=body.session_id)
+    except LeadRejected as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return LeadAccepted()
 
 
 # --- Lifecycle + owner approval (LP-2b) -----------------------------------------------------------

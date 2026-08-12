@@ -5516,3 +5516,47 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3b (public landing lead capture consuming this shape: `source='landing_page'` +
 page/version/variant/utm, consent-gated, concierge draft parks for approval).
+
+---
+
+## 2026-08-12 — LP-3b · Public lead capture → CRM + attribution + parked concierge draft
+
+**Ticket:** LP-3b (founder: "Let's resume LP-3b and CP-8 and so on"). A visitor submits the form on a
+**published** landing page → a real contact + lead in the **existing CRM** (no second CRM, §34.10),
+stamped with the **LEAD-1 origin shape**, and the concierge follow-up **parks for owner approval**.
+
+**Files created:** `core/landing/leads.py`, `tests/unit/test_landing_lead_capture.py` (3).
+**Files modified:** `core/landing/api.py` (public `POST /p/{page_id}/lead` + `LEAD_PER_MIN`),
+`core/landing/service.py` (`_clip`/`_clip_utm` → public `clip`/`clip_utm`, now shared),
+`tests/integration/test_landing_page.py` (+7), `project-management/CURRENT_TASK.md`.
+
+**Behaviour:** SECDEF resolves the tenant from the page (never a request value) → **published-only**
+gate → **upsert contact by (org, phone)** (reuses the store's existing contact; `COALESCE` fills only
+blanks so the store's own data is never overwritten) with `consent_status='explicit'` → insert lead
+`source='landing_page'` + `landing_page_id`/`landing_version_id`/`variant`/`utm` → record
+`landing_page.form_submitted` → `create_approval` (tier 2) carrying a **deterministic** draft
+follow-up. The draft is grounded in the enquiry and invents no price, discount, stock claim, or
+promise (§18), and **nothing is sent** — a test asserts zero outbound messages (§19).
+
+**Migration:** none (LEAD-1's 048 supplies the columns). **APIs:** public `POST /p/{page_id}/lead`
+(unauth) → `202 {ok:true}`; **422** without consent or with an unusable phone; **429** over
+**10/min/IP** (PII writes get a much tighter cap than serving). **Events:** `landing_page.form_submitted`
+on the LP-1b sink (outbox fan-out remains LP-3c). **Frontend:** none.
+
+**Security / privacy:** public, unauthenticated, **PII**. Consent is required (no consent → 422,
+nothing stored); phone normalised to digits + plausibility-checked; every field size-capped; **nothing
+logged**; an unknown/unpublished page returns the *same* neutral 202 and records nothing, so the
+endpoint never reveals whether a page exists; org-scoped via SECDEF + RLS (cross-tenant tested); the
+follow-up is an approval-gated draft, never an autonomous send.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**210**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**564**, +3) · **fresh-DB integration+isolation `verify_fresh_db.sh` — 656 passed,
+4 skipped, 0 errors** (+7: full capture with attribution + explicit consent + parked draft + zero
+outbound, no-consent 422 writes nothing, bad phone 422, unpublished/unknown records nothing, repeat
+submission reuses the one contact, rate-limited 429, tenant-isolated with `captured_from` naming page
++ variant). web untouched.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** CP-8 (operator per-tenant lead roster in web-ops — each store's captured leads +
+`captured_from` + landing page; web-ops currently shows only an aggregate "New inquiries" count).

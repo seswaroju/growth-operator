@@ -529,3 +529,118 @@ async def test_track_flood_is_silently_dropped(
     # 3rd is over the cap → still 204 (never a 429 that leaks a signal), but records nothing
     assert await _track(scene.client, page_id=page_id, type="landing_page.viewed") == 204
     assert await _events(page_id) == ["landing_page.viewed", "landing_page.viewed"]
+
+
+# ---- LP-3b: public lead capture → CRM + attribution + parked concierge draft --------------------
+
+async def _lead_rows(page_id: str) -> list[dict]:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        rows = await conn.fetch(
+            "SELECT l.id, l.source, l.stage, l.variant, l.utm, l.landing_page_id, "
+            "       l.landing_version_id, c.phone, c.full_name, c.email, c.consent_status "
+            "FROM leads l JOIN contacts c ON c.id = l.contact_id "
+            "WHERE l.landing_page_id = $1::uuid", page_id)
+        return [dict(r) for r in rows]
+    finally:
+        await conn.close()
+
+
+async def _submit(scene: Scene, page_id: str, **over) -> httpx.Response:
+    body = {"phone": "+91 90000 12345", "name": "Priya", "email": "priya@example.test",
+            "consent": True, "item_ref": "solitaire-pendant",
+            "utm": {"source": "instagram", "campaign": "diwali"}}
+    body.update(over)
+    return await scene.client.post(f"/p/{page_id}/lead", json=body)
+
+
+async def test_lead_capture_creates_crm_records_with_full_attribution(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    r = await _submit(scene, page_id)
+    assert r.status_code == 202 and r.json() == {"ok": True}
+
+    rows = await _lead_rows(page_id)
+    assert len(rows) == 1
+    lead = rows[0]
+    # LEAD-1 origin shape — "captured from" is answerable
+    assert lead["source"] == "landing_page" and lead["stage"] == "new"
+    assert lead["landing_page_id"] is not None and lead["landing_version_id"] is not None
+    assert lead["variant"] == "classic"
+    utm = json.loads(lead["utm"]) if isinstance(lead["utm"], str) else lead["utm"]
+    assert utm == {"source": "instagram", "campaign": "diwali"}
+    # contact: real CRM row, digits-only phone, explicit consent
+    assert lead["phone"] == "919000012345" and lead["full_name"] == "Priya"
+    assert lead["consent_status"] == "explicit"
+
+    # the funnel event was recorded, and the concierge follow-up is PARKED (never sent)
+    assert "landing_page.form_submitted" in await _events(page_id)
+    conn = await asyncpg.connect(_dsn())
+    try:
+        appr = await conn.fetchrow(
+            "SELECT status, tier, payload FROM approvals WHERE org_id=$1 "
+            "AND action_type='action.message.send' ORDER BY created_at DESC LIMIT 1", scene.org_a)
+        assert appr is not None and appr["status"] == "pending" and appr["tier"] == 2
+        payload = json.loads(appr["payload"]) if isinstance(appr["payload"], str) \
+            else appr["payload"]
+        assert payload["kind"] == "landing_lead_followup"
+        assert str(lead["id"]) == payload["lead_id"]
+        # nothing was sent
+        assert await conn.fetchval(
+            "SELECT count(*) FROM messages WHERE org_id=$1 AND direction='outbound'",
+            scene.org_a) == 0
+    finally:
+        await conn.close()
+
+
+async def test_lead_without_consent_is_422_and_writes_nothing(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    r = await _submit(scene, page_id, consent=False)
+    assert r.status_code == 422
+    assert await _lead_rows(page_id) == []
+
+
+async def test_lead_with_unusable_phone_is_422(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    assert (await _submit(scene, page_id, phone="12345")).status_code == 422
+    assert await _lead_rows(page_id) == []
+
+
+async def test_lead_on_unpublished_page_records_nothing(scene: Scene) -> None:
+    page_id = await _make_page(scene)  # 'generated', never published
+    r = await _submit(scene, page_id)
+    assert r.status_code == 202 and r.json() == {"ok": True}  # neutral — no existence leak
+    assert await _lead_rows(page_id) == []
+    # an unknown page likewise records nothing
+    assert (await _submit(scene, str(uuid.uuid4()))).status_code == 202
+
+
+async def test_repeat_submission_reuses_the_contact(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    await _submit(scene, page_id)
+    await _submit(scene, page_id, name="Priya Sharma")  # same phone, later enquiry
+    rows = await _lead_rows(page_id)
+    assert len(rows) == 2                                    # two leads
+    assert len({r["phone"] for r in rows}) == 1              # ONE contact (no duplicate CRM)
+    assert all(r["full_name"] == "Priya" for r in rows)      # existing name not overwritten
+
+
+async def test_lead_capture_is_rate_limited(scene: Scene, monkeypatch: pytest.MonkeyPatch) -> None:
+    page_id = await _publish_page(scene)
+    ratelimit.reset()
+    monkeypatch.setattr(landing_api, "LEAD_PER_MIN", 2)
+    for _ in range(2):
+        assert (await _submit(scene, page_id)).status_code == 202
+    assert (await _submit(scene, page_id)).status_code == 429
+
+
+async def test_captured_lead_is_tenant_isolated(scene: Scene) -> None:
+    page_id = await _publish_page(scene)
+    await _submit(scene, page_id)
+    # org B's pipeline never sees org A's captured lead
+    r = await scene.client.get("/v1/leads", headers=_owner(scene.owner_b, scene.org_b))
+    assert r.status_code == 200 and r.json() == []
+    # org A sees it, with "captured from" naming the page + variant
+    a = await scene.client.get("/v1/leads", headers=_owner(scene.owner_a, scene.org_a))
+    assert a.status_code == 200 and len(a.json()) == 1
+    assert a.json()[0]["captured_from"].startswith("Landing page · diwali-diamond")
+    assert a.json()[0]["variant"] == "classic"
