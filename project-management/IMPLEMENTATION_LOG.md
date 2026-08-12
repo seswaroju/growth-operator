@@ -5459,7 +5459,8 @@ per-IP rate-limit. No external side effect. No migration.
 404s incl. paused-after-publish, unknown 404, serve rate-limited 429, `/track` flood silently
 dropped). web untouched.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `a131437` (merge `7375e7d`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-3b (public lead capture → contacts/leads + attribution + concierge auto-drafts a
 WhatsApp follow-up for approval; consent).

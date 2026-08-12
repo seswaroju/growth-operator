@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-3a · Public serving surface — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-3a · Public serving surface — **COMPLETE — merged `7375e7d`, CI green** (2026-08-12)
 
 Branch `feature/lp-3a-public-serving`. First LP-3 sub-ticket. A real, shareable **public (unauth) URL**
 that serves a **published** landing page — the click-through target for an ad. **No migration**
