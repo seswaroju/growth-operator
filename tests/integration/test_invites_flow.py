@@ -66,6 +66,15 @@ async def scene() -> AsyncIterator[dict[str, str]]:
         await conn.execute(
             "INSERT INTO users (id, email) VALUES ($1, $2)", invited, f"s+{invited.hex[:8]}@t.test"
         )
+        # CP-3: a non-owner invite now needs an active plan with seats. Give this org a roomy plan
+        # so the existing flow tests stay under cap (the caps themselves are exercised in
+        # test_seat_enforcement.py). Raw inserts run as the migrator role, which bypasses RLS.
+        plan_id = await conn.fetchval(
+            "INSERT INTO billing_plans (name, price_minor, active, max_managers, max_staff) "
+            "VALUES ($1, 0, true, 5, 5) RETURNING id", f"invite-plan-{org.hex[:8]}")
+        await conn.execute(
+            "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active')",
+            org, plan_id)
     finally:
         await conn.close()
     secret = get_settings().jwt_secret
@@ -80,8 +89,11 @@ async def scene() -> AsyncIterator[dict[str, str]]:
     }
     conn = await asyncpg.connect(_dsn())
     try:
+        await conn.execute("DELETE FROM billing_subscriptions WHERE org_id = $1", org)
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [owner, invited])
         await conn.execute("DELETE FROM organizations WHERE id = $1", org)  # cascades invites
+        await conn.execute(
+            "DELETE FROM billing_plans WHERE name = $1", f"invite-plan-{org.hex[:8]}")
     finally:
         await conn.close()
     await dbmod.get_engine().dispose()

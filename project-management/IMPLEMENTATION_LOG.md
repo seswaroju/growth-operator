@@ -4764,4 +4764,50 @@ Local gate: `ruff check .` ✓ · `mypy core` 191 ✓ · guards 0 ✓ · `pytest
 job now genuinely runs (2m40s: isolation + integration suites against a fresh migrated DB), no longer
 a placeholder. BLOCKER #25 resolved.
 
+---
+
+## 2026-08-11 — CP-3 · Seat enforcement (plan seats cap invites)
+
+**Ticket/branch:** CP-3 · `feature/cp-3-seat-enforcement` (founder: *"Yes, go ahead with CP-3"*, on the
+presented plan with both recommended defaults confirmed).
+
+**Objective:** Make the plan's `max_managers`/`max_staff` seat limits (CP-1) actually bind, so a store
+can't add more manager/staff members than its plan grants.
+
+**Approach (as built):** New `core/tenancy/seats.py::check_seat(session, org_id, role)` →
+`SeatCheck(allowed, role, used, limit, reason)`. It sets the org tenant context (FORCE-RLS on
+`user_orgs` + `billing_subscriptions` — without it the count fails closed to 0 and would *over*-permit,
+the opposite of safe), then: `owner` → always allowed; else read the active plan's caps
+(`billing_subscriptions` ⋈ `billing_plans`), and if there's **no active subscription** → refuse (fail
+closed); `viewer` → allowed (no seat column); `manager`/`staff` → `used = members(role) +
+pending_unexpired_invites(role)`, refuse when `used >= limit`. `create_invite` calls it right after the
+rank check and raises **HTTP 409** on refusal (capacity — distinct from the rank check's 403). Caps are
+concrete ints (`NOT NULL DEFAULT 0`) so `0` = no seats. No new canonical error code (plain 409).
+
+**Files changed:**
+- **`core/tenancy/seats.py`** (NEW): the seat-check logic.
+- **`core/tenancy/invites.py`**: `create_invite` calls `seats.check_seat` → 409 when refused.
+- **`tests/integration/test_seat_enforcement.py`** (NEW, 10 cases): under-cap ok; at-cap-by-members
+  409; pending invite counts toward cap; `0` seats refused; caps are per-role (manager ok / staff no);
+  viewer uncapped with a plan; owner uncapped; no active plan → non-owner 409; expired pending invite
+  ignored; **cap is org-scoped** (a full neighbour org doesn't consume this org's seat — RLS).
+- **`tests/integration/test_invites_flow.py`**: fixture now creates a roomy plan + active subscription
+  (CP-3 fail-closed otherwise breaks its non-owner invite tests) and cleans it up.
+
+**Migrations/APIs/events/frontend:** no migration. API: `POST /v1/orgs/invites` can now return **409**
+(seat/plan). No event/contract change. Backend-only — the invites UI is still gated off
+(`invites_enabled` false until Week 5), so no `web/` change.
+
+**Commands (CI-relevant gate):** `ruff check .` ✓ · `mypy core` 192 ✓ · `scripts/guards.py` 0 ✓ ·
+`pytest tests/unit` 501 ✓ · **fresh scratch-DB `pytest tests/integration tests/isolation`** 577 passed,
+4 skipped, 0 errors ✓ (the exact CI scenario — CI now runs both suites). Seat suite alone: 10/10.
+
+**Security:** the check runs under org tenant context so `user_orgs`/`billing_subscriptions` reads are
+RLS-scoped (cross-tenant seat count proven org-scoped by `test_cap_is_org_scoped`). Fail-closed on no
+context / no plan. No secrets, no external side effects.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-4 — per-store channel setup (v1 token paste: WhatsApp/Instagram/Google, extensible).
+
 **Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
