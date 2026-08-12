@@ -4719,3 +4719,47 @@ into CI**.
 secret-scan, unit, migrate+e2e, isolation-placeholder all ✓).
 
 **Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
+
+---
+
+## 2026-08-11 — Follow-up · Fix latent test reds + wire isolation/integration into CI (BLOCKER #25)
+
+**Branch:** `chore/fix-latent-reds-wire-isolation-ci` (founder: *"lets follow-up and finish this task
+clean and then move to next item"*).
+
+**Objective:** Clear the pre-existing `tests/integration` + `tests/isolation` reds surfaced during
+CP-2b, and make CI actually run those suites so the class can't silently rot again.
+
+**Root causes + fixes:**
+- **Security guard** (`tests/isolation/test_platform_admin_scope.py`): the soft-erase migration (041)
+  gave `erased_customer_archive` an `app.platform_admin` operator-read policy but never added it to
+  `ALLOWED_CROSS_TENANT_TABLES`. The guard is schema-deterministic, so it was red on any migrated DB
+  — CI just never ran it. Added the table to the allowlist (its isolation coverage already exists in
+  `test_customer_dpdp.py`: org-scoped session → None, admin-scoped → retrieves).
+- **`test_prompt_activation.py`** (teardown): unconditionally deleted SHARED pack rows
+  (`prompt_layers`/`agent_bindings`/… `WHERE pack_id=`) and did a global
+  `DELETE prompt_layers WHERE layer_type='base'`. Both FK-fail whenever another org still references
+  the shared jewelry pack. Now guards the shared-pack delete on `pack_installations` existence
+  (mirrors the canonical `tests/e2e/test_jewelry_install.py`) and leaves the shared base layer.
+- **`test_onboarding.py` + `test_dashboard_overview.py`** (fixtures): seeded `catalog_items` with a
+  `pack_id` from `SELECT id FROM packs LIMIT 1` → NULL on a fresh DB → NOT-NULL violation. Now each
+  creates + cleans up a minimal `packs` row (matches `test_rate_ingestion`).
+- **`test_rate_ingestion.py`**: pure local pollution (a stale `ibja_gold` `rate_source`, whose
+  `source_key` `_load_source` matches unscoped). No code change — passes on a fresh DB.
+
+**CI change (`.github/workflows/ci.yml`):** the `isolation` job is no longer a non-executing
+placeholder. It now stands up Postgres + Redis + the `app_rw` role, `alembic upgrade head`, and runs
+`pytest tests/isolation` **and** `pytest tests/integration` (as `app_rw`, owner DSN for fixture setup
+— same env as the e2e step). RLS is therefore enforced in the run.
+
+**Verification:** ran both suites against a **throwaway scratch DB** (create → roles.sql → migrate →
+test → drop; the exact CI scenario, no touch to the working DB): **567 passed, 4 skipped, 0 errors.**
+Local gate: `ruff check .` ✓ · `mypy core` 191 ✓ · guards 0 ✓ · `pytest tests/unit` 501 ✓.
+
+**Files:** `tests/isolation/test_platform_admin_scope.py`, `tests/integration/test_prompt_activation.py`,
+`tests/integration/test_onboarding.py`, `tests/integration/test_dashboard_overview.py`,
+`.github/workflows/ci.yml`, `project-management/{BLOCKERS,CURRENT_TASK}.md`. No `core/` change.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).

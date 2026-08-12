@@ -29,9 +29,12 @@ from core.common.config import get_settings
 
 # The complete set of tables allowed to honour the cross-tenant operator flag. Adding a table here
 # is a deliberate security decision that must come with its own isolation tests.
-#   support_tickets  — operator reads the queue + resolves (018)
-#   insight_messages — operator ANSWERS an owner's insight question, cross-tenant (A4.5/028)
-ALLOWED_CROSS_TENANT_TABLES = {"support_tickets", "insight_messages"}
+#   support_tickets        — operator reads the queue + resolves (018)
+#   insight_messages       — operator ANSWERS an owner's insight question, cross-tenant (A4.5/028)
+#   erased_customer_archive — DPDP soft-erase keeps the original for the operator only; store owner
+#                             may INSERT their own during erase, only app.platform_admin may SELECT
+#                             (041). Isolation coverage: tests/integration/test_customer_dpdp.py.
+ALLOWED_CROSS_TENANT_TABLES = {"support_tickets", "insight_messages", "erased_customer_archive"}
 # The one table whose INSERT policy may honour the admin flag (the operator's answer). It MUST scope
 # that insert to author_type='operator'. Every other table's INSERT stays org-only.
 ADMIN_INSERT_ALLOWED = {"insight_messages"}

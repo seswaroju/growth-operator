@@ -9,6 +9,23 @@ selects and approves the next ticket.
 
 ---
 
+## Follow-up · Fix latent test reds + wire isolation/integration into CI — **COMPLETE — awaiting founder review** (2026-08-11)
+
+Branch `chore/fix-latent-reds-wire-isolation-ci`. Resolves BLOCKER #25 (surfaced during CP-2b). The
+`tests/integration` + `tests/isolation` suites were latently red on `main` because CI never ran them
+(the `isolation`/`evals` jobs were non-executing placeholders; integration wasn't run at all). Fixes:
+(1) **security guard** — added `erased_customer_archive` to `test_platform_admin_scope`'s
+`ALLOWED_CROSS_TENANT_TABLES` (soft-erase migration 041 gave it an `app.platform_admin` read policy;
+coverage already in `test_customer_dpdp.py`); (2) `test_prompt_activation` teardown no longer globally
+deletes SHARED pack rows — guards on `pack_installations` existence (mirrors `test_jewelry_install`);
+(3) `test_onboarding` + `test_dashboard_overview` fixtures create their own minimal pack instead of
+assuming one exists (fresh-DB `catalog_items.pack_id` NOT-NULL violation); (4) `test_rate_ingestion`
+was local pollution only (no code change). **CI change:** the `isolation` job now stands up
+Postgres+Redis+`app_rw`, migrates, and runs `pytest tests/isolation` **and** `pytest tests/integration`.
+**Verified on a throwaway scratch DB (the CI scenario): 567 passed, 4 skipped, 0 errors.** Local gate:
+ruff · mypy core 191 · guards 0 · unit 501. Next: CP-3 seat enforcement.
+
+
 ## CP-2b · Install vertical pack + activate plan's agents on provision — **COMPLETE — awaiting founder review** (2026-08-11)
 
 Branch `feature/cp-2b-install-pack-activate-agents`. Closes the CP-2 shell-store gap: a provisioned

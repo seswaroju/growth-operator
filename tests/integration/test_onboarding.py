@@ -75,7 +75,12 @@ async def scene() -> AsyncIterator[Scene]:
         await conn.execute(
             "INSERT INTO channels (org_id, type, external_id, credentials_ref, status) "
             "VALUES ($1,'whatsapp',$2,'ref','active')", org_setup, f"ext-{uuid.uuid4()}")
-        pack_id = await conn.fetchval("SELECT id FROM packs LIMIT 1")
+        # catalog_items.pack_id is NOT NULL — create a minimal pack rather than assuming one is
+        # already installed (a fresh DB has none, which is the CI case).
+        pack_id = await conn.fetchval(
+            "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
+            "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
+            f"ob{org_setup.hex[:8]}")
         for i in range(2):
             await conn.execute(
                 "INSERT INTO catalog_items "
@@ -102,6 +107,7 @@ async def scene() -> AsyncIterator[Scene]:
                            [org_setup, org_empty])
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])",
                            [user_setup, user_empty, teammate])
+        await conn.execute("DELETE FROM packs WHERE id=$1", pack_id)  # after its catalog_items
     finally:
         await conn.close()
     await dbmod.get_engine().dispose()

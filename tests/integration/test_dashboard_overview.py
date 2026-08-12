@@ -44,11 +44,10 @@ def _tok(user: uuid.UUID, org: uuid.UUID | None, roles: tuple[str, ...] = (ROLE_
 
 
 async def _seed_org(
-    conn: asyncpg.Connection, org: uuid.UUID, *,
+    conn: asyncpg.Connection, org: uuid.UUID, pack_id: uuid.UUID, *,
     appr_pending: int, appr_other: int, conv_open: int, conv_closed: int,
     cat_active: int, cat_archived: int, tk_open: int, tk_inprog: int, tk_resolved: int,
 ) -> None:
-    pack_id = await conn.fetchval("SELECT id FROM packs LIMIT 1")
     for st, n in (("pending", appr_pending), ("approved", appr_other)):
         for _ in range(n):
             await conn.execute(
@@ -107,12 +106,20 @@ async def scene() -> AsyncIterator[Scene]:
             "INSERT INTO users (id,email) VALUES ($1,$2),($3,$4),($5,$6)",
             user_a, f"{user_a}@example.test", user_b, f"{user_b}@example.test",
             user_c, f"{user_c}@example.test")
+        # catalog_items.pack_id is NOT NULL — create a minimal pack rather than assuming one is
+        # already installed (a fresh DB has none, which is the CI case).
+        pack_id = await conn.fetchval(
+            "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
+            "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",
+            f"do{org_a.hex[:8]}")
         # Alpha: 2 pending appr, 3 open conv, 2 active cat, 2 open/in-progress tickets
-        await _seed_org(conn, org_a, appr_pending=2, appr_other=1, conv_open=3, conv_closed=1,
-                        cat_active=2, cat_archived=1, tk_open=1, tk_inprog=1, tk_resolved=1)
+        await _seed_org(conn, org_a, pack_id, appr_pending=2, appr_other=1, conv_open=3,
+                        conv_closed=1, cat_active=2, cat_archived=1, tk_open=1, tk_inprog=1,
+                        tk_resolved=1)
         # Beta: distinct counts — proves isolation (A must not see these, B only these)
-        await _seed_org(conn, org_b, appr_pending=1, appr_other=0, conv_open=1, conv_closed=2,
-                        cat_active=4, cat_archived=0, tk_open=0, tk_inprog=0, tk_resolved=3)
+        await _seed_org(conn, org_b, pack_id, appr_pending=1, appr_other=0, conv_open=1,
+                        conv_closed=2, cat_active=4, cat_archived=0, tk_open=0, tk_inprog=0,
+                        tk_resolved=3)
         # Gamma: nothing seeded → all zeros
     finally:
         await conn.close()
@@ -132,6 +139,8 @@ async def scene() -> AsyncIterator[Scene]:
         await conn.execute("DELETE FROM organizations WHERE id = ANY($1::uuid[])", orgs)
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])",
                            [user_a, user_b, user_c])
+        await conn.execute(
+            "DELETE FROM packs WHERE slug=$1", f"do{org_a.hex[:8]}")  # after its catalog_items
     finally:
         await conn.close()
     await dbmod.get_engine().dispose()
