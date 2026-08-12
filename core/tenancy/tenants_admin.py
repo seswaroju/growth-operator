@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.errors import GrowthOperatorError
+from core.packs.installer import InstallError
 from core.tenancy import provisioning
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.platform_admin import (
@@ -71,6 +72,7 @@ class StoreCreated(BaseModel):
     owner_id: UUID
     owner_existed: bool
     plan_id: UUID
+    agents_activated: int  # archetypes the plan switched on (CP-2b)
 
 
 @router.post(
@@ -86,17 +88,30 @@ async def create_store(
             session, name=body.name.strip(), owner_email=body.owner_email.strip().lower(),
             plan_id=body.plan_id, vertical=body.vertical, country=body.country,
             timezone=body.timezone)
-    except GrowthOperatorError as exc:  # unknown/inactive plan → dep rolls back (nothing created)
+    except GrowthOperatorError as exc:  # unknown plan/vertical → dep rolls back (nothing created)
         raise HTTPException(status.HTTP_404_NOT_FOUND, exc.detail) from exc
     await log_platform_access(
         session, actor_user_id=current.user_id, action="store.provisioned",
         detail={"org_id": str(result.org_id), "plan_id": str(body.plan_id),
                 "owner_existed": result.owner_existed})
+    # The shell (org + owner + subscription + audit) must be committed BEFORE the pack install:
+    # `install` opens its own transactions and needs the org to be visible. `require_platform` would
+    # commit on exit, but that is after this handler returns — so commit here explicitly.
+    await session.commit()
+    # Now install the store's vertical pack (idempotent) and switch on the plan's agents. The pack
+    # dir was already validated pre-commit, so a failure here is a real fault, not bad input: the
+    # store shell survives and can be retried (install is idempotent). Surface it as a 500.
+    try:
+        agents_activated = await provisioning.finalize_store_setup(result)
+    except InstallError as exc:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "store created but pack setup failed; retry provisioning") from exc
     # Best-effort welcome email (gated adapter → simulated until live); never fails the provision.
     await provisioning.send_welcome_email(body.owner_email.strip().lower(), body.name.strip())
     return StoreCreated(
-        org_id=result.org_id, owner_id=result.owner_id,
-        owner_existed=result.owner_existed, plan_id=result.plan_id)
+        org_id=result.org_id, owner_id=result.owner_id, owner_existed=result.owner_existed,
+        plan_id=result.plan_id, agents_activated=agents_activated)
 
 
 @router.get(

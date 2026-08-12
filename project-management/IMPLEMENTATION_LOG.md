@@ -4661,3 +4661,60 @@ disabled → 404.
 billing 520** · admin-plane suites 17 · web-ops **tsc + oxlint + vitest 42 + build**. No admin regressions.
 
 **Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
+
+---
+
+## 2026-08-11 — CP-2b · Install vertical pack + activate plan's agents on provision
+
+**Ticket/branch:** CP-2b · `feature/cp-2b-install-pack-activate-agents` (approved by founder: *"we need
+that vertical pack as well, otherwise it might behave differently or even a major bug. I agree with
+CP-2b"*).
+
+**Objective:** Close the CP-2 shell-store gap — a provisioned store now has its vertical pack installed
+and the plan's agents switched on, instead of being an empty org with no agents.
+
+**Approved plan (as built):** Because `core/packs/installer.install()` manages its **own** transaction
+(opens `org_scoped_session`, commits internally, idempotent by bundle digest), it cannot join the
+provision transaction. So the flow is two-phase:
+1. `provision_store` writes the shell (org + owner + subscription) **and** validates the store's vertical
+   pack dir exists via `resolve_pack_dir(org.vertical)` — an unknown vertical raises pre-commit → 404,
+   nothing written (atomic). It also reads the plan's `config.agents`.
+2. The handler **commits** the shell (so `install()` can see the org).
+3. `finalize_store_setup` runs `install()` (idempotent) then `activate_plan_agents` — an `UPDATE
+   agent_instances … SET status='active'` for exactly the archetypes in the plan's `config.agents`
+   (join `agent_instances → agent_bindings → agent_archetypes.slug`), returning the count.
+A real install failure **after** commit → HTTP 500 with the store shell retained (retryable, since
+`install()` is idempotent). Rule Zero preserved: the vertical is data (request param or the
+`organizations.vertical` column default), never a literal in `core/`.
+
+**Files changed:**
+- **`core/tenancy/provisioning.py`**: `ProvisionResult` gains `pack_dir` + `agent_slugs`; `provision_store`
+  validates the pack dir + reads plan agents; new `activate_plan_agents` and `finalize_store_setup`.
+- **`core/tenancy/tenants_admin.py`**: `create_store` commits the shell, then finalizes (install +
+  activate) with `InstallError`→500; `StoreCreated` gains `agents_activated`.
+- **`web-ops/src/api.ts`**: `StoreCreated.agents_activated`.
+- **`tests/integration/test_store_provisioning.py`**: plan now carries `config.agents=[concierge,nurture]`;
+  happy path asserts pack installed (active) + exactly those two agents active (campaigner/ops stay
+  paused); multi-store asserts the second store also activates; **new** unknown-vertical → 404 atomic;
+  teardown disables `trg_audit_log_immutable` around the org-delete cascade (install writes an
+  audit_log `pack.installed` row).
+
+**Migrations/APIs/events:** no migration (existing tables). API: `POST /v1/admin/tenants` response now
+includes `agents_activated`. No event/contract changes.
+
+**Commands (CI-relevant gate — the checks GitHub CI actually runs):** `ruff check .` ✓ · `mypy core`
+191 ✓ · `mypy migrations` ✓ · `scripts/guards.py` 0 ✓ · **`pytest tests/unit`** 501 ✓ · **`pytest
+tests/e2e`** 5 ✓ · `pytest tests/integration/test_store_provisioning.py` **9** ✓ · web-ops **oxlint +
+tsc + build + vitest 42** ✓.
+
+**Known issues (pre-existing, NOT CP-2b — see BLOCKER #25):** the full `tests/integration` +
+`tests/isolation` suites have 4 failures on `main` (verified by stashing CP-2b). GitHub CI does not run
+those suites (ci.yml runs only unit+e2e; isolation/eval are non-executing placeholders). The
+security-relevant one: `test_platform_admin_scope` — `erased_customer_archive` (soft-erase migration
+041) honours `app.platform_admin` but was never added to the guard's allowlist. Recommend a follow-up:
+add it to the allowlist (coverage already in `test_customer_dpdp.py`) **and wire the isolation suite
+into CI**.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-3 — seat enforcement (the plan's `max_managers`/`max_staff` cap invites).
