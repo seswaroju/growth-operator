@@ -21,7 +21,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from redis.asyncio import Redis
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.runtime.model import ModelResult, Provider, get_provider
 from core.tenancy.middleware import org_scoped_session
@@ -92,28 +93,33 @@ class RoutingModel:
         await self._alert_all_down(node_key, last_error)
         return ModelResult(tool_call=None, text=HOLDING_TEMPLATE, tokens_in=0, tokens_out=0)
 
+    @staticmethod
+    async def _lookup(
+        s: AsyncSession, table: str, node_key: str
+    ) -> RowMapping | None:
+        """The (provider, model, params, fallbacks) row for `node_key` in `table`, falling back to
+        that table's 'default' row. `table` is an internal constant (never user input)."""
+        assert table in ("org_model_routes", "model_routes")  # noqa: S101 - guards the f-string
+        cols = "SELECT provider, model, params, fallbacks FROM " + table
+        row = (
+            await s.execute(text(f"{cols} WHERE node_key = :nk"), {"nk": node_key})
+        ).mappings().first()
+        if row is None and node_key != "default":
+            row = (
+                await s.execute(text(f"{cols} WHERE node_key = 'default'"))
+            ).mappings().first()
+        return row
+
     async def _route(self, node_key: str) -> Route:
         if node_key in self._routes:
             return self._routes[node_key]
         async with org_scoped_session(self.org_id) as s:
-            row = (
-                await s.execute(
-                    text(
-                        "SELECT provider, model, params, fallbacks FROM model_routes "
-                        "WHERE node_key = :nk"
-                    ),
-                    {"nk": node_key},
-                )
-            ).mappings().first()
-            if row is None and node_key != "default":  # fall back to the seeded default chain
-                row = (
-                    await s.execute(
-                        text(
-                            "SELECT provider, model, params, fallbacks FROM model_routes "
-                            "WHERE node_key = 'default'"
-                        )
-                    )
-                ).mappings().first()
+            # A per-store override (CP-5) wins: this store's exact node_key, else its 'default'
+            # override. `org_model_routes` is RLS-scoped, so only THIS org's overrides are visible.
+            row = await self._lookup(s, "org_model_routes", node_key)
+            # Otherwise the GLOBAL default chain (`model_routes`, seeded → claude-3-5-sonnet).
+            if row is None:
+                row = await self._lookup(s, "model_routes", node_key)
         if row is None:  # nothing seeded at all → the hard-coded fail-safe chain
             route = Route(node_key, list(_FALLBACK_CHAIN), {})
         else:

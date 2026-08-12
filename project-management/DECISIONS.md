@@ -1136,3 +1136,21 @@ yes", "no plan → deny non-owner: yes").
 - No new canonical error code was invented (would need founder approval, §13); capacity refusals use
   plain HTTP 409, matching the existing rank-check's plain 403.
 **Decided by:** Founder (2026-08-11).
+
+---
+
+## 2026-08-11 — Per-tenant LLM model config = override layer on `model_routes` (CP-5)
+
+**Decision (founder, decisions d1/d2):** the operator holds the LLM API keys centrally (Option A, not
+store BYO); default model is **Claude 3.5 Sonnet**, overridable **per store + per agent-task** from
+web-ops.
+
+**Implementation choice:** rather than duplicate routing config, CP-5 layers a per-store **override**
+(`org_model_routes`, migration 043) on top of the existing GLOBAL `model_routes`. `RoutingModel`
+consults the store override first, then the global default — so an un-configured store keeps Sonnet.
+Granularity is the routing `node_key` (the runtime's routing key), surfaced as friendly agent-task
+labels (`default` = all agents, plus converse/campaign/classify). The override validates against a
+declarative `model_catalog` (anthropic sonnet/haiku, openai gpt-4o/gpt-4o-mini) — a store can never be
+pointed at an unknown model. Config selects **provider+model only**; the key stays central.
+**Deferred to go-live (BLOCKER #26):** multi-provider keys in `llm_client`; failover for overridden
+routes. **Decided by:** Founder (2026-08-11).

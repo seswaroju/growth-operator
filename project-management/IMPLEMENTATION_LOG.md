@@ -4862,3 +4862,57 @@ can't be used to replace/remove channels (the write-only design already blocks *
 job (2m46s) ran the channel suite + full integration + isolation against a fresh DB and passed.
 
 **Next:** CP-5 — per-tenant / per-agent LLM config (default Claude Sonnet, override) + web-ops dropdown.
+
+---
+
+## 2026-08-11 — CP-5 · Per-tenant / per-agent LLM model config
+
+**Ticket/branch:** CP-5 · `feature/cp-5-llm-config` (founder: *"Lets go and implement CP-5 now… make
+sure this is rigorously tested and make CI clean and green before merging"*).
+
+**Objective:** Let the GO operator pick, per store and per agent-task, which provider+model the runtime
+uses (d1: operator holds the API keys; d2: default Claude 3.5 Sonnet).
+
+**Design (as built):** `model_routes` (global, seeded → anthropic/claude-3-5-sonnet default) stays; CP-5
+adds a per-store **override layer**:
+- **Migration 043 (`70d9410469e2`)** — `org_model_routes` (id, org_id FK CASCADE, node_key, provider,
+  model, params, fallbacks, updated_at), **UNIQUE(org_id, node_key)**, org-scoped + RLS (`apply_rls`).
+  Up/down/up + RLS(force) verified.
+- **`RoutingModel._route`** (`core/runtime/routing.py`) now resolves the store's override FIRST (exact
+  node_key, else the store's `default` override) via the RLS-scoped `org_model_routes`, then falls back
+  to the global `model_routes`. A store with no override keeps the seeded Sonnet default. Added a
+  `_lookup` helper (table is an internal constant, asserted — not user input).
+- **`core/runtime/model_catalog.py`** (NEW): declarative `MODEL_CATALOG` (anthropic sonnet[default]/
+  haiku, openai gpt-4o/gpt-4o-mini) + `TUNABLE_NODES` (default/converse/campaign/classify with friendly
+  labels). Rule-Zero safe (providers/models/node-keys are platform concepts).
+- **`core/runtime/models_admin.py`** (NEW): operator-gated `/v1/admin/tenants/{org_id}/models` — GET
+  effective config per tunable task (override vs default + what it reverts to); PUT `{node_key}` sets an
+  override (validated against the catalog: unknown task→404, unknown model→422; upsert under the target
+  org's context); DELETE `{node_key}` clears it. Writes audited to `platform_access_log`. Registered in
+  `core/api/main.py`.
+- **web-ops** (`StoreModelsSection.tsx` NEW + `api.ts` + rendered in `StoreReportsSection`): an **AI
+  models** card — per task a dropdown of catalog models, a "custom" tag when overridden, and Reset. The
+  operator only selects a model; keys stay central.
+
+**Migrations/APIs/events/frontend:** migration 043 (org_model_routes). New operator routes (catalog +
+GET/PUT/DELETE). No event/contract change. web-ops store-profile card.
+
+**Security:** overrides live in FORCE-RLS `org_model_routes`; every read/write sets the target org's
+context, so one store's model choices are invisible to another (proven by `test_override_is_org_scoped`
+in both the routing and API suites). Operator-gated + audited. No secrets stored (only provider+model
+strings); keys stay in the operator's central config.
+
+**Commands (CI-relevant gate):** `ruff check .` ✓ · `mypy core` 196 ✓ · `mypy migrations` ✓ ·
+`scripts/guards.py` 0 ✓ · `pytest tests/unit` 501 ✓ · alembic up/down/up + RLS ✓ · **fresh scratch-DB
+`pytest tests/integration tests/isolation`** 602 passed, 4 skipped, 0 errors ✓ · web-ops
+`oxlint`+`tsc`+`build`+`vitest` 42 ✓. New suites: `test_model_routing.py` +3 (override) +
+`test_models_admin.py` 9/9.
+
+**Deferred (BLOCKER #26):** at go-live, (a) the real `llm_client` uses a single `llm_api_key`/provider —
+multi-provider keys are needed if a store mixes anthropic + openai; (b) an override stores no fallback
+chain (v1), so an overridden store loses the global default's failover. Both are gated/simulated until
+`llm_provider_enabled`, so no runtime impact now.
+
+**Commit hash:** _to be recorded after commit._
+
+**Next:** CP-6 — per-store cost & margin view (itemised LLM + each API) + charge separation.

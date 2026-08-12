@@ -341,6 +341,56 @@ export function adminDisconnectChannel(
   });
 }
 
+// ---- Per-store LLM model config (CP-5) --------------------------------------
+// The operator picks the provider+model per store + agent-task. Default is Claude 3.5 Sonnet; an
+// override is validated against the catalog. The operator holds the API keys (this only selects).
+
+export interface ModelChoice {
+  provider: string;
+  model: string;
+  label: string;
+}
+
+export interface ModelCatalog {
+  models: ModelChoice[];
+  nodes: { node_key: string; label: string }[];
+  default_provider: string;
+  default_model: string;
+}
+
+export interface ModelConfigItem {
+  node_key: string;
+  label: string;
+  provider: string;
+  model: string;
+  is_override: boolean;
+  default_provider: string;
+  default_model: string;
+}
+
+export function adminModelCatalog(token: string): Promise<ModelCatalog> {
+  return authed<ModelCatalog>("/v1/admin/tenants/model-catalog", token);
+}
+
+export function adminListModels(token: string, orgId: string): Promise<ModelConfigItem[]> {
+  return authed<ModelConfigItem[]>(`/v1/admin/tenants/${orgId}/models`, token);
+}
+
+export function adminSetModel(
+  token: string, orgId: string, nodeKey: string, input: { provider: string; model: string },
+): Promise<ModelConfigItem> {
+  return authed<ModelConfigItem>(`/v1/admin/tenants/${orgId}/models/${nodeKey}`, token, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function adminClearModel(token: string, orgId: string, nodeKey: string): Promise<void> {
+  return authed<void>(`/v1/admin/tenants/${orgId}/models/${nodeKey}`, token, {
+    method: "DELETE",
+  });
+}
+
 // ---- Billing (/v1/admin/billing/*, platform.tenants:read / :manage) ---------
 // Operator-owned per-client revenue. Rollup feeds the Financial dashboard; plans + per-client
 // subscription/charges are the management surface (writes need tenants:manage; audited server-side).

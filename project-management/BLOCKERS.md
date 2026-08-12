@@ -195,6 +195,11 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   raised the "away from my desk" threat when approving CP-4.
 - **Next action:** when wiring live sends, switch the IG/Google adapters to per-store `load_credentials`
   (org context required); add an idle-timeout / re-auth to the operator console.
+- **CP-5 additions (2026-08-11):** (3) `core/runtime/llm_client.py` uses a single `llm_api_key` +
+  `llm_provider` — once stores can pick different providers per agent (CP-5), go-live needs **per-provider
+  keys** (operator-held). (4) A per-store model **override** (`org_model_routes`) stores no fallback
+  chain, so an overridden route loses the global default's provider failover — add failover for
+  overrides when wiring live models. Both are gated/simulated until `llm_provider_enabled`.
 
 ### ~~19. Vault `schema.sql` stale for the approvals cluster (reconciliation)~~ — RESOLVED 2026-08-04
 

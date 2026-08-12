@@ -16,6 +16,7 @@ import StoreBenchmarkCard from "./StoreBenchmarkCard";
 import StoreBudgetsSection from "./StoreBudgetsSection";
 import StoreChannelsSection from "./StoreChannelsSection";
 import StoreInvoicesSection from "./StoreInvoicesSection";
+import StoreModelsSection from "./StoreModelsSection";
 import StorePaymentsSection from "./StorePaymentsSection";
 import { Card } from "./ui";
 
@@ -263,6 +264,13 @@ export default function StoreReportsSection() {
       {/* Channel setup — paste WhatsApp/Instagram/Google tokens (CP-4) */}
       {canTenants && (
         <StoreChannelsSection
+          token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
+        />
+      )}
+
+      {/* AI model config per agent-task (CP-5) */}
+      {canTenants && (
+        <StoreModelsSection
           token={t} orgId={orgId} canRead={canTenants} canManage={canManage}
         />
       )}
