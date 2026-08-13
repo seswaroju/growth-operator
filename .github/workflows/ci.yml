@@ -171,6 +171,11 @@ jobs:
         run: uv run pytest tests/isolation -v
       - name: Integration suite — DB / API / adapter flows
         run: uv run pytest tests/integration -v
+      # PLAN-1: contract tests were never wired into CI, so the capability catalog's
+      # evidence-drift check (every evidence_ref must match a registered OpenAPI route) would
+      # have been decorative. Runs here because it builds the FastAPI app.
+      - name: Contract suite — API / event / pack contracts
+        run: uv run pytest tests/contract -v
 
   # Placeholder — fails the build once real eval suites exist and are skipped.
   # Wired for real in MVP-095/MVP-096 (eval harness + CI gates).

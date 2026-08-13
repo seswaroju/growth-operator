@@ -35,7 +35,7 @@ reconciled, not separate projects (§ preamble).
 | Owner invitation | **Already Exists** — OTP auth + `invites_router`; **do not invent a second mechanism** (§44) |
 | Vertical install | **Already Exists** — pack installer, invoked by `finalize_store_setup` |
 | Subscription assignment | **Already Exists** — `provision_store` takes `plan_id` and writes an active subscription |
-| Promotions at conversion (§89) | **Should Extend** — use PLAN-4's promotion system, never a `sales_trial_features` second system |
+| Promotions at conversion (§89) | **Should Extend** — use the promotion system (semantics **PLAN-2**, authoring UI **PLAN-4**), never a `sales_trial_features` second system |
 | Guided onboarding | **Partially Exists → extend** `onboarding_status` into a declarative, entitlement-aware model (§47) |
 | Operator notification of new prospect (§87) | **Should Extend** — the operator bell/feed pattern exists (`web-ops` OperatorBell) |
 | Rate limiting for a public form | **Already Exists → reuse** `core/landing/ratelimit.py` (in-process sliding window, built for LP-3a) |
@@ -163,7 +163,7 @@ no paging system.
 |---|---|
 | Create org + owner + membership + subscription | **`provisioning.provision_store`** (already atomic, plan validated first) |
 | Install vertical + activate plan agents | **`provisioning.finalize_store_setup`** |
-| Apply promotions | **PLAN-4 promotion system** (never a second trial system, §89) |
+| Apply promotions | **Promotion system: semantics PLAN-2, authoring UI PLAN-4** (never a second trial system, §89) |
 | Owner access | **existing OTP auth + invites** (§44 — no second auth, no emailed passwords) |
 | Audit | **`log_platform_access`** + `audit_log` |
 

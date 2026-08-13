@@ -1,0 +1,17 @@
+# Vertical commercial capabilities (PLAN-1).
+#
+# Declaring a capability here places it in the GLOBAL catalog only. It never becomes an effective
+# entitlement for a tenant that has not installed this pack — PLAN-2's resolver owns that filtering.
+# Keys are namespaced to `jewelry.<key>` on load, so a pack can never shadow an L0 capability.
+capabilities:
+  - key: rate_operations
+    label: "Gold & rate operations"
+    description: "Daily metal rates with owner confirmation and freshness status, used for quotes."
+    category: operations
+    kind: feature
+    status: available
+    commercial_visibility: public
+    runtime_grantable: true
+    evidence_refs:
+      - "POST /v1/rates/manual"
+      - "GET /v1/rates/status"

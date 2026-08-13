@@ -308,3 +308,22 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   **identical** to `spec/events/topics.yaml`. The vault, the vendored spec, the hand-maintained
   `ALLOWED_EVENT_TYPES` and the generated `core/events/types.py` now all agree. Vault is not
   git-tracked, so the file save is the record.
+
+
+---
+
+## #22c — Whole-tree `pytest tests` interference (local only, pre-existing)
+
+**Opened** 2026-08-13 (PLAN-1). Running the entire `tests/` tree in **one** pytest process yields 3
+failures (`test_rate_ingestion`) and 8 teardown errors (`test_prompt_activation`, `test_settings`).
+
+**Not a product defect and not caused by PLAN-1:** reproduced identically on `main` @ `a4f2e09` in a
+clean git worktree with none of the PLAN-1 changes. Running the same tests with CI's scoping
+(`tests/isolation`, `tests/integration`, `tests/contract`) on a fresh DB gives **698 passed, 0
+failed**. CI runs each directory as a separate job, so it never encounters this.
+
+**Cause (suspected):** cross-directory state leakage — engine/sessionmaker caches and org-scoped
+fixture teardown when unit/e2e modules share a process with the DB-backed suites.
+
+**Impact:** developer ergonomics only. `make test` / whole-tree runs are misleading.
+**Next step:** isolate the leaking fixture. Not scheduled; no ticket assigned.

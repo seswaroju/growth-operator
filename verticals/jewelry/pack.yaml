@@ -24,5 +24,6 @@ slots:                                  # L2 tenant values, validated on install
 onboarding: onboarding/steps.yaml
 ui: ui/templates.yaml
 calendar_pack: calendar/events.yaml
+commercial: commercial/capabilities.yaml
 evals_required: [concierge_core, injection, money_traps, language, isolation_probes]
 signing: {alg: ed25519, key_id: platform-2026}

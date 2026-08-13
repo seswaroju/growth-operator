@@ -5951,3 +5951,70 @@ entitlements).
 
 **Next action:** ENT-1b (owner nav hides what the plan does not include + operator plan-builder
 feature ticks), then the upload widget.
+
+
+---
+
+## 2026-08-13 · PLAN-1 — Canonical capability catalog + vocabulary
+
+**Branch** `feature/plan-1-capability-catalog`. **Approved plan:** the revised PLAN-1 plan, with ten
+founder corrections applied (no runtime-semantics expansion; vertical capabilities need pack
+context; evidence is audit metadata not enforcement; one authorization boundary may back several
+marketing bullets; same rule for landing pages; re-check every grantable key against existing
+enforcement; public-truth test asserts boundaries not bullets; freeze the ticket sequence;
+`core/tenancy/capabilities.py` as home; baseline stays a documented shim). Final ruling
+(2026-08-13): **operational readiness is not part of the capability model** — no
+`activation_dependency` / `blocker_ids` / `launch_blocker` / `deployment_blocker` field.
+
+### Files changed
+
+| Path | Type | Reason |
+|---|---|---|
+| `core/tenancy/capabilities.py` | NEW | Canonical, global, org-independent capability catalog + `validate_catalog()` invariants |
+| `core/tenancy/entitlements.py` | MOD | Now resolution-only; `LEGACY_EFFECTIVE_KEYS` shim; `normalize()` maps aliases then admits only shim keys |
+| `core/packs/contracts.py` | MOD | `CapabilityDef` + `CommercialPack`; optional `commercial:` manifest key |
+| `core/packs/bundle.py` | MOD | Parse the optional commercial section into `ParsedPack.commercial` |
+| `verticals/jewelry/pack.yaml` | MOD | Point at the commercial section |
+| `verticals/jewelry/commercial/capabilities.yaml` | NEW | L1 contribution: `rate_operations` |
+| `tests/unit/test_capabilities.py` | NEW | Invariants, product truth, no-expansion rule, pack context |
+| `tests/unit/test_entitlements.py` | MOD | Unsafe keys grant nothing; vertical/not-yet-effective keys grant nothing |
+| `tests/contract/test_pack_capabilities.py` | NEW | Pack contract + **OpenAPI evidence-drift** check |
+| `.github/workflows/ci.yml` | MOD | **`tests/contract` was never run by CI** — now wired into the integration job |
+| `project-management/*` | MOD | Frozen ticket sequence, decisions, task status |
+
+### Database
+**No migration.** No schema, column, index, constraint or RLS change. `billing_plans.features`
+(JSONB, CP-1) already stores what is needed and its shape is unchanged.
+
+### Legacy plan-row audit (run before implementation)
+11 plans: `[]` × 4, `['campaigns.whatsapp']` × 7. **0 rows** reference `seo`, `agent.marketing`,
+`ads.instagram` or `ads.google`. 0 active subscriptions. **The tightening is provably a no-op on
+existing data.**
+
+### Commands run
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS (one E501 fixed) |
+| `bash scripts/lint.sh` | PASS — 6 guards. **industry-nouns fired once** on a docstring in `core/tenancy/entitlements.py` naming a vertical capability; reworded to be pack-agnostic (Rule Zero working as intended) |
+| `uv run mypy core` | PASS — 215 files |
+| `uv run mypy migrations --exclude 'migrations/versions'` | PASS |
+| `uv run pytest tests/unit` | PASS — 636 |
+| fresh DB: `tests/isolation tests/integration tests/contract` | PASS — **698 passed, 4 skipped, 0 failed** |
+| fresh DB: whole `tests/` tree in one process | 3 failed, 8 errors — **reproduced identically on `main` @ `a4f2e09` in a clean worktree**, so pre-existing cross-directory interference, not a PLAN-1 regression. CI runs each directory in a separate job and never sees it |
+
+### Security
+No authentication, RLS, tenant-isolation, secret-handling, logging or external-side-effect change.
+Authorization moved **strictly narrower**: four previously-grantable keys now grant nothing. The
+catalog module is provably org-independent (a test parses its AST and signatures).
+
+### Known issues / disclosed limitations
+- Whole-tree pytest interference (pre-existing, also on `main`) — see BLOCKERS #22c.
+- `/v1/imports` and `/v1/rates` are sold as Scale-only but gated today only by role permissions —
+  **every tier can still reach them**. PLAN-5 must close this; PLAN-1 deliberately did not.
+- `campaigns.analytics`, `catalog.ingestion` and `jewelry.rate_operations` are declared boundaries
+  that are **not yet effective**. Deliberate: PLAN-1 does not expand runtime semantics.
+- `BASELINE_FEATURES` still grants without an active subscription — documented compatibility shim,
+  resolved by PLAN-2.
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-2.
