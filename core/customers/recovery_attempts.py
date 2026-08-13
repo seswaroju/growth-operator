@@ -161,16 +161,32 @@ async def mark_replied(
     this reply can have caused it. Without the ordering check, a message the customer had already
     sent would be credited to a recovery that came after it — which would inflate exactly the
     number the owner is judging us by. The most recent qualifying attempt wins, and an attempt is
-    credited once."""
-    now = at or datetime.now(UTC)
+    credited once.
+
+    **One clock, and it is the database's.** `sent_at` is written by Postgres `now()`, so comparing
+    it against a timestamp minted on the worker host compares two clocks that are never exactly
+    equal. Found in post-merge verification: the local Postgres runs ~18ms ahead of the host, which
+    was enough for a reply recorded immediately after a send to look as though it had arrived
+    first, and the correlation correctly — but wrongly — refused it. A worker whose clock lagged
+    the database would silently under-report recoveries in production, which is the failure mode we
+    would least notice and most regret. Defaulting to SQL `now()` keeps everything in one monotonic
+    domain; an explicit `at` remains available for a caller that genuinely knows the provider's own
+    timestamp, and still fails the ordering check when it predates the send.
+
+    `clock_timestamp()` rather than `now()`, because `now()` is the *transaction start* time: a
+    caller that recorded the send and the reply in one transaction would compare a value against
+    itself and silently drop the correlation. Today's callers use separate transactions, but a
+    guarantee that depends on the caller's transaction boundaries is not a guarantee."""
     return (await session.execute(
-        text("UPDATE recovery_attempts SET status = 'replied', replied_at = :now, "
+        text("UPDATE recovery_attempts SET status = 'replied', "
+             "replied_at = COALESCE(CAST(:at AS timestamptz), clock_timestamp()), "
              "inbound_reply_message_id = :m WHERE id = ("
              "  SELECT id FROM recovery_attempts WHERE org_id = :o AND conversation_id = :c "
-             "  AND sent_at IS NOT NULL AND sent_at < :now AND replied_at IS NULL "
+             "  AND sent_at IS NOT NULL AND replied_at IS NULL "
+             "  AND sent_at < COALESCE(CAST(:at AS timestamptz), clock_timestamp()) "
              "  ORDER BY sent_at DESC LIMIT 1) "
              "AND org_id = :o RETURNING id"),
-        {"now": now, "m": str(message_id), "o": str(org_id),
+        {"at": at, "m": str(message_id), "o": str(org_id),
          "c": str(conversation_id)})).scalar_one_or_none()
 
 
