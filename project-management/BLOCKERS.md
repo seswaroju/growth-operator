@@ -327,3 +327,25 @@ fixture teardown when unit/e2e modules share a process with the DB-backed suites
 
 **Impact:** developer ergonomics only. `make test` / whole-tree runs are misleading.
 **Next step:** isolate the leaking fixture. Not scheduled; no ticket assigned.
+
+
+---
+
+## #30 — Plan reassignment does not reconcile agent instances (**PLAN-5 P0**)
+
+**Opened** 2026-08-13 (found during the PLAN-2 audit; confirmed by founder review).
+
+`core/billing/service.py::assign_subscription()` cancels the old subscription and inserts the new
+one, touching **only** `billing_subscriptions`. `core/tenancy/provisioning.py::activate_plan_agents()`
+— the CP-2b mechanism that sets `agent_instances.status='active'` for the agents a plan switches on
+— is invoked **solely on the provisioning path**.
+
+**Consequence:** downgrading a store to a plan with fewer agents leaves the removed agent's instance
+active. The agent keeps running despite no longer being sold.
+
+**Not fixed in PLAN-2** — deliberately, to avoid mixing resolver work with enforcement. PLAN-2
+resolves commercial truth only and does not change any activation behaviour.
+
+**Requirement (PLAN-5 P0):** plan reassignment must reconcile/deactivate agent instances no longer
+included by the new plan. **No live plan-switching rollout may occur before this is closed.**
+Impact today is nil: 0 active subscriptions and 0 agent instances exist.

@@ -9,28 +9,28 @@ selects and approves the next ticket.
 
 ---
 
-## PLAN-1 · Canonical capability catalog + vocabulary — **Completed — awaiting founder review** (2026-08-13)
+## PLAN-2 · Structured entitlement resolver — **Completed — awaiting founder review** (2026-08-13)
 
-Branch `feature/plan-1-capability-catalog`. **A vocabulary ticket, by explicit founder ruling: it
-builds the canonical catalog and tightens four unsafe legacy keys. It does not widen what any tenant
-can do.**
+Branch `feature/plan-2-entitlement-resolver`. **No migration.**
 
-- `core/tenancy/capabilities.py` (NEW) — the canonical, **global, org-independent** product
-  vocabulary. `Capability(key, label, description, category, kind, status, commercial_visibility,
-  runtime_grantable, enforced_by, evidence_refs, depends_on, vertical)` + `validate_catalog()`.
-- `core/tenancy/entitlements.py` — now **resolution only**. `LEGACY_EFFECTIVE_KEYS` is a frozen
-  compatibility shim = the ENT-1a set **minus** `seo`, `agent.marketing`, `ads.instagram`,
-  `ads.google`. `normalize()` consults **only** that shim, never `runtime_grantable`.
-- L1 contribution: optional `commercial:` manifest key → `verticals/jewelry/commercial/
-  capabilities.yaml` (`jewelry.rate_operations`). Loaded into the global catalog, **not** effective
-  for any tenant — PLAN-2 owns pack filtering.
-- **No migration.** **Legacy-key audit: 0 affected plan rows** (all 11 plans hold `[]` or
-  `['campaigns.whatsapp']`), 0 active subscriptions.
+- `core/tenancy/plan_config.py` (NEW) — typed `billing_plans.config`: `entitlement_schema_version`
+  (the explicit legacy/structured boundary), `entitlements`, `agents`, `channels`, `addons`,
+  `promotions`. Machine authorization moved off free-text `billing_plans.features`.
+- `core/tenancy/entitlements.py` — `resolve()` returns `EffectiveEntitlements` (capabilities,
+  agents, channels, limits, grants, excluded, subscription_state, plan). `entitlements()` remains a
+  thin `frozenset[str]` wrapper, so the four `requires_feature` gates and `/v1/orgs/me` are
+  untouched.
+- **No active subscription → zero paid capabilities.** Public `BASELINE_FEATURES` /
+  `GRANTABLE_FEATURES` / `ALL_FEATURES` deleted; the historical set survives only as the private
+  `_LEGACY_ENT1A_BASELINE` inside the compatibility loader.
+- **Active legacy plan** reconstructs ENT-1a semantics: historical baseline ∪ valid legacy features,
+  plus the channels those capabilities necessarily imply (derived from PLAN-1 `depends_on`, not
+  hardcoded). Provenance `legacy_compat`, never `plan`.
+- Component-aware dependencies · pack-aware vertical filtering · tenant/pack-aware agent validation
+  (binding existence, **not** instance status) · absolute UTC promotion windows.
 
-**Canonical ticket sequence (founder-ratified 2026-08-13, frozen — identical in the design review
-Part 7, `BACKLOG.md` and `IMPLEMENTATION_LOG.md`):** PLAN-1 catalog · PLAN-2 structured resolver
-(provenance, subscription-state, pack filtering, promotion evaluation, compatibility loader) ·
-PLAN-3 presets (snapshot, no live inheritance) · PLAN-4 Plan Builder UI incl. promotion authoring ·
-PLAN-5 enforcement extension + ungated inventory.
+**PLAN-2 resolves; it does not enforce.** `catalog.ingestion`, `campaigns.analytics` and
+`jewelry.rate_operations` are computed but still ungated on their routes — PLAN-5 owns that,
+including the **P0** plan-reassignment agent reconciliation.
 
-**Do not start PLAN-2 automatically — the founder selects the next ticket.**
+**Do not start PLAN-3 automatically — the founder selects the next ticket.**

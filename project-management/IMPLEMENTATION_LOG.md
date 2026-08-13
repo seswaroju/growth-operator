@@ -6018,3 +6018,83 @@ catalog module is provably org-independent (a test parses its AST and signatures
   resolved by PLAN-2.
 
 **Commit:** `2374a35`, merged to `main` as `b9d965c` (this entry recorded in a follow-up docs commit). **CI:** green — lint, unit, migrate, e2e, isolation, integration **and the newly-wired contract job**. **Next recommended action:** founder selects PLAN-2.
+
+
+---
+
+## 2026-08-13 · PLAN-2 — Structured entitlement resolver
+
+**Branch** `feature/plan-2-entitlement-resolver`. Approved plan plus three founder correction
+rounds: machine authority moved off `billing_plans.features` to `config.entitlements`; agents and
+channels became structured components; `entitlement_schema_version` made the legacy/structured
+boundary explicit; legacy compatibility reconstructs ENT-1a's baseline **and** the channels its
+capabilities imply; promotions stay typed JSONB (**no migration**).
+
+### Files changed
+
+| Path | Type | Reason |
+|---|---|---|
+| `core/tenancy/plan_config.py` | NEW | Typed `billing_plans.config`; per-entry promotion parsing |
+| `core/tenancy/entitlements.py` | MOD | `resolve()` → `EffectiveEntitlements`; legacy loader; component-aware dependencies; inert ENT-1a constants deleted |
+| `tests/unit/test_plan_config.py` | NEW | Mode marker + promotion boundary semantics |
+| `tests/unit/test_entitlements.py` | MOD | Implied channels, dependency satisfaction, no-baseline surface |
+| `tests/unit/test_capabilities.py` | MOD | Dropped the deleted constants |
+| `tests/integration/test_entitlement_resolver.py` | NEW | 47 cases against real Postgres |
+| `tests/isolation/test_entitlement_isolation.py` | NEW | Cross-tenant + fail-closed |
+| `tests/integration/test_landing_page.py` | MOD | Corrected a now-stale "baseline" comment |
+| `project-management/*` | MOD | Decisions, PLAN-5 P0, task status |
+
+### Database
+**No migration.** `billing_plans.config` is existing JSONB. No schema, column, index, constraint or
+RLS change.
+
+### Legacy-data audit (re-run immediately before implementation)
+11 plans — `features=['campaigns.whatsapp']` + `config={}` ×7; `features=[]` +
+`config={'agents':['concierge','nurture']}` ×3; `features=[]` + `config={}` ×1. **0 plans carry
+`entitlement_schema_version`** (all legacy). **0 subscriptions of any status**, 0 pack installations,
+0 agent instances, 65 dev orgs. No tenant gains or loses anything.
+
+### Commands run
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS |
+| `bash scripts/lint.sh` | PASS — 6 guards |
+| `uv run mypy core` | PASS — 216 files |
+| `uv run pytest tests/unit` | PASS — 664 |
+| fresh DB: `tests/isolation tests/integration tests/contract` | PASS — **749 passed, 4 skipped, 0 failed** |
+| **6 mutation tests** | All killed (see below) |
+
+### Mutation testing (founder-required)
+Each mutant was applied, the suite run, then reverted:
+
+| Mutant | Killed by |
+|---|---|
+| Mode decided by `entitlements is None` instead of the marker | 2 failures |
+| Implied-channel reconstruction removed | 3 failures |
+| Structured plans leak the legacy baseline | 13 failures |
+| Structured plans leak implied channels | 3 failures |
+| No-subscription returns the baseline (ENT-1a regression) | 2 failures |
+| Pack filter disabled | 6 failures |
+
+### Security
+No authentication, RLS, secret-handling, logging or external-side-effect change. Authorization moved
+**narrower**: no-subscription now grants nothing. Resolution runs under `set_org_context` against
+three FORCE-RLS tables, so absent context fails closed. Cross-tenant leakage tested explicitly.
+
+### Issues found and fixed during implementation
+- `PlanConfig.promotions` was initially typed `list[PromotionDef]`, which meant **one** malformed
+  promotion failed the whole config and denied the tenant. Changed to raw + per-entry parsing.
+- My new isolation fixture cleared the engine cache without disposing the pool, orphaning
+  connections on a closed event loop and breaking `test_tenant_context.py` when the files ran
+  together. Fixed by disposing the engine in teardown. **Not** an isolation defect — verified by
+  running the file alone (passes) and by bisecting the file order.
+
+### Known issues / disclosed limitations
+- **PLAN-5 P0:** plan reassignment does not reconcile agent instances — BLOCKERS #30.
+- `catalog.ingestion`, `campaigns.analytics`, `jewelry.rate_operations` are resolved but **still
+  ungated** on their routes; `/v1/imports` and `/v1/rates` remain role-gated only.
+- All 11 existing plans are legacy; none uses the structured schema until PLAN-3 writes presets.
+- Promotions are absolute calendar windows, not per-subscriber trials.
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-3.
