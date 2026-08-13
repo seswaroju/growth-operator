@@ -167,7 +167,9 @@ function LeadCard({ lead }: { lead: Lead }) {
         <span className="truncate text-sm font-semibold text-ink">{name}</span>
         {lead.score != null && <span className="shrink-0 text-[11px] text-muted">score {lead.score}</span>}
       </div>
-      <p className="mt-1 text-[11px] text-muted">via {lead.source}</p>
+      {/* LEAD-1: one uniform "captured from" for every origin — a landing page (with the
+          variant), the WhatsApp link in an Instagram bio, a campaign, a walk-in, ... */}
+      <p className="mt-1 text-[11px] text-muted">via {lead.captured_from}</p>
       {lead.next_followup_at && (
         <p className="mt-1 text-[11px] text-ink-2">Follow up: {fmtTime(lead.next_followup_at)}</p>
       )}

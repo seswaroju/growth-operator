@@ -406,12 +406,110 @@ export interface ConversationDetail {
 export interface Lead {
   id: string;
   stage: string;
-  source: string;
+  /** Canonical origin (LEAD-1); null when it was never recorded. */
+  source: string | null;
   score: number | null;
   contact_name: string | null;
   contact_phone: string | null;
   next_followup_at: string | null;
   updated_at: string;
+  /** Uniform "where this lead came from" across every channel. */
+  captured_from: string;
+  landing_page_id: string | null;
+  landing_slug: string | null;
+  variant: string | null;
+  channel_type: string | null;
+  utm: Record<string, string>;
+}
+
+// ---- Landing pages (/v1/landing, campaigns:read|send) ----------------------
+
+export interface LandingVariant {
+  version_no: number;
+  variant_label: string;
+  preview_url: string;
+}
+
+export interface LandingPageRow {
+  id: string;
+  slug: string;
+  status: string;
+  conversion_goal: string;
+  created_at: string;
+}
+
+export interface LandingPageDetail {
+  id: string;
+  slug: string;
+  status: string;
+  conversion_goal: string;
+  current_version_no: number | null;
+  current_variant_label: string | null;
+  created_at: string;
+}
+
+export interface ItemInterest {
+  item_ref: string;
+  clicks: number;
+  views: number;
+}
+
+export interface PageInsights {
+  page_id: string;
+  events: Record<string, number>;
+  total_events: number;
+  top_items: ItemInterest[];
+}
+
+export function listLandingPages(token: string): Promise<LandingPageRow[]> {
+  return authed<LandingPageRow[]>("/v1/landing/pages", token);
+}
+
+export function getLandingPage(token: string, pageId: string): Promise<LandingPageDetail> {
+  return authed<LandingPageDetail>(`/v1/landing/pages/${pageId}`, token);
+}
+
+export function listLandingVariants(token: string, pageId: string): Promise<LandingVariant[]> {
+  return authed<LandingVariant[]>(`/v1/landing/pages/${pageId}/variants`, token);
+}
+
+export function getLandingInsights(token: string, pageId: string): Promise<PageInsights> {
+  return authed<PageInsights>(`/v1/landing/pages/${pageId}/insights`, token);
+}
+
+/** The preview needs the Bearer token, so it is fetched as text and rendered via iframe srcdoc. */
+export async function fetchLandingPreview(
+  token: string, pageId: string, versionNo?: number,
+): Promise<string> {
+  const path = versionNo === undefined
+    ? `/v1/landing/pages/${pageId}/preview`
+    : `/v1/landing/pages/${pageId}/versions/${versionNo}/preview`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new ApiError(res.status, "Could not load the preview");
+  return res.text();
+}
+
+export interface LandingStatus {
+  page_id: string;
+  status: string;
+}
+
+export function selectLandingVariant(
+  token: string, pageId: string, versionNo: number,
+): Promise<LandingStatus> {
+  return authed<LandingStatus>(`/v1/landing/pages/${pageId}/select`, token, {
+    method: "POST",
+    body: JSON.stringify({ version_no: versionNo }),
+  });
+}
+
+export function landingLifecycle(
+  token: string, pageId: string, action: "publish" | "pause" | "archive",
+): Promise<LandingStatus> {
+  return authed<LandingStatus>(`/v1/landing/pages/${pageId}/${action}`, token,
+    { method: "POST" });
 }
 
 export function getConversations(token: string): Promise<ConversationSummary[]> {

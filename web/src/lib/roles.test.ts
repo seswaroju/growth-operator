@@ -4,10 +4,10 @@ import { assignableRoles, canInvite, hasPermission, visibleNav } from "./roles";
 
 const READ = ["/", "/approvals", "/conversations", "/catalog", "/customers"];
 // owner/manager/viewer hold campaigns:read; staff does NOT (RBAC) — so Campaigns diverges them.
-const WITH_CAMPAIGNS = [...READ, "/campaigns", "/insights", "/support"];
+const WITH_CAMPAIGNS = [...READ, "/campaigns", "/landing", "/insights", "/support"];
 const STAFF_NAV = [...READ, "/insights", "/support"];
 // owner/manager also hold catalog:write → Automations (viewer/staff do not).
-const OWNER_BASE = [...READ, "/campaigns", "/workflows", "/insights", "/support"];
+const OWNER_BASE = [...READ, "/campaigns", "/landing", "/workflows", "/insights", "/support"];
 
 describe("visibleNav — permission-gated nav", () => {
   it("owner sees every section (incl. Campaigns, Automations, Team + Settings)", () => {
