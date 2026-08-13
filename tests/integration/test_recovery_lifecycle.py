@@ -382,3 +382,46 @@ async def test_summary_surfaces_what_did_not_go_out(scene: Scene) -> None:
         await set_org_context(s, scene.org)
         counts = await recovery_attempts.summary(s, scene.org)
     assert counts["blocked"] == 1
+
+
+async def test_a_reply_recorded_immediately_after_the_send_is_still_credited(
+    scene: Scene
+) -> None:
+    """Found in post-merge verification of PILOT-1C.
+
+    `sent_at` is written by Postgres `now()`. Comparing it against a timestamp minted on the worker
+    host compares two clocks that are never exactly equal — locally Postgres ran ~18ms ahead, which
+    was enough for a reply recorded straight after a send to look as though it arrived first, so the
+    ordering check refused a perfectly real recovery. In production a worker whose clock lagged the
+    database would under-report recoveries silently, which is the failure mode we would least notice
+    and most regret. The correlation now stays inside the database's own clock domain.
+
+    This test is deliberately tight — mark sent, then correlate with no artificial delay — because a
+    version of it that slept would pass under either implementation and prove nothing."""
+    attempt = await scene.open()
+    async with org_scoped_session(scene.org) as s:
+        await set_org_context(s, scene.org)
+        await recovery_attempts.mark_sent(
+            s, scene.org, attempt, message_id=None, template_key="t", template_language="en")
+        await s.commit()
+        await set_org_context(s, scene.org)
+        credited = await recovery_attempts.mark_replied(
+            s, scene.org, conversation_id=scene.conversation, message_id=uuid.uuid4())
+        await s.commit()
+    assert credited == attempt
+
+
+async def test_reply_and_send_timestamps_come_from_one_clock(scene: Scene) -> None:
+    """Both timestamps must be database-generated, so their ordering is meaningful."""
+    attempt = await scene.open()
+    async with org_scoped_session(scene.org) as s:
+        await set_org_context(s, scene.org)
+        await recovery_attempts.mark_sent(
+            s, scene.org, attempt, message_id=None, template_key="t", template_language="en")
+        await recovery_attempts.mark_replied(
+            s, scene.org, conversation_id=scene.conversation, message_id=uuid.uuid4())
+        await s.commit()
+    row = await scene.conn.fetchrow(
+        "SELECT sent_at, replied_at FROM recovery_attempts WHERE id=$1", attempt)
+    assert row["sent_at"] is not None and row["replied_at"] is not None
+    assert row["replied_at"] >= row["sent_at"]
