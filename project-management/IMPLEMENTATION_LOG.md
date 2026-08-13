@@ -6163,4 +6163,4 @@ is affected. Recorded as BLOCKERS #31 and made impossible for the seeder by
 - A pack may place capabilities per tier, but only into the three generic tiers.
 - Viewer seats remain uncapped by CP-3 (unchanged; flagged during design).
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-4.
+**Commit:** `baafc5c`, merged to `main` as `cbe7e2b`. **CI:** run 31718957827 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract. **Next recommended action:** founder selects PLAN-4.
