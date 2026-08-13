@@ -41,6 +41,27 @@ class TemplateSubmitResult:
     error: str | None = None
 
 
+def build_template_payload(
+    to: str, name: str, language: str, parameters: Sequence[str] = ()
+) -> dict[str, Any]:
+    """The Cloud API body for one template send.
+
+    Pure and separate from transport so the encoding can be verified without a network client or
+    the live-send flag — the wire shape is the part that is easy to get wrong and impossible to
+    notice, since a template with variables sent without a `body` component is rejected by Meta,
+    and one sent with an empty component array is rejected differently. Absent parameters therefore
+    means **no** components key, not an empty one."""
+    template: dict[str, Any] = {"name": name, "language": {"code": language}}
+    if parameters:
+        template["components"] = [{
+            "type": "body",
+            "parameters": [{"type": "text", "text": str(p)} for p in parameters],
+        }]
+    return {
+        "messaging_product": "whatsapp", "to": to, "type": "template", "template": template,
+    }
+
+
 class MetaClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
@@ -138,16 +159,7 @@ class MetaClient:
         the text (a template's text is fixed at approval time and cannot be rewritten here)."""
         if self.simulated:
             return SendResult(ok=True, provider_message_id=f"wamid.SIM-{uuid.uuid4().hex[:16]}")
-        template: dict[str, Any] = {"name": name, "language": {"code": language}}
-        if parameters:
-            template["components"] = [{
-                "type": "body",
-                "parameters": [{"type": "text", "text": str(p)} for p in parameters],
-            }]
-        payload = {
-            "messaging_product": "whatsapp", "to": to, "type": "template",
-            "template": template,
-        }
+        payload = build_template_payload(to, name, language, parameters)
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 f"{GRAPH_BASE}/{phone_number_id}/messages",
