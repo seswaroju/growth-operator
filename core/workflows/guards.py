@@ -131,15 +131,32 @@ async def _within_send_window(
 
 
 async def _touch_cap(session: AsyncSession, ctx: GuardContext, args: tuple[str, ...]) -> bool:
+    """How many times the **platform** has proactively messaged this contact in the window.
+
+    PILOT-1C narrows what counts. This used to count every outbound message on the contact's
+    conversations, which conflated two different things: a shop owner answering a customer in the
+    inbox, and us reaching out to someone who had gone quiet. The cap exists to stop the second —
+    it protects the customer from being pestered by automation. Counting the store's own replies
+    meant an attentive shop exhausted its recovery allowance by being attentive, while a message
+    that never left the building still counted against a customer who never received it.
+
+    So a touch is a recovery attempt whose message the provider actually **accepted**
+    (`recovery_attempts.sent_at`, statuses in `TOUCH_STATUSES`). Proposed, declined and blocked
+    attempts are history, not contact; a failed dispatch never reached anyone.
+    `delivery_unknown` does count — when we cannot prove we did not reach someone, we assume we did.
+    """
     if ctx.contact_id is None:
         return False  # fail closed
     n = int(args[0]) if args else 1
     window_s = parse_duration_s(args[1]) if len(args) > 1 else 30 * 86400
+    from core.customers.recovery_attempts import TOUCH_STATUSES
+
     count = (await session.execute(
-        text("SELECT count(*) FROM messages m JOIN conversations c ON c.id = m.conversation_id "
-             "WHERE c.contact_id = :c AND m.direction = 'outbound' "
-             "AND m.created_at > now() - make_interval(secs => :w)"),
-        {"c": str(ctx.contact_id), "w": window_s})).scalar_one()
+        text("SELECT count(*) FROM recovery_attempts WHERE contact_id = :c "
+             "AND sent_at IS NOT NULL AND status = ANY(:statuses) "
+             "AND sent_at > now() - make_interval(secs => :w)"),
+        {"c": str(ctx.contact_id), "w": window_s,
+         "statuses": sorted(TOUCH_STATUSES)})).scalar_one()
     return int(count) < n
 
 

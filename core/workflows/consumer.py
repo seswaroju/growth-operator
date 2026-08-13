@@ -37,39 +37,6 @@ async def on_msg_received(envelope: dict[str, Any]) -> None:
     await waits.match_reply(org_id, UUID(str(conversation_id)))
 
 
-@consumer(stream_name("lead.went_silent.v1"), "workflow-silent-lead")
-async def on_lead_went_silent(envelope: dict[str, Any]) -> None:
-    """A silent lead → start the recovery playbook, grounded in facts read here.
-
-    A **static** consumer, deliberately. The alternative — a generic consumer subscribing to every
-    event type some tenant's workflow happens to name — would let a stored trigger definition
-    decide which streams the platform consumes, and the set of things a workflow can react to is a
-    platform decision, not tenant configuration.
-
-    The event carries identifiers; the conversation, the pre-silence thread and any provable quoted
-    item are loaded under tenant scope (see `core.customers.recovery_context`). If they cannot be
-    assembled the run does not start: a recovery that cannot identify its own conversation would
-    send into the dark and be unable to recognise the reply.
-    """
-    from core.customers.recovery_context import RecoveryContextUnavailable, build
-    from core.tenancy.repository import set_org_context
-    from core.workflows import triggers
-
-    org_id = UUID(str(envelope["subject"]))
-    payload = dict(envelope.get("data") or {})
-    if not payload.get("lead_id"):
-        return
-    async with org_scoped_session(org_id) as s:
-        await set_org_context(s, org_id)
-        try:
-            ctx = await build(s, org_id, payload)
-        except RecoveryContextUnavailable as exc:
-            logger.info("recovery.not_started: lead %s (%s)", payload.get("lead_id"), exc.reason)
-            return
-    await triggers.match_and_start(
-        org_id, "lead.went_silent.v1", {**payload, **ctx.as_subject()})
-
-
 @consumer(stream_name("approval.resolved.v1"), "workflow-human-task")
 async def on_approval_resolved(envelope: dict[str, Any]) -> None:
     """A resolved `workflow.human_task` approval → resume the parked run (approve advances; reject

@@ -91,6 +91,8 @@ async def _messages_send(
         raise GrowthOperatorError(
             "config_schema_violation", "messages.send needs a body and a conversation")
     conv_id = UUID(str(conversation_id))
+    attempt_id = (UUID(str(params["recovery_attempt_id"]))
+                  if params.get("recovery_attempt_id") else None)
 
     # Mint the send authorization + run the send in the proxy's session (one tenant transaction).
     # A separate session would nest a second per-org advisory lock and deadlock; keeping it in the
@@ -113,20 +115,53 @@ async def _messages_send(
             template_parameters=tuple(str(p) for p in params.get("template_parameters", ())),
             idempotency_key=(str(params["idempotency_key"])
                              if params.get("idempotency_key") else None),
-            recovery_attempt_id=(UUID(str(params["recovery_attempt_id"]))
-                                 if params.get("recovery_attempt_id") else None),
+            recovery_attempt_id=attempt_id,
         )
     except SendRefused as exc:
+        await _record_attempt_outcome(session, ctx.org_id, attempt_id, blocked=exc.code)
         return {"sent": False, "refused": exc.code, "conversation_id": str(conv_id)}
     except TemplateNotSendable as exc:
         # Not an error the run should die on: the store's template is missing or unapproved, which
         # is an operational fact the owner can fix. Reported, never retried into a second attempt.
+        await _record_attempt_outcome(
+            session, ctx.org_id, attempt_id, blocked="template_not_sendable")
         return {"sent": False, "refused": "template_not_sendable", "template": exc.template_key,
                 "conversation_id": str(conv_id)}
+
+    # The lifecycle transition happens in the proxy's transaction, alongside the message row and
+    # the audit outcome — so an attempt can never be marked sent by a transaction that later rolls
+    # back, and can never be left `proposed` after a message actually went out.
+    if attempt_id is not None and not outcome.already_dispatched:
+        from core.customers import recovery_attempts
+
+        if outcome.sent:
+            await recovery_attempts.mark_sent(
+                session, ctx.org_id, attempt_id, message_id=outcome.message_id,
+                template_key=template[0] if template else None,
+                template_language=template[1] if template else None)
+        else:
+            # A retryable provider failure is genuinely ambiguous: the request may have been
+            # accepted before we lost the answer. Recorded as `delivery_unknown` — which counts as
+            # a touch — rather than resolved into a second message to the same customer.
+            await recovery_attempts.mark_failed(
+                session, ctx.org_id, attempt_id,
+                reason="provider_send_failed", unknown=outcome.retryable)
     return {"sent": outcome.sent, "conversation_id": str(conv_id),
             "message_id": str(outcome.message_id) if outcome.message_id else None,
             "provider_message_id": outcome.provider_message_id,
             "already_dispatched": outcome.already_dispatched}
+
+
+async def _record_attempt_outcome(
+    session: AsyncSession, org_id: UUID, attempt_id: UUID | None, *, blocked: str
+) -> None:
+    """A gate refused before any external effect. Recorded so the owner can see *why* a silent lead
+    was not contacted — an invisible refusal is indistinguishable from a broken product."""
+    if attempt_id is None:
+        return
+    from core.customers import recovery_attempts
+
+    await recovery_attempts.mark_blocked(session, org_id, attempt_id, reason=blocked)
 
 
 async def _render_stored_body(
