@@ -5831,7 +5831,8 @@ sites (icon map, label map, bell) — the drift was caught by types, not review.
 (+2: waiting customers surface in the feed; a ghost does not appear as waiting) · web `tsc` ·
 `npm run lint` (2 pre-existing warnings) · `vitest` (**76**) · `npm run build`.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `e6d0a6a` (merge `0c62b8b`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-4b (asset upload → auto-generate the 3 variants → notify the owner), or a
 pilot-readiness pass over the remaining founder-side blockers.

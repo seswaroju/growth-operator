@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## GHOST-1d · Owner recovery controls + "waiting on you" notification — **COMPLETE — awaiting founder review** (2026-08-12)
+## GHOST-1d · Owner recovery controls + "waiting on you" notification — **COMPLETE — merged `0c62b8b`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1d-recovery-ui`. Puts the GHOST-1b/1c backend in the owner's hands. **No
 migration.**
