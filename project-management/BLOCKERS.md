@@ -444,7 +444,7 @@ unsubscribed and cancelled stores still received ghost-recovery business process
 orgs without `ghost_recovery`; their existing lead history stays readable per the data-continuity
 ruling.
 
-## #35 — `negotiating` is not a lead stage the CRM can store (OPEN — founder decision)
+## #35 — `negotiating` is not a lead stage the CRM can store (NON-BLOCKING — post-pilot)
 
 **Opened** 2026-08-13 (PILOT-1C). Recovery was to trigger on `quoted` **and** `negotiating`, but
 `leads.stage` permits only `new / qualified / quoted / visit_booked / won / lost`. `ENGAGED_STAGES`
@@ -452,8 +452,10 @@ had named `negotiating` and `contacted` since GHOST-1b; neither exists, so two o
 selected nothing and the sweep only ever matched `quoted`. It now names only `quoted` — the truth of
 what ran — with a unit test asserting every entry against the migration's CHECK constraint.
 
-Adding `negotiating` means a CRM stage change (migration + pipeline UI + stage-transition rules),
-which is outside this ticket. **Decision needed:** add the stage, or leave recovery on `quoted`.
+**Founder ruling 2026-08-13:** `ENGAGED_STAGES = ("quoted",)` is ACCEPTED for Pilot-1. `quoted` is
+the minimum defensible recovery wedge because the system holds concrete evidence that the merchant
+made a commercial response to the customer. `negotiating` is recorded as later CRM/product-depth
+work and is explicitly **not** a Pilot-1C blocker.
 
 ## #36 — Three `test_rate_ingestion` failures are a LOCAL dev-database artifact (OPEN — low)
 
@@ -471,7 +473,7 @@ That is worth its own small ticket — a test that only passes on a clean databa
 fail for everyone and be diagnosed as a real regression. It is **not** a PILOT-1C blocker and must
 not be attributed to it.
 
-## #37 — A real message has never physically reached a phone (OPEN — needs founder approval)
+## #37 — A real message has never physically reached a phone (OPEN — blocks real-pilot acceptance)
 
 **Opened** 2026-08-13 (PILOT-1C). The recovery slice is proven end to end against real Postgres up
 to the provider boundary: gates, guards, RLS, the durable dispatch claim, the lifecycle and the
@@ -480,5 +482,9 @@ message being delivered to a real handset, because that requires Meta credential
 external side effect, which CLAUDE.md §10.4 reserves to the founder.
 
 This is the difference between **code-complete** and **live-proven**, and it should not be described
-either way by accident. Closing it needs an explicit, founder-approved send to a founder-owned test
-number — not a code change.
+either way by accident.
+
+**Founder ruling 2026-08-13:** PILOT-1C closes as **CODE-COMPLETE** only. It is **not** physically
+live-proven until PILOT-1D/1E exercises all six of: real Meta/WABA, real approved template, real
+handset, real provider credential, real delivery receipt, real customer reply. Expected to close
+there. Blocks real-pilot acceptance until then.

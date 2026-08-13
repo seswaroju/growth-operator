@@ -8,7 +8,10 @@ Do not replace this file with a new ticket until the founder explicitly
 selects and approves the next ticket.
 
 ---
-## PILOT-1C · Complete ghost-recovery vertical slice — **Completed — awaiting founder review** (2026-08-13)
+## PILOT-1C · Complete ghost-recovery vertical slice — **COMPLETE (code)** (2026-08-13)
+
+**Merged to `main` and CI green.** Merge `5c531f1`; `main` at `32cb1f5`; migration head
+`05ee829beb92`. Physical WhatsApp recovery proof deferred to PILOT-1D/1E (BLOCKERS #37).
 
 Branch `feature/pilot-1c-ghost-recovery`. **Migration 053** (`recovery_attempts`, message
 idempotency, worker-authority provenance).
@@ -24,12 +27,25 @@ transition is proven against real Postgres (1838 tests). The one thing NOT physi
 real message reaching a real phone: that needs Meta credentials and a founder-approved external
 send, which §10.4 reserves. The send path is exercised to the provider boundary and no further.
 
-**Requires founder attention:**
-1. `negotiating` was requested as a recovery trigger stage but `leads.stage` does not permit it
-   (new/qualified/quoted/visit_booked/won/lost). `ENGAGED_STAGES` is now `("quoted",)` — the only
-   value that ever actually matched. Adding `negotiating` is a CRM stage change.
-2. Three `tests/integration/test_rate_ingestion.py` failures are pre-existing on `main` and
-   unrelated to this ticket (verified by checkout).
+**Founder rulings applied:**
+1. `ENGAGED_STAGES = ("quoted",)` accepted for Pilot-1 — `quoted` is the minimum defensible wedge
+   because the system has concrete evidence the merchant made a commercial response. `negotiating`
+   is recorded as later CRM/product-depth work, NOT a Pilot-1C blocker (BLOCKERS #35).
+2. Pre-existing rate-ingestion failures left untouched and reported separately (BLOCKERS #36).
+3. PILOT-1C closes as CODE-COMPLETE only. NOT physically live-proven (BLOCKERS #37).
+
+**Found and fixed during post-merge verification** (both merged, both CI-green):
+* Reply correlation compared a Postgres-written `sent_at` against a worker-host timestamp — two
+  clocks that are never equal. A worker lagging the database would have under-reported recoveries
+  silently. Now one clock domain, `clock_timestamp()`.
+* Two test fixtures depended on ambient database state and went red on CI's fresh database. Both
+  now build their own preconditions.
+
+---
+
+## PILOT-1B · Provider-agnostic real Priya runtime + grounding — **COMPLETE (code)** (2026-08-13)
+
+Real-provider smoke test deferred to PILOT-1D/1E.
 
 ---
 
