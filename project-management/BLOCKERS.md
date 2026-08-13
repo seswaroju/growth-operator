@@ -286,7 +286,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   repeatedly-unrecovered lead to a named human salesperson instead of another message — remains
   unbuilt. Noted in the workflow header; schedule as a normal ticket if the pilot wants it.
 
-### 29. Vault `topics.yaml` lands outside the vault (two lead event lines)
+### ~~29. Vault `topics.yaml` lands outside the vault (two lead event lines)~~ — RESOLVED 2026-08-12
 
 - **Severity:** Low — narrative/doc sync only. **No runtime or test risk** (the drift tests read the
   vendored `spec/events/topics.yaml`, which IS updated; the vault original is not test-checked — same
@@ -300,10 +300,11 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   starts ghost recovery once the daily sweep detects silence. Registered in
   `spec/events/topics.yaml`, `core/events/topics.py` (ALLOWED_EVENT_TYPES) and the regenerated
   `core/events/types.py`; the vault original has neither change.
-- **Next action (founder):** in the vault `docs/implementation/events/topics.yaml` make the two edits
-  spelled out below (exact text supplied 2026-08-12), then this blocker is closed:
-  1. change `lead.stage_changed.v1`'s payload to
-     `{lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}`;
-  2. add a new entry `lead.went_silent.v1` (producer `crm`, consumer `workflows`) with payload
-     `{lead_id: uuid, stage: string, silence_hours: int, last_customer_msg_at: rfc3339|null}`.
-  File save is the record (the vault is not git-tracked).
+- **Resolution (2026-08-12):** the founder made both edits in the vault
+  `docs/implementation/events/topics.yaml`. **Verified by parsing both files and comparing the
+  payload dicts** — `lead.stage_changed.v1` is
+  `{lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}` and `lead.went_silent.v1` is
+  `{lead_id: uuid, stage: string, silence_hours: int, last_customer_msg_at: rfc3339|null}`, both
+  **identical** to `spec/events/topics.yaml`. The vault, the vendored spec, the hand-maintained
+  `ALLOWED_EVENT_TYPES` and the generated `core/events/types.py` now all agree. Vault is not
+  git-tracked, so the file save is the record.
