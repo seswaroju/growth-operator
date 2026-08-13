@@ -266,8 +266,11 @@ Every step uses real code paths; **nothing bypasses security for the demo** (§1
 
 ## OPEN QUESTIONS
 
-0. **⚠️ The public pricing table is now the reconciled, shorter one** (founder 2026-08-12): the site
-   may show only AVAILABLE capabilities. Appointment booking, segmentation, nurture, support,
+0. **⚠️ The public pricing table is FINAL** (founder 2026-08-12) — see
+   `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md` **Part 6**, which is authoritative. Note the Recover-tier
+   bullet is **"Business Performance Insights"** (week-over-week outcomes + spend/revenue/ROI
+   transparency) — the site must **not** imply recovery-specific dashboards, recovered-lead counts
+   or recovered revenue, none of which are surfaced today. The site Appointment booking, segmentation, nurture, support,
    competitor, Instagram, Google Ads, SEO and all agent personas except Priya are **excluded from
    public paid value**. See `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md` Part 5.
 1. **Domain** not yet decided → config-driven from day one (§63). Confirm when known.

@@ -334,3 +334,70 @@ introduce gates without breaking dev/pilot stores. It is **not** the business ru
 transitional*; **PLAN-2** designs the final subscription-state semantics (active → plan + promotions;
 inactive/expired/cancelled → minimum safe account/data access, **not** ongoing paid growth
 automation).
+
+
+---
+
+# PART 6 — FINAL PRODUCT TRUTH (founder, 2026-08-12) — **THIS IS THE AUTHORITATIVE TABLE**
+
+## Decision on the flag: **option (a)** — rename, do not build now
+
+`Recovery insights` → **`Business Performance Insights`**, in all three tiers. It describes the
+owner-reachable visibility that genuinely exists today: week-over-week business outcomes
+(`/v1/insights/summary`) and spend/revenue/ROI transparency (`/v1/insights/transparency`).
+
+**It must NOT imply** the owner can currently see: ghost-recovery reason distributions,
+owner-picked reasons, recovery success rates, recovered-lead counts, recovered revenue, or any
+recovery outcome dashboard. **None of those are surfaced end-to-end.**
+
+## Authoritative public plan table
+
+| Capability | Recover ₹3,999 | Grow ₹6,999 | Scale ₹12,999 |
+|---|---:|---:|---:|
+| Ghost Lead Recovery | ✓ | ✓ | ✓ |
+| AI Concierge / Priya | ✓ | ✓ | ✓ |
+| Customer CRM / lifecycle | ✓ | ✓ | ✓ |
+| Catalog search & availability | ✓ | ✓ | ✓ |
+| Pricing / quote assistance | ✓ | ✓ | ✓ |
+| **Business Performance Insights** | ✓ | ✓ | ✓ |
+| WhatsApp | ✓ | ✓ | ✓ |
+| Consent-based WhatsApp campaigns | — | ✓ | ✓ |
+| Campaign analytics & attribution | — | ✓ | ✓ |
+| Campaign ROI / performance analysis | — | ✓ | ✓ |
+| Landing-page generation | — | ✓ | ✓ |
+| Landing lead capture | — | ✓ | ✓ |
+| Landing-page / product-interest insights | — | ✓ | ✓ |
+| Growth analytics | — | ✓ | ✓ |
+| Automated catalog ingestion/updates | — | — | ✓ |
+| Gold/rate operations | — | — | ✓ |
+| Staff users | 2 | 5 | 10 |
+| Meta messaging fees | Separate | Separate | Separate |
+| Ad spend | Separate | Separate | Separate |
+
+## Confirmed audit findings (recorded as product truth)
+
+| Capability | Finding |
+|---|---|
+| **Priya (Concierge)** | Executable subset is **real** (messages.send · catalog.search · pricing.compute · ledger.read). **calendar/crm tools remain unavailable** — copy must not promise booking or CRM automation by the agent |
+| **Nisha (Nurture)** | **PARTIAL/INTERNAL** — not public paid value |
+| **Zara (Campaigner)** | **PARTIAL/INTERNAL** — `campaigns.execute` is not executable through mediation |
+| **Mira (Ops)** | **PARTIAL/INTERNAL** — her intended tools are not executable through mediation |
+| **Instagram** | **Not customer-reachable end-to-end** — not public plan value |
+| **Google Ads** | **Not customer-reachable end-to-end** — not public plan value |
+| **Catalog ingestion** | **Owner-reachable and sellable** (`/v1/imports`, `catalog:write`) |
+| **Gold/rate operations** | **Owner-reachable and sellable** (`/v1/rates`, owner manual entry + status) |
+
+## 🔭 HIGH-PRIORITY FOLLOW-UP — "Recovery Performance Insights" (not PLAN-1)
+
+Strategically important: the ghost-recovery wedge should become **measurable to the merchant**.
+A future ticket (**GHOST-3**) must **first audit what is deterministically derivable** from
+`lead_diagnoses`, lead lifecycle, campaign/lead attribution, orders and recovery workflow state.
+
+Candidate metrics **only where derivable**: leads identified as ghosted · recovery attempts · leads
+re-engaged · recovery reason distribution · owner-confirmed reason distribution · recovery outcome ·
+quote/visit/sale progression after recovery · **attributable recovered revenue only if causally or
+contractually supportable**.
+
+**Constraints:** do **not** invent "recovered revenue" attribution the data model cannot defend;
+do **not** create a second analytics system — **extend the existing insights/read-model
+architecture** (`business_metrics` rollup + `core/insights`).
