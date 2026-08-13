@@ -100,3 +100,30 @@ def test_lead_that_never_messaged_falls_back_to_our_last_message() -> None:
 def test_no_exchange_recorded_is_active() -> None:
     assert _c(_lead(last_message_direction=None)) == ACTIVE
     assert _c(_lead(last_customer_msg_at=None, last_outbound_msg_at=None)) == ACTIVE
+
+
+# ---- GHOST-1c: the owner's override outranks the classifier ------------------------------------
+
+def test_owner_exclusion_is_never_chased() -> None:
+    lead = _lead(last_customer_msg_at=_ago(500), recovery_state="excluded")
+    assert _c(lead) == EXCLUDED  # "they walked in / not this one" — the owner has the last word
+
+
+def test_active_snooze_suppresses_and_expired_snooze_returns_to_auto() -> None:
+    ghosted = {"last_customer_msg_at": _ago(500)}
+    # snoozed until next week → not chased
+    assert _c(_lead(**ghosted, recovery_state="snoozed",
+                    recovery_snooze_until=NOW + timedelta(days=7))) == EXCLUDED
+    # the snooze lapsed → falls straight back to the normal verdict, no cleanup job needed
+    assert _c(_lead(**ghosted, recovery_state="snoozed",
+                    recovery_snooze_until=_ago(1))) == GHOST
+
+
+def test_resume_restores_normal_classification() -> None:
+    assert _c(_lead(last_customer_msg_at=_ago(500), recovery_state="auto")) == GHOST
+
+
+def test_owner_override_beats_even_shop_stopped_replying() -> None:
+    lead = _lead(last_message_direction="inbound", last_customer_msg_at=_ago(500),
+                 recovery_state="excluded")
+    assert _c(lead) == EXCLUDED

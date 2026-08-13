@@ -9,6 +9,32 @@ selects and approves the next ticket.
 
 ---
 
+## GHOST-1c · Owner intervention over recovery — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/ghost-1c-owner-intervention`. The founder's ask: *"maybe owner's intervention if the
+lead can be removed from ghost as they contacted"*. The owner can now always pull a lead out of the
+chase — and the state model stays intact.
+
+- **Migration 050** — `leads` gains `recovery_state` (`auto|excluded|snoozed`, CHECK-constrained),
+  `recovery_snooze_until`, `recovery_note` (the owner's own words), `recovery_set_by` / `_set_at`.
+  Additive + nullable/defaulted; RLS already on `leads`. **up/down/up verified.**
+- **Classifier** — the owner's decision is checked **first** and outranks any inference (it even beats
+  `shop_stopped_replying`). An **expired snooze silently returns to `auto`** on the next sweep, so no
+  cleanup job is needed.
+- **Four actions** — `POST /v1/leads/{id}/recovery` (`customers:write`, **audited**
+  `lead.recovery_set`, RLS-scoped): `exclude` · `snooze{until}` · **`contacted`** · `resume`.
+- **`contacted` (founder decision)** — stamps `last_customer_msg_at = now()` rather than excluding:
+  truthful (they really did make contact), the lead leaves `ghost` immediately, **and it can re-enter
+  later if they go quiet again** — nothing is lost forever. Tested end to end.
+
+**Gate (all green):** ruff · mypy core **212** · guards **0** · **alembic 050 up/down/up** · unit
+**578** (+4 override: exclusion never chased, active-snooze suppresses / expired-snooze resumes,
+override beats shop_stopped_replying) · **fresh-DB integration+isolation 676** (+5: exclude → sweep
+skips it, **contacted resets the clock and the lead re-ghosts weeks later**, snooze needs a future
+date 422, audited + viewer 403, cross-tenant 404). **Deferred:** the owner-facing UI for these
+controls + the "N customers are waiting on your reply" feed item ride with **LP-4a**. **Next:** LP-4a.
+
+
 ## GHOST-1b · Silent-lead classification + daily sweep — **COMPLETE — merged `9fd923e`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1b-refinements`. The founder rejected a one-shot verdict: *"how come after 24 or

@@ -83,7 +83,10 @@ async def scene() -> AsyncIterator[Scene]:
         await conn.close()
     yield Scene(org, contact, lead)
     conn = await asyncpg.connect(_dsn())
-    try:
+    try:  # audit_log is append-only → clear this org's rows with the trigger off, then the org
+        await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
+        await conn.execute("DELETE FROM audit_log WHERE org_id=$1", org)
+        await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM organizations WHERE id=$1", org)
     finally:
         await conn.close()
@@ -265,3 +268,143 @@ async def test_the_sweep_event_starts_ghost_recovery(scene: Scene) -> None:
                "silence_hours": 72, "last_customer_msg_at": None}
     started = await match_and_start(scene.org, recovery.WENT_SILENT_EVENT, payload)
     assert len(started) == 1, "silence detected but the recovery playbook did not start"
+
+
+# ---- GHOST-1c: owner intervention ---------------------------------------------------------------
+
+async def _client():
+    import httpx
+
+    from core.api.main import app
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+def _owner_hdr(org: uuid.UUID, user: uuid.UUID) -> dict[str, str]:
+    from core.tenancy.auth import issue_access_token
+    tok = issue_access_token(sub=str(user), secret=get_settings().jwt_secret,
+                             org_id=str(org), roles=["owner"])
+    return {"Authorization": f"Bearer {tok}"}
+
+
+async def _owner_user(org: uuid.UUID) -> uuid.UUID:
+    user = uuid.uuid4()
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute("INSERT INTO users (id,email) VALUES ($1,$2)",
+                           user, f"own+{user.hex[:8]}@t.test")
+        await conn.execute("INSERT INTO user_orgs (user_id,org_id,role) VALUES ($1,$2,'owner')",
+                           user, org)
+    finally:
+        await conn.close()
+    return user
+
+
+async def _recovery_row(lead: uuid.UUID) -> dict:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        r = await conn.fetchrow(
+            "SELECT recovery_state, recovery_snooze_until, recovery_note, recovery_set_by, "
+            "       last_customer_msg_at FROM leads WHERE id=$1", lead)
+        return dict(r)
+    finally:
+        await conn.close()
+
+
+async def test_owner_can_exclude_a_lead_and_the_sweep_skips_it(scene: Scene) -> None:
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=200)
+    user = await _owner_user(scene.org)
+    async with await _client() as client:
+        r = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                              headers=_owner_hdr(scene.org, user),
+                              json={"action": "exclude", "note": "walked in Saturday"})
+    assert r.status_code == 200 and r.json()["recovery_state"] == "excluded"
+    row = await _recovery_row(scene.lead)
+    assert row["recovery_note"] == "walked in Saturday" and row["recovery_set_by"] == user
+
+    async with org_scoped_session(scene.org) as s:
+        counts = await recovery.sweep_org(s, scene.org)
+        await s.commit()
+    assert counts[recovery.GHOST] == 0                    # never chased again
+    assert await _silent_events(scene.org) == []
+
+
+async def test_contacted_resets_the_clock_and_the_lead_can_re_ghost_later(scene: Scene) -> None:
+    """The founder's flow: 'they called me' → stop chasing now, but if they go quiet again the
+    lead legitimately comes back into recovery (nothing is lost forever)."""
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=200)
+    user = await _owner_user(scene.org)
+    async with await _client() as client:
+        r = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                              headers=_owner_hdr(scene.org, user),
+                              json={"action": "contacted", "note": "phoned her"})
+    assert r.status_code == 200 and r.json()["recovery_state"] == "auto"
+
+    async with org_scoped_session(scene.org) as s:  # clock reset → no longer a ghost
+        assert (await recovery.sweep_org(s, scene.org))[recovery.GHOST] == 0
+        await s.commit()
+
+    # ...weeks later they have gone quiet again → they re-enter recovery
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=400)
+    async with org_scoped_session(scene.org) as s:
+        assert (await recovery.sweep_org(s, scene.org))[recovery.GHOST] == 1
+        await s.commit()
+
+
+async def test_snooze_requires_a_future_date(scene: Scene) -> None:
+    user = await _owner_user(scene.org)
+    async with await _client() as client:
+        past = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                                 headers=_owner_hdr(scene.org, user),
+                                 json={"action": "snooze", "until": "2020-01-01T00:00:00Z"})
+        missing = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                                    headers=_owner_hdr(scene.org, user),
+                                    json={"action": "snooze"})
+    assert past.status_code == 422 and missing.status_code == 422
+
+
+async def test_recovery_action_is_audited_and_gated(scene: Scene) -> None:
+    user = await _owner_user(scene.org)
+    async with await _client() as client:
+        await client.post(f"/v1/leads/{scene.lead}/recovery",
+                          headers=_owner_hdr(scene.org, user), json={"action": "exclude"})
+        # a viewer cannot change recovery
+        from core.tenancy.auth import issue_access_token
+        viewer = issue_access_token(sub=str(uuid.uuid4()), secret=get_settings().jwt_secret,
+                                    org_id=str(scene.org), roles=["viewer"])
+        forbidden = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                                      headers={"Authorization": f"Bearer {viewer}"},
+                                      json={"action": "exclude"})
+    assert forbidden.status_code == 403
+    conn = await asyncpg.connect(_dsn())
+    try:
+        action = await conn.fetchval(
+            "SELECT action FROM audit_log WHERE org_id=$1 AND action='lead.recovery_set' LIMIT 1",
+            scene.org)
+    finally:
+        await conn.close()
+    assert action == "lead.recovery_set"
+
+
+async def test_recovery_is_tenant_isolated(scene: Scene) -> None:
+    other = uuid.uuid4()
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'Other')", other)
+    finally:
+        await conn.close()
+    stranger = await _owner_user(other)
+    try:
+        async with await _client() as client:
+            r = await client.post(f"/v1/leads/{scene.lead}/recovery",
+                                  headers=_owner_hdr(other, stranger), json={"action": "exclude"})
+        assert r.status_code == 404  # org B cannot touch org A's lead
+        assert (await _recovery_row(scene.lead))["recovery_state"] == "auto"
+    finally:
+        conn = await asyncpg.connect(_dsn())
+        try:
+            await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
+            await conn.execute("DELETE FROM audit_log WHERE org_id=$1", other)
+            await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
+            await conn.execute("DELETE FROM organizations WHERE id=$1", other)
+        finally:
+            await conn.close()

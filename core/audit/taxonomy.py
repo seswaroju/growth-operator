@@ -28,6 +28,7 @@ WORKFLOW_ACTIVATED = "workflow.activated"
 WORKFLOW_COMPENSATED = "workflow.compensated"
 MANIFEST_VIOLATION = "manifest.violation"
 LANDING_PAGE_TRANSITION = "landing_page.transition"  # LP-2b lifecycle (select/publish/pause/…)
+LEAD_RECOVERY_SET = "lead.recovery_set"  # GHOST-1c owner override (exclude/snooze/contacted/resume)
 
 # Actor types.
 ACTOR_USER = "user"

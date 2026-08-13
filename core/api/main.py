@@ -17,6 +17,7 @@ from core.common.errors import register_exception_handlers
 from core.common.telemetry import setup_telemetry
 from core.competitors.api import router as competitors_router
 from core.conversations.api import router as conversations_router
+from core.customers.api import lead_router as leads_router
 from core.customers.api import router as customers_router
 from core.ingestion.api import router as imports_router
 from core.insights.api import insight_admin_router, insights_router
@@ -93,6 +94,7 @@ app.include_router(insight_admin_router)
 app.include_router(conversations_router)
 app.include_router(competitors_router)
 app.include_router(customers_router)
+app.include_router(leads_router)  # GHOST-1c owner recovery controls
 app.include_router(pricing_router)
 app.include_router(rates_router)
 app.include_router(ops_router)

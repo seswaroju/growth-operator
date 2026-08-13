@@ -53,6 +53,16 @@ def classify(lead: dict[str, Any], *, now: datetime, threshold_hours: int) -> st
 
     `lead` needs: `stage`, `last_message_direction`, `last_customer_msg_at`, `last_outbound_msg_at`.
     """
+    # The owner's own decision outranks any inference (GHOST-1c).
+    state = lead.get("recovery_state") or "auto"
+    if state == "excluded":
+        return EXCLUDED
+    if state == "snoozed":
+        until = lead.get("recovery_snooze_until")
+        if until is not None and until > now:
+            return EXCLUDED
+        # an EXPIRED snooze simply falls through to `auto` — no cleanup job needed
+
     if lead.get("stage") in _TERMINAL_STAGES:
         return EXCLUDED
     if lead.get("stage") not in ENGAGED_STAGES:
@@ -100,7 +110,8 @@ async def _candidates(session: AsyncSession, org_id: UUID) -> list[dict[str, Any
     rows = (
         await session.execute(
             text("SELECT id, stage, last_message_direction, last_customer_msg_at, "
-                 "       last_outbound_msg_at, contact_id "
+                 "       last_outbound_msg_at, contact_id, recovery_state, "
+                 "       recovery_snooze_until "
                  "FROM leads WHERE org_id = :o AND stage = ANY(:stages)"),
             {"o": str(org_id), "stages": list(ENGAGED_STAGES)})
     ).mappings().all()
@@ -167,3 +178,69 @@ def register_jobs() -> None:
     from core.events import scheduler as sched
 
     sched.register("recovery_sweep", "30 7 * * *", run_recovery_sweep)
+
+
+# ---- Owner intervention (GHOST-1c) ---------------------------------------------------------------
+# The owner can always pull a lead out of the chase, or tell us the customer reached them another
+# way. Every action is audited by the caller (the API route).
+
+EXCLUDE = "exclude"
+SNOOZE = "snooze"
+CONTACTED = "contacted"
+RESUME = "resume"
+ACTIONS = (EXCLUDE, SNOOZE, CONTACTED, RESUME)
+
+
+class RecoveryActionInvalid(Exception):
+    """An unusable recovery action (unknown verb / snooze without a future date) → 422."""
+
+
+async def set_recovery(
+    session: AsyncSession, org_id: UUID, lead_id: UUID, *, action: str,
+    until: datetime | None = None, note: str | None = None, actor_id: UUID | None = None,
+) -> dict[str, Any] | None:
+    """Apply an owner override to one lead. Returns the new state, or None when the lead is not the
+    caller's (RLS-scoped → 404).
+
+    `contacted` deliberately does **not** exclude the lead: it stamps the customer's last-contact
+    time, so the lead leaves `ghost` truthfully *and* can re-enter later if they go quiet again
+    (founder decision 2026-08-12) — nothing is lost forever.
+    """
+    if action not in ACTIONS:
+        raise RecoveryActionInvalid(f"unknown recovery action {action!r}")
+    if action == SNOOZE and (until is None or until <= datetime.now(UTC)):
+        raise RecoveryActionInvalid("snooze needs a future 'until'")
+
+    exists = (
+        await session.execute(
+            text("SELECT 1 FROM leads WHERE id = :id AND org_id = :o"),
+            {"id": str(lead_id), "o": str(org_id)})
+    ).scalar()
+    if exists is None:
+        return None
+
+    clipped_note = (note or "")[:500] or None
+    if action == CONTACTED:
+        # the customer really did make contact → reset the silence clock; state stays `auto`
+        await session.execute(
+            text("UPDATE leads SET last_customer_msg_at = now(), "
+                 " last_message_direction = 'inbound', last_touch_at = now(), "
+                 " recovery_state = 'auto', recovery_snooze_until = NULL, "
+                 " recovery_note = :n, recovery_set_by = :by, recovery_set_at = now(), "
+                 " updated_at = now() WHERE id = :id"),
+            {"n": clipped_note, "by": str(actor_id) if actor_id else None, "id": str(lead_id)})
+    else:
+        state = {EXCLUDE: "excluded", SNOOZE: "snoozed", RESUME: "auto"}[action]
+        await session.execute(
+            text("UPDATE leads SET recovery_state = :s, recovery_snooze_until = :u, "
+                 " recovery_note = :n, recovery_set_by = :by, recovery_set_at = now(), "
+                 " updated_at = now() WHERE id = :id"),
+            {"s": state, "u": until if action == SNOOZE else None, "n": clipped_note,
+             "by": str(actor_id) if actor_id else None, "id": str(lead_id)})
+
+    row = (
+        await session.execute(
+            text("SELECT recovery_state, recovery_snooze_until, recovery_note "
+                 "FROM leads WHERE id = :id"), {"id": str(lead_id)})
+    ).mappings().first()
+    return dict(row) if row else None
