@@ -5872,7 +5872,8 @@ nothing. Rule Zero preserved (guards 0).
 `pytest tests/unit` (**587**) · **fresh-DB integration+isolation — 683 passed, 4 skipped, 0 errors** ·
 web `tsc` · `lint` · `vitest` (**78**) · `build`.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `50c5992` (merge `82b5f79`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** the owner-facing **upload widget** + a "your pages are ready" notification (small
 follow-up), or a pilot-readiness pass over the founder-side blockers.

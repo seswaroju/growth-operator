@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-4b · Asset upload → auto-generated pages (+ variant range 1–5, default 3) — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-4b · Asset upload → auto-generated pages (+ variant range 1–5, default 3) — **COMPLETE — merged `82b5f79`, CI green** (2026-08-12)
 
 Branch `feature/lp-4b-upload-autogenerate`. The founder's original trigger: *"an upload button from
 their login dashboard so GO automatically detects and produces a landing page"* — plus the requested
