@@ -3,11 +3,18 @@
 # 2026-08-09), so it PARSES, COMPILES, and RUNS gated-simulated. See
 # docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md + 10-agents/ghost-diagnosis-prompt.md.
 #
-# Deferred to the CAPTURE-GAP migrations (needs data today's schema lacks; then re-enable):
-#   - classify_ghost (ghost vs shop-stopped-replying) — needs last_outbound_msg_at (CAPTURE-GAP-04);
-#   - the 24h post-quote silence window in the trigger — needs last_customer_msg_at (GAP-05);
-#   - the sales-handoff branch + writing the owner's pick to lead_diagnoses (GAP-06).
-# The diagnosis + reason-conditioned recovery + approval gate all run today.
+# CAPTURE-GAP status (refreshed 2026-08-12 — the gaps this header used to defer are closed):
+#   - ghost vs shop-stopped-replying: DONE, deterministically, in `core/customers/recovery.classify`
+#     (GHOST-1b). A customer who spoke last and was never answered is `shop_stopped_replying` — the
+#     OWNER is told and the customer is never chased. The spec's `classify_ghost` agent step was
+#     dropped in favour of facts (DECISIONS 2026-08-12): no model call to compare two timestamps.
+#   - the silence window: DONE and improved (GHOST-1b). Not a fixed 24h post-quote dwell but an
+#     owner-configurable threshold (`recovery.silence_hours`, default 72) measured from the
+#     CUSTOMER's last message, so a lead that replies and goes quiet again re-enters recovery.
+#   - the owner's pick → `lead_diagnoses`: DONE (the approval_gate's `label_sink` below).
+#   - STILL OPEN (enhancement, not a blocker): the sales-handoff branch — escalating a high-value or
+#     repeatedly-unrecovered lead to a named human salesperson instead of another message.
+# Owner overrides (exclude / snooze / contacted / resume) are enforced by the same classifier (GHOST-1c).
 workflow: silent_lead_reactivation
 version: 4
 # GHOST-1b: recovery starts when SILENCE IS DETECTED, not when the quote goes out — a lead that
