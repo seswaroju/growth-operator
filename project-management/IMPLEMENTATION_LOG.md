@@ -5877,3 +5877,32 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** the owner-facing **upload widget** + a "your pages are ready" notification (small
 follow-up), or a pilot-readiness pass over the founder-side blockers.
+
+---
+
+## 2026-08-12 — LP-4b.1 · Media bounds: hero required + up to 4 product photos
+
+**Ticket:** LP-4b follow-up (founder: *"the hero picture which is must and another 4. So total of 5.
+Store owner can also select only hero which is 1 media"*). LP-4b shipped with a placeholder cap of 8
+images; this pins it to the real product rule.
+
+**Files modified:** `core/landing/assets.py` (`MAX_PRODUCT_ASSETS = 4`, `MAX_ASSETS = 5`, hero-required
+message), `tests/unit/test_landing_assets.py` (+2, one rewritten),
+`tests/integration/test_landing_page.py` (+2), tracking docs.
+
+**Behaviour:** the **hero is required** (an empty upload → "a hero image is required"); up to **4**
+product photos may follow; **6+ is refused** with a message that states the rule rather than a bare
+number. A **hero-only** upload is explicitly valid — the page renders the hero and simply omits the
+product grid, and it still generates all three layouts and a working WhatsApp CTA (asserted on the
+rendered element, not the stylesheet class). `MAX_ASSETS` is documented as **distinct** from
+`MAX_VARIANTS` (layouts) — they happen to share the number 5 but are unrelated concepts.
+
+**Migration/APIs/Events:** none (the bound is enforced in the existing upload path).
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**213**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**589**) · **fresh-DB integration+isolation — 685 passed, 4 skipped, 0 errors**.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** the owner-facing upload widget + "your pages are ready" notification, or a
+pilot-readiness pass.

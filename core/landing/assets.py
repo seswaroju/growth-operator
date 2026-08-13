@@ -32,9 +32,12 @@ from core.channels.whatsapp.media import (
 from core.landing.plan import CampaignContext, ProductRef
 from core.landing.service import generate_variants
 
-# A campaign page needs a hero plus a handful of product shots — more than this is a catalogue
-# import, not a landing page.
-MAX_ASSETS = 8
+# Media bounds (founder, 2026-08-12): the **hero is required**, plus up to four product photos.
+# Hero-only is a perfectly valid page. More than this is a catalogue import, not a landing page.
+# NB: distinct from `MAX_VARIANTS` (how many LAYOUTS a page may have) — same number, different
+# concept.
+MAX_PRODUCT_ASSETS = 4
+MAX_ASSETS = 1 + MAX_PRODUCT_ASSETS  # 1 hero + 4 product photos
 
 
 class AssetRejected(Exception):
@@ -60,9 +63,11 @@ async def store_assets(
     Raises `AssetRejected` on a disallowed type, an oversized file, or a scan that cannot run —
     an unscannable upload is never stored, and an infected one never is either."""
     if not files:
-        raise AssetRejected("no files uploaded")
+        raise AssetRejected("a hero image is required")
     if len(files) > MAX_ASSETS:
-        raise AssetRejected(f"at most {MAX_ASSETS} images per campaign")
+        raise AssetRejected(
+            f"at most {MAX_ASSETS} images — one hero plus up to "
+            f"{MAX_PRODUCT_ASSETS} product photos")
 
     av = scanner or default_scanner()
     objects = store or default_store()
@@ -89,8 +94,10 @@ def build_campaign(
 ) -> CampaignContext:
     """Turn the upload + the owner's words into a campaign context.
 
-    The **first** asset becomes the hero; the rest become product tiles, paired with the titles the
-    owner supplied (extra images fall back to a numbered label rather than inventing a product)."""
+    The **first** asset is the hero (required); the remaining ones — up to `MAX_PRODUCT_ASSETS` —
+    become product tiles paired with the titles the owner supplied. An extra image without a title
+    falls back to a neutral label rather than inventing a product. A hero-only upload is valid: the
+    page simply has no product grid."""
     hero = assets[0].ref if assets else None
     rest = assets[1:]
     products: list[ProductRef] = []

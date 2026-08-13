@@ -30,11 +30,17 @@ change: **more layouts on demand, max 5, default 3** ("the typical landing page 
   the founder enables them, exactly like the WhatsApp media path.
 - Owner console: `DEFAULT_VARIANTS`/`MAX_VARIANTS` + blurbs for the two new layouts.
 
-**Gate (all green):** ruff · mypy core **213** · guards **0** · unit **587** (+8 assets: clean→stored,
+**Media bounds (founder follow-up, same day):** the **hero is required**, plus up to **4** product
+photos — **5 media in total**, and a **hero-only** upload is valid (the page simply renders no product
+grid). `MAX_PRODUCT_ASSETS = 4`, `MAX_ASSETS = 5` (was 8), with an error that names the rule. Kept
+deliberately distinct from `MAX_VARIANTS` (layouts) — same number, different concept.
+
+**Gate (all green):** ruff · mypy core **213** · guards **0** · unit **589** (+8 assets: clean→stored,
 **infected never stored**, **unscannable fails closed**, bad type/empty/oversized, count bounded,
 hero/product split, neutral placeholder, named-without-photo; +2 variant bounds/distinctness) ·
-**fresh-DB integration+isolation 683** (+5: upload auto-generates 3 and the render uses the uploaded
-hero, disallowed type 422 writes nothing, viewer 403, default-is-3, 5-up + over-cap 422) · web tsc ·
+**fresh-DB integration+isolation 685** (+7: upload auto-generates 3 and the render uses the uploaded
+hero, **hero-only renders with no empty grid**, **over the 5-media cap 422 writes nothing**, disallowed
+type 422, viewer 403, default-is-3, 5-up + over-cap 422) · web tsc ·
 lint · **vitest 78** · build. No migration. **Deferred:** the upload *widget* in the owner UI and the
 "pages are ready" notification — the endpoint + bounds are done and testable now.
 
