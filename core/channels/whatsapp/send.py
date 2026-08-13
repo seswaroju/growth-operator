@@ -78,6 +78,10 @@ class SendOutcome:
     message_id: UUID | None
     provider_message_id: str | None = None
     retryable: bool = False
+    #: True when this call did NOT dispatch because the idempotency key was already claimed. The
+    #: caller is seeing someone else's outcome, which is exactly the point — but a lifecycle that
+    #: recorded a second "sent" transition from it would double-count a single customer touch.
+    already_dispatched: bool = False
 
 
 def _assert_not_suppressed(scopes: set[str], message_class: MessageClass) -> None:
@@ -354,7 +358,7 @@ async def send(
         if claim.already_dispatched:
             return SendOutcome(
                 sent=claim.sent, message_id=claim.message_id,
-                provider_message_id=claim.provider_message_id)
+                provider_message_id=claim.provider_message_id, already_dispatched=True)
         message_id = claim.message_id
 
     # audit_id is guaranteed non-None past gate 1

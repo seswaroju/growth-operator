@@ -66,6 +66,7 @@ async def _messages_send(
     from core.audit.writer import AuditEntry
     from core.audit.writer import write as audit_write
     from core.channels.whatsapp.send import SEND_ACTION, SendRefused, send
+    from core.channels.whatsapp.templates import TemplateNotSendable
 
     body = str(params.get("body") or "")
     conversation_id = params.get("conversation_id") or (
@@ -73,6 +74,19 @@ async def _messages_send(
             text("SELECT conversation_id FROM agent_runs WHERE id = :r"), {"r": str(ctx.run_id)}
         )
     ).scalar_one_or_none()
+
+    # Template send (PILOT-1C). A ghost lead is silent by definition, so the 24-hour service window
+    # has closed and WhatsApp accepts only an approved template. The key is a pack-authored
+    # constant reaching this tool through the workflow DSL — never composed by a model — and the
+    # MVP-035 gate independently refuses any key this store has not had approved, so an agent that
+    # invented one gets `TemplateNotSendable` rather than a send.
+    template_key = params.get("template_key")
+    template: tuple[str, str] | None = None
+    if template_key:
+        template = (str(template_key), str(params.get("template_language") or "en"))
+        # `body` is what we STORE as the conversation record; the wire content is the approved
+        # template. Storing the rendered text keeps the owner's inbox honest about what was sent.
+        body = body or await _render_stored_body(session, ctx.org_id, template, params)
     if not body or not conversation_id:
         raise GrowthOperatorError(
             "config_schema_violation", "messages.send needs a body and a conversation")
@@ -95,11 +109,40 @@ async def _messages_send(
             audit_id=capability.id, execution_token=token, session=session,
             message_class=params.get("message_class", "transactional"),
             figure_refs=list(params.get("figure_refs", [])),
+            template=template,
+            template_parameters=tuple(str(p) for p in params.get("template_parameters", ())),
+            idempotency_key=(str(params["idempotency_key"])
+                             if params.get("idempotency_key") else None),
+            recovery_attempt_id=(UUID(str(params["recovery_attempt_id"]))
+                                 if params.get("recovery_attempt_id") else None),
         )
     except SendRefused as exc:
         return {"sent": False, "refused": exc.code, "conversation_id": str(conv_id)}
+    except TemplateNotSendable as exc:
+        # Not an error the run should die on: the store's template is missing or unapproved, which
+        # is an operational fact the owner can fix. Reported, never retried into a second attempt.
+        return {"sent": False, "refused": "template_not_sendable", "template": exc.template_key,
+                "conversation_id": str(conv_id)}
     return {"sent": outcome.sent, "conversation_id": str(conv_id),
-            "message_id": str(outcome.message_id) if outcome.message_id else None}
+            "message_id": str(outcome.message_id) if outcome.message_id else None,
+            "provider_message_id": outcome.provider_message_id,
+            "already_dispatched": outcome.already_dispatched}
+
+
+async def _render_stored_body(
+    session: AsyncSession, org_id: UUID, template: tuple[str, str], params: dict[str, Any]
+) -> str:
+    """The text stored on the conversation for a template send: the approved template body with its
+    `{{n}}` placeholders filled from the same parameters sent to Meta. Read from the store's own
+    approved template row — never reconstructed by a model, so the record cannot drift from the
+    wire content."""
+    from core.channels.whatsapp.templates import get_template
+
+    tpl = await get_template(session, org_id, template[0], template[1])
+    text_body = str((tpl or {}).get("body") or "")
+    for i, value in enumerate(params.get("template_parameters", ()), start=1):
+        text_body = text_body.replace(f"{{{{{i}}}}}", str(value))
+    return text_body or template[0]
 
 
 async def _landing_generate(

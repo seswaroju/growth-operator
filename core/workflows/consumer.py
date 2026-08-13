@@ -12,6 +12,7 @@ and tested here and in `triggers`. Until then, event-waits resolve via the timeo
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +22,8 @@ from core.events.consumer import consumer
 from core.events.topics import stream_name
 from core.tenancy.middleware import org_scoped_session
 from core.workflows import executor, waits
+
+logger = logging.getLogger(__name__)
 
 
 @consumer(stream_name("msg.received.v1"), "workflow-reply-wait")
@@ -32,6 +35,39 @@ async def on_msg_received(envelope: dict[str, Any]) -> None:
     if not conversation_id:
         return
     await waits.match_reply(org_id, UUID(str(conversation_id)))
+
+
+@consumer(stream_name("lead.went_silent.v1"), "workflow-silent-lead")
+async def on_lead_went_silent(envelope: dict[str, Any]) -> None:
+    """A silent lead → start the recovery playbook, grounded in facts read here.
+
+    A **static** consumer, deliberately. The alternative — a generic consumer subscribing to every
+    event type some tenant's workflow happens to name — would let a stored trigger definition
+    decide which streams the platform consumes, and the set of things a workflow can react to is a
+    platform decision, not tenant configuration.
+
+    The event carries identifiers; the conversation, the pre-silence thread and any provable quoted
+    item are loaded under tenant scope (see `core.customers.recovery_context`). If they cannot be
+    assembled the run does not start: a recovery that cannot identify its own conversation would
+    send into the dark and be unable to recognise the reply.
+    """
+    from core.customers.recovery_context import RecoveryContextUnavailable, build
+    from core.tenancy.repository import set_org_context
+    from core.workflows import triggers
+
+    org_id = UUID(str(envelope["subject"]))
+    payload = dict(envelope.get("data") or {})
+    if not payload.get("lead_id"):
+        return
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        try:
+            ctx = await build(s, org_id, payload)
+        except RecoveryContextUnavailable as exc:
+            logger.info("recovery.not_started: lead %s (%s)", payload.get("lead_id"), exc.reason)
+            return
+    await triggers.match_and_start(
+        org_id, "lead.went_silent.v1", {**payload, **ctx.as_subject()})
 
 
 @consumer(stream_name("approval.resolved.v1"), "workflow-human-task")
@@ -57,6 +93,33 @@ async def on_approval_resolved(envelope: dict[str, Any]) -> None:
         return
     decision = "approved" if data.get("decision") == "approved" else "rejected"
     await executor.resume_human(org_id, UUID(str(wf_run_id)), decision)
+
+
+@consumer(stream_name("approval.resolved.v1"), "workflow-tool-call")
+async def on_tool_approval_resolved(envelope: dict[str, Any]) -> None:
+    """A resolved `workflow.tool_call` approval → re-enter the parked step (approve) or compensate
+    (reject). Its own consumer group, so a failure resuming a tool cannot stall human-task wakes."""
+    org_id = UUID(str(envelope["subject"]))
+    data = envelope.get("data") or {}
+    approval_id = data.get("approval_id")
+    if not approval_id:
+        return
+    async with org_scoped_session(org_id) as s:
+        appr = (await s.execute(
+            text("SELECT action_type, payload FROM approvals WHERE id = :id"),
+            {"id": str(approval_id)})).mappings().first()
+    if appr is None or appr["action_type"] != executor.WORKFLOW_TOOL_ACTION:
+        return
+    payload = appr["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    wf_run_id = payload.get("workflow_run_id")
+    if not wf_run_id:
+        return
+    decision = "approved" if data.get("decision") == "approved" else "rejected"
+    # The approved tool comes from the APPROVAL's payload, not the event — the human approved a
+    # specific effect, and the event only reports their verdict.
+    await executor.resume_tool(org_id, UUID(str(wf_run_id)), decision, payload.get("tool"))
 
 
 @consumer(stream_name("approval.resolved.v1"), "workflow-activation")
