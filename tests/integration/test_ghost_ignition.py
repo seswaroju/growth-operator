@@ -408,3 +408,29 @@ async def test_recovery_is_tenant_isolated(scene: Scene) -> None:
             await conn.execute("DELETE FROM organizations WHERE id=$1", other)
         finally:
             await conn.close()
+
+
+async def test_waiting_customers_surface_in_the_owner_feed(scene: Scene) -> None:
+    """GHOST-1d: a customer who messaged and got no reply appears in the owner's notification feed —
+    the store is losing a warm lead, and the customer is never chased for it."""
+    from core.notifications.service import get_feed
+
+    await _set_touch(scene.lead, direction="inbound", customer_hours_ago=100,
+                     outbound_hours_ago=None)
+    user = await _owner_user(scene.org)
+    async with org_scoped_session(scene.org) as s:
+        feed = await get_feed(s, scene.org, user)
+    waiting = [i for i in feed["items"] if i["kind"] == "waiting"]
+    assert len(waiting) == 1
+    assert waiting[0]["count"] == 1 and "waiting on your reply" in waiting[0]["title"]
+
+
+async def test_no_waiting_item_when_everyone_has_been_answered(scene: Scene) -> None:
+    from core.notifications.service import get_feed
+
+    # a ghost (we spoke last) — not someone waiting on us
+    await _set_touch(scene.lead, direction="outbound", customer_hours_ago=100)
+    user = await _owner_user(scene.org)
+    async with org_scoped_session(scene.org) as s:
+        feed = await get_feed(s, scene.org, user)
+    assert [i for i in feed["items"] if i["kind"] == "waiting"] == []

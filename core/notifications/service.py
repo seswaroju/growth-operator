@@ -11,7 +11,7 @@ bell marks everything seen. All reads are RLS-scoped, so a user only ever sees t
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -73,6 +73,24 @@ async def get_feed(
         items.append({"kind": "announcement", "ref": str(r["id"]),
                       "title": r["title"], "body": r["body"], "level": r["level"],
                       "at": r["published_at"]})
+
+    # GHOST-1d: customers waiting on the STORE — warm leads actively being lost. Derived from the
+    # same deterministic classifier the recovery sweep uses (no table, no duplicate state).
+    from core.customers.recovery import waiting_on_store
+
+    waiting = await waiting_on_store(session, org_id)
+    if waiting:
+        newest = max(
+            (w["last_customer_msg_at"] for w in waiting if w.get("last_customer_msg_at")),
+            default=None)
+        n = len(waiting)
+        items.append({
+            "kind": "waiting", "ref": "waiting",
+            "title": f"{n} customer{'' if n == 1 else 's'} waiting on your reply",
+            "body": "They messaged you and haven't heard back.",
+            "count": n,
+            "at": newest or datetime.now(UTC),
+        })
 
     items.sort(key=lambda i: i["at"], reverse=True)
     items = items[:limit]

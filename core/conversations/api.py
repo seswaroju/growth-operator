@@ -79,6 +79,9 @@ class LeadSummary(BaseModel):
     variant: str | None = None
     channel_type: str | None = None
     utm: dict[str, str] = Field(default_factory=dict)
+    # GHOST-1c/1d: `auto` | `excluded` | `snoozed` — the owner's override on silent-lead recovery.
+    recovery_state: str = "auto"
+    recovery_snooze_until: datetime | None = None
 
 
 @router.get("/conversations", response_model=list[ConversationSummary], summary="Inbox")
@@ -139,6 +142,8 @@ async def list_leads(
             landing_page_id=r.get("landing_page_id"), landing_slug=r.get("landing_slug"),
             variant=r.get("variant"), channel_type=r.get("channel_type"),
             utm=r.get("utm") or {},
+            recovery_state=r.get("recovery_state") or "auto",
+            recovery_snooze_until=r.get("recovery_snooze_until"),
         )
         for r in rows
     ]

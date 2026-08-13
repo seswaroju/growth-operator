@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   getConversation,
@@ -7,6 +7,8 @@ import {
   getLeads,
   type ConversationSummary,
   type Lead,
+  setLeadRecovery,
+  type RecoveryAction,
 } from "../api";
 import { useAuth } from "../auth";
 import { isFromStore, preview, senderLabel } from "../lib/conversations";
@@ -161,6 +163,12 @@ function InboxView({ token }: { token: string }) {
 
 function LeadCard({ lead }: { lead: Lead }) {
   const name = lead.contact_name ?? lead.contact_phone ?? "Unknown";
+  const { token } = useAuth();
+  const qc = useQueryClient();
+  const act = useMutation({
+    mutationFn: (action: RecoveryAction) => setLeadRecovery(token!, lead.id, action),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["leads"] }); },
+  });
   return (
     <div className="rounded-xl border border-line bg-surface p-3 shadow-card">
       <div className="flex items-center justify-between gap-2">
@@ -173,6 +181,45 @@ function LeadCard({ lead }: { lead: Lead }) {
       {lead.next_followup_at && (
         <p className="mt-1 text-[11px] text-ink-2">Follow up: {fmtTime(lead.next_followup_at)}</p>
       )}
+      {/* GHOST-1d: the owner always has the last word on whether we chase this lead. */}
+      {lead.recovery_state !== "auto" && (
+        <p className="mt-1 text-[11px] font-medium text-ink-2">
+          {lead.recovery_state === "excluded" ? "Not being chased" : "Paused for now"}
+        </p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {lead.recovery_state === "auto" ? (
+          <>
+            <button
+              className="rounded-lg bg-line-2 px-2 py-1 text-[10px] font-semibold text-ink-2
+                hover:bg-line disabled:opacity-50"
+              disabled={act.isPending}
+              onClick={() => act.mutate("contacted")}
+              title="They called or walked in — stop chasing for now"
+            >
+              They contacted me
+            </button>
+            <button
+              className="rounded-lg bg-line-2 px-2 py-1 text-[10px] font-semibold text-ink-2
+                hover:bg-line disabled:opacity-50"
+              disabled={act.isPending}
+              onClick={() => act.mutate("exclude")}
+              title="Never chase this lead"
+            >
+              Don't chase
+            </button>
+          </>
+        ) : (
+          <button
+            className="rounded-lg bg-line-2 px-2 py-1 text-[10px] font-semibold text-ink-2
+              hover:bg-line disabled:opacity-50"
+            disabled={act.isPending}
+            onClick={() => act.mutate("resume")}
+          >
+            Chase again
+          </button>
+        )}
+      </div>
     </div>
   );
 }

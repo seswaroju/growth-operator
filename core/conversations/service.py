@@ -93,7 +93,9 @@ async def list_leads(session: AsyncSession, org_id: UUID) -> list[dict[str, Any]
                        -- LEAD-1: where this lead was captured from (any origin)
                        l.landing_page_id, l.variant, l.utm,
                        lp.slug AS landing_slug,
-                       ch.type AS channel_type
+                       ch.type AS channel_type,
+                       -- GHOST-1c/1d: the owner's recovery override on this lead
+                       l.recovery_state, l.recovery_snooze_until
                 FROM leads l
                 LEFT JOIN contacts ct ON ct.id = l.contact_id
                 LEFT JOIN landing_pages lp ON lp.id = l.landing_page_id

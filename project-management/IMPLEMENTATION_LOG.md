@@ -5796,3 +5796,42 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1d (owner recovery controls + the "N customers are waiting on your reply"
 notification), then LP-4b (asset upload → auto-generate variants → notify).
+
+---
+
+## 2026-08-12 — GHOST-1d · Owner recovery controls + "waiting on you" notification
+
+**Ticket:** GHOST-1d (founder: "Yes let's start GHOST-1d"). The GHOST-1b/1c backend shipped earlier
+today had no owner-facing surface; this adds it. **Frontend + a small read-side backend change; no
+migration.**
+
+**Files modified:** `core/notifications/service.py` (new derived `waiting` feed source),
+`core/conversations/service.py` + `api.py` (`GET /v1/leads` returns `recovery_state` +
+`recovery_snooze_until`), `web/src/api.ts` (`Lead` recovery fields, `setLeadRecovery`, `waiting` in
+the notification `kind` union + optional `count`), `web/src/components/ConversationsSection.tsx`
+(recovery controls on the lead card), `web/src/components/NotificationBell.tsx` +
+`web/src/lib/notifications.ts` (the new kind), `web/src/lib/leads.test.ts` (fixture),
+`tests/integration/test_ghost_ignition.py` (+2), tracking docs.
+
+**Behaviour:** the owner feed gains **"N customers waiting on your reply"**, derived live from
+`recovery.waiting_on_store()` — the same deterministic classifier the sweep uses, so there is no
+second source of truth and no new table. On each lead card the owner gets **"They contacted me"**
+(resets the silence clock — the lead leaves `ghost` truthfully and can re-enter later), **"Don't
+chase"** (exclude), and **"Chase again"** (resume), with a state line when an override is active.
+
+**Migration/Events:** none. **Security:** no new surface — the controls call the existing
+`customers:write`-gated, audited, RLS-scoped `POST /v1/leads/{id}/recovery`; the feed item is derived
+inside the caller's org context. Guards (incl. industry-nouns over `web/src`) pass.
+
+**Type-safety note:** widening the notification `kind` union made the compiler flag all three call
+sites (icon map, label map, bell) — the drift was caught by types, not review.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**212**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**578**) · **fresh-DB integration+isolation — 678 passed, 4 skipped, 0 errors**
+(+2: waiting customers surface in the feed; a ghost does not appear as waiting) · web `tsc` ·
+`npm run lint` (2 pre-existing warnings) · `vitest` (**76**) · `npm run build`.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-4b (asset upload → auto-generate the 3 variants → notify the owner), or a
+pilot-readiness pass over the remaining founder-side blockers.
