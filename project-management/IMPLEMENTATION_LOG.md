@@ -6017,4 +6017,4 @@ catalog module is provably org-independent (a test parses its AST and signatures
 - `BASELINE_FEATURES` still grants without an active subscription — documented compatibility shim,
   resolved by PLAN-2.
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-2.
+**Commit:** `2374a35`, merged to `main` as `b9d965c` (this entry recorded in a follow-up docs commit). **CI:** green — lint, unit, migrate, e2e, isolation, integration **and the newly-wired contract job**. **Next recommended action:** founder selects PLAN-2.
