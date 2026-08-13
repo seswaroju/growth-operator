@@ -5752,7 +5752,8 @@ audited. This ticket can only ever *reduce* who gets contacted — no new extern
 **alembic 050 up/down/up** · `pytest tests/unit` (**578**, +4) · **fresh-DB integration+isolation
 `verify_fresh_db.sh` — 676 passed, 4 skipped, 0 errors** (+5).
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `0f44f7e` (merge `b718a27`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-4a (owner web console: landing pages + variants + "captured from" column + the
 recovery controls and the "N customers are waiting on your reply" notification).

@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## GHOST-1c · Owner intervention over recovery — **COMPLETE — awaiting founder review** (2026-08-12)
+## GHOST-1c · Owner intervention over recovery — **COMPLETE — merged `b718a27`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1c-owner-intervention`. The founder's ask: *"maybe owner's intervention if the
 lead can be removed from ghost as they contacted"*. The owner can now always pull a lead out of the
