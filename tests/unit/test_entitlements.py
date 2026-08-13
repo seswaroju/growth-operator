@@ -102,38 +102,38 @@ def test_every_implied_channel_is_a_real_registered_channel_type() -> None:
 
 
 def test_a_channel_dependency_is_satisfied_by_the_channel_selection() -> None:
-    from core.tenancy.entitlements import _dependency_satisfied
+    from core.tenancy.entitlements import dependency_satisfied
 
-    ok, _ = _dependency_satisfied("channel.whatsapp", set(), {"whatsapp"}, set())
+    ok, _ = dependency_satisfied("channel.whatsapp", set(), {"whatsapp"}, set())
     assert ok is True
 
 
 def test_a_missing_channel_selection_fails_closed_with_a_named_reason() -> None:
-    from core.tenancy.entitlements import _dependency_satisfied
+    from core.tenancy.entitlements import dependency_satisfied
 
-    ok, reason = _dependency_satisfied("channel.whatsapp", set(), set(), set())
+    ok, reason = dependency_satisfied("channel.whatsapp", set(), set(), set())
     assert ok is False and reason == "missing_channel_selection:channel.whatsapp"
 
 
 def test_an_rbac_governed_dependency_is_structurally_satisfied() -> None:
     """`pricing` is not runtime-grantable — RBAC decides it per request, per user, not per plan.
     Requiring it in `capabilities` would wrongly drop every capability that depends on it."""
-    from core.tenancy.entitlements import _dependency_satisfied
+    from core.tenancy.entitlements import dependency_satisfied
 
-    ok, _ = _dependency_satisfied("pricing", set(), set(), set())
+    ok, _ = dependency_satisfied("pricing", set(), set(), set())
     assert ok is True
 
 
 def test_a_grantable_dependency_must_actually_be_granted() -> None:
-    from core.tenancy.entitlements import _dependency_satisfied
+    from core.tenancy.entitlements import dependency_satisfied
 
-    assert _dependency_satisfied("customers", {"customers"}, set(), set())[0] is True
-    ok, reason = _dependency_satisfied("customers", set(), set(), set())
+    assert dependency_satisfied("customers", {"customers"}, set(), set())[0] is True
+    ok, reason = dependency_satisfied("customers", set(), set(), set())
     assert ok is False and reason == "missing_dependency:customers"
 
 
 def test_an_unknown_dependency_fails_closed() -> None:
-    from core.tenancy.entitlements import _dependency_satisfied
+    from core.tenancy.entitlements import dependency_satisfied
 
-    ok, reason = _dependency_satisfied("nonsense", set(), set(), set())
+    ok, reason = dependency_satisfied("nonsense", set(), set(), set())
     assert ok is False and reason == "unknown_dependency:nonsense"

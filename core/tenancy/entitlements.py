@@ -230,7 +230,7 @@ def implied_legacy_channels(capabilities: frozenset[str]) -> frozenset[str]:
     return frozenset(out)
 
 
-def _dependency_satisfied(
+def dependency_satisfied(
     dep: str, capabilities: set[str], channels: set[str], agents: set[str]
 ) -> tuple[bool, str]:
     """Component-aware dependency check.
@@ -381,7 +381,7 @@ async def resolve(
             cap = by_key(key)
             assert cap is not None
             for dep in cap.depends_on:
-                ok, reason = _dependency_satisfied(dep, keys, channels, agents)
+                ok, reason = dependency_satisfied(dep, keys, channels, agents)
                 if not ok:
                     excluded.append(Excluded(key, "capability", reason))
                     del surviving[key]

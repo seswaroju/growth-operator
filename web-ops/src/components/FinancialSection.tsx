@@ -150,6 +150,9 @@ function PlanRow({ token, plan, canManage }:
   { token: string; plan: BillingPlan; canManage: boolean }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  // Canonical Recover/Grow/Scale rows are code-managed (PLAN-3). Hiding Edit is convenience only —
+  // the server is the boundary and returns 409 regardless of what this UI shows.
+  const isCanonical = Boolean(plan.config?.preset_key);
   const update = useMutation({
     mutationFn: (f: FormState) => adminUpdatePlan(token, plan.id, toInput(f)),
     onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
@@ -182,6 +185,11 @@ function PlanRow({ token, plan, canManage }:
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-ink">{plan.name}</span>
+            {isCanonical && (
+              <span className="rounded-lg bg-line-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2">
+                canonical
+              </span>
+            )}
             {!plan.active && (
               <span className="rounded-lg bg-line-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2">
                 inactive
@@ -192,8 +200,13 @@ function PlanRow({ token, plan, canManage }:
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="font-serif text-sm tnum text-ink">{rupees(plan.price_minor)}/mo</span>
-          {canManage && (
+          {canManage && !isCanonical && (
             <button onClick={() => setEditing(true)} className={buttonClasses("ghost", "sm")}>Edit</button>
+          )}
+          {canManage && isCanonical && (
+            <span className="text-[10px] text-muted" title="Code-managed preset — copy it to customise">
+              code-managed
+            </span>
           )}
         </div>
       </div>

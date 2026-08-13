@@ -31,6 +31,10 @@ async def create_plan(
     description: str | None = None, features: list[str] | None = None,
     max_managers: int = 0, max_staff: int = 0, config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if (config or {}).get("preset_key") is not None:
+        # Only the seeder mints canonical identity; an operator must not be able to forge a plan
+        # that then becomes uneditable and looks code-managed.
+        raise CanonicalPresetLocked(str((config or {})["preset_key"]))
     row = (await session.execute(
         text("INSERT INTO billing_plans "
              "(name, price_minor, description, features, max_managers, max_staff, config) "
@@ -48,13 +52,41 @@ async def list_plans(session: AsyncSession) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+class CanonicalPresetLocked(Exception):
+    """A canonical Recover/Grow/Scale row was edited through the generic CP-1 plan editor.
+
+    That editor predates the PLAN-2 structured contract: its payload rebuilds `config` from only
+    `agents`/`channels`/`addons`, and this module replaces the whole JSONB — so changing nothing but
+    a price would strip `entitlement_schema_version`, `entitlements`, `promotions` and the preset
+    identity, silently demoting a structured plan back to legacy. Canonical presets are
+    code-managed; customising one means copying it (PLAN-4), which yields an ordinary plan
+    carrying no `preset_key`."""
+
+    def __init__(self, preset_key: str):
+        self.preset_key = preset_key
+        super().__init__(
+            f"{preset_key!r} is a canonical preset and is code-managed; "
+            "copy and customise it through Plan Builder instead of editing it")
+
+
+async def _stored_preset_key(session: AsyncSession, plan_id: UUID) -> str | None:
+    row = (await session.execute(
+        text("SELECT config->>'preset_key' AS k FROM billing_plans WHERE id = :id"),
+        {"id": plan_id})).mappings().first()
+    return None if row is None else row["k"]
+
+
 async def update_plan(
     session: AsyncSession, plan_id: UUID, *, name: str, price_minor: int, active: bool,
     description: str | None, features: list[str],
     max_managers: int = 0, max_staff: int = 0, config: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Full update of a plan (editable, CP-1). Returns the updated row, or None if no plan has
-    that id."""
+    that id. Raises `CanonicalPresetLocked` for a code-managed preset — the check reads the
+    **stored** row, so it also blocks retiring one via `active=False` or stripping its identity."""
+    existing_key = await _stored_preset_key(session, plan_id)
+    if existing_key:
+        raise CanonicalPresetLocked(existing_key)
     row = (await session.execute(
         text("UPDATE billing_plans SET name = :n, price_minor = :p, active = :a, "
              "description = :d, features = CAST(:f AS jsonb), max_managers = :mm, "

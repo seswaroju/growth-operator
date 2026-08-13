@@ -497,6 +497,15 @@ export interface PlanConfig {
   agents?: string[];
   channels?: string[];
   addons?: string[];
+  // PLAN-2 structured contract + PLAN-3 canonical identity. Presence of `preset_key` means the row
+  // is code-managed: the server refuses edits through this legacy editor (409), because its payload
+  // rebuilds `config` from agents/channels/addons alone and would strip the structured contract.
+  entitlement_schema_version?: number;
+  entitlements?: string[];
+  promotions?: unknown[];
+  preset_key?: string;
+  preset_version?: number;
+  display?: { bullets?: string[]; recommended?: boolean; team_seats?: number };
 }
 
 export interface BillingPlan {

@@ -349,3 +349,25 @@ resolves commercial truth only and does not change any activation behaviour.
 **Requirement (PLAN-5 P0):** plan reassignment must reconcile/deactivate agent instances no longer
 included by the new plan. **No live plan-switching rollout may occur before this is closed.**
 Impact today is nil: 0 active subscriptions and 0 agent instances exist.
+
+
+---
+
+## #31 — Audit correction: earlier "0 subscriptions" figures were RLS-masked (closed)
+
+**Opened and closed** 2026-08-13 (PLAN-3).
+
+The PLAN-1 and PLAN-2 reports stated *"0 subscriptions, 0 pack installations, 0 agent instances."*
+Those queries ran against `database_url` (`app_rw`), which is RLS-bound with no org context, so they
+returned **masked** results rather than empty ones. Queried with a `rolbypassrls` connection the dev
+database actually held **5 active subscriptions, 5 active + 2 failed pack installations, and 16
+paused + 8 active agent instances**.
+
+**This changes historical audit facts, not implemented contracts.** PLAN-1's legacy-key audit read
+`billing_plans`, which has no RLS and was accurate; PLAN-2's resolver behaves identically at any
+count. Neither ticket's correctness is affected.
+
+**Fixed forward:** `core/billing/presets.py::assert_global_visibility()` makes this class of error
+impossible for the seeder — it aborts unless the connection holds `rolbypassrls` or superuser, so a
+sold/unsold decision can never be made behind row-level security. Any future operational audit of
+tenant-scoped tables must use a privileged connection.

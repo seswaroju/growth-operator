@@ -6098,3 +6098,69 @@ three FORCE-RLS tables, so absent context fails closed. Cross-tenant leakage tes
 - Promotions are absolute calendar windows, not per-subscriber trials.
 
 **Commit:** `d2475dd`, merged to `main` as `0018346`. **CI:** run 31714488763 **success** — lint, unit, migrate, e2e, isolation, integration, contract. **Next recommended action:** founder selects PLAN-3.
+
+
+---
+
+## 2026-08-13 · PLAN-3 — Recover/Grow/Scale structured presets
+
+**Branch** `feature/plan-3-plan-presets`. Approved design plus three correction rounds: canonical
+presets protected from the legacy CP-1 editor; vertical tier placement declared explicitly rather
+than inferred; canonical rows immutable once sold, with no override.
+
+### Files changed
+
+| Path | Type | Reason |
+|---|---|---|
+| `core/billing/presets.py` | NEW | Definitions, overlay composition, static validation, idempotent seeding |
+| `verticals/jewelry/commercial/plan_presets.yaml` | NEW | Explicit tier placement for the pack |
+| `scripts/seed_plans.py` | NEW | CLI; asserts effective global visibility |
+| `core/billing/service.py` | MOD | `CanonicalPresetLocked`; guards in `update_plan` + `create_plan` |
+| `core/billing/api.py` | MOD | Map to 409 on create and update |
+| `core/packs/contracts.py` | MOD | `VerticalPresetOverlay` / `PresetTierAddition` |
+| `core/tenancy/entitlements.py` | MOD | `_dependency_satisfied` → `dependency_satisfied` so presets reuse the resolver's own rule instead of copying it |
+| `web-ops/src/api.ts`, `FinancialSection.tsx` | MOD | Surface `preset_key`; "canonical" badge; hide Edit |
+| `tests/unit/test_presets.py` | NEW | 43 cases |
+| `tests/integration/test_preset_seeding.py` | NEW | 20 cases |
+| `tests/unit/test_entitlements.py` | MOD | Helper rename |
+| `project-management/*` | MOD | Decisions, roadmap, audit correction, task |
+
+### Database
+**No migration.** Seeding writes `billing_plans` rows only; identity lives in existing JSONB.
+
+### Materialised rows (dev)
+`recover` 3bfd21ee · `grow` 8251fa31 · `scale` 2151aa7b · `scale.jewelry` 06fb735a.
+Re-running produced `unchanged` for all four. 25 legacy/custom rows untouched; **0** of them carry
+`entitlement_schema_version`.
+
+### Commands run
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS |
+| `bash scripts/lint.sh` | PASS — 6 guards |
+| `uv run mypy core` | PASS — 217 files |
+| `uv run pytest tests/unit` | PASS — 707 |
+| fresh DB: `isolation + integration + contract` | PASS — **769 passed, 4 skipped, 0 failed** |
+| `npm run lint` (web-ops) | PASS |
+| `npx tsc -b --noEmit` (web-ops) | PASS |
+| `npm run build` (web-ops) | PASS |
+| Negative: seeder under `app_rw` | **Refused** with `InsufficientVisibility` |
+
+### Audit correction
+Earlier PLAN-1/PLAN-2 "0 subscriptions / 0 pack installations / 0 agent instances" figures were
+**RLS-masked** (queried as `app_rw`). True dev state: 5 active subscriptions, 5 active + 2 failed
+pack installations, 16 paused + 8 active agent instances. Historical audit facts only — no contract
+is affected. Recorded as BLOCKERS #31 and made impossible for the seeder by
+`assert_global_visibility()`.
+
+### Known issues / disclosed limitations
+- **PLAN-5 still owns enforcement:** `catalog.ingestion`, `campaigns.analytics` and
+  `jewelry.rate_operations` are sold by tier but **not gated** on their routes; `/v1/imports` and
+  `/v1/rates` remain role-gated only. **P0** plan-reassignment agent reconciliation (#30) is open.
+- Canonical presets write `features = []`, so the legacy web-ops list shows no bullets until PLAN-4
+  renders `config.display.bullets`; `description` carries the interim one-liner.
+- A pack may place capabilities per tier, but only into the three generic tiers.
+- Viewer seats remain uncapped by CP-3 (unchanged; flagged during design).
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-4.

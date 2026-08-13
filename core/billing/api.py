@@ -122,10 +122,13 @@ async def create_plan(
     current: CurrentAuth = Depends(get_current_auth),
     session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
 ) -> PlanOut:
-    plan = await service.create_plan(
-        session, name=body.name, price_minor=body.price_minor,
-        description=body.description, features=body.features,
-        max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
+    try:
+        plan = await service.create_plan(
+            session, name=body.name, price_minor=body.price_minor,
+            description=body.description, features=body.features,
+            max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
+    except service.CanonicalPresetLocked as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     await log_platform_access(session, actor_user_id=current.user_id, action="billing.plan.created",
                               detail={"name": body.name})
     return PlanOut(**plan)
@@ -143,6 +146,8 @@ async def update_plan(
             session, plan_id, name=body.name, price_minor=body.price_minor, active=body.active,
             description=body.description, features=body.features,
             max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
+    except service.CanonicalPresetLocked as exc:  # code-managed preset — see PLAN-3
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except IntegrityError as exc:  # another plan already owns that name (UNIQUE)
         raise HTTPException(
             status.HTTP_409_CONFLICT, "a plan with that name already exists") from exc
