@@ -45,7 +45,9 @@ _VERTICALS_ROOT = Path(__file__).resolve().parents[2] / "verticals"
 
 #: Bumped only when a canonical definition changes. A row already referenced by a subscription is
 #: never rewritten regardless — see `plan_is_sold`.
-PRESET_VERSION = 1
+#: v2 (PLAN-4) persists `config.vertical`, so a plan's vertical is read from data rather than
+#: inferred by parsing a name or splitting a preset key.
+PRESET_VERSION = 2
 
 #: The generic tiers a vertical overlay may extend.
 TIERS: tuple[str, ...] = ("recover", "grow", "scale")
@@ -84,6 +86,7 @@ class Preset:
         return {
             "entitlement_schema_version": 1,
             "entitlements": list(self.entitlements),
+            "vertical": self.vertical,
             "agents": list(self.agents),
             "channels": list(self.channels),
             "addons": [],
@@ -314,6 +317,10 @@ def validate_presets(presets: tuple[Preset, ...] | None = None) -> list[str]:
         for ch in preset.channels:
             cap = by_key(f"channel.{ch}")
             p.check(cap is not None, f"{w} unknown channel {ch!r}")
+            if cap is not None:
+                # Registry existence is technical; the catalog decides commercial truth.
+                p.check(cap.commercial_visibility in ("public", "public_beta"),
+                        f"{w} channel {ch!r} is not sellable ({cap.commercial_visibility})")
 
     return p.items
 
@@ -323,7 +330,9 @@ def validate_presets(presets: tuple[Preset, ...] | None = None) -> list[str]:
 #: SQL is shared by the CLI and the tests so both prove the same behaviour.
 FIND_SQL = ("SELECT id, name, price_minor, active, description, features, max_managers, "
             "max_staff, config FROM billing_plans WHERE config->>'preset_key' = :k")
-SOLD_SQL = "SELECT EXISTS (SELECT 1 FROM billing_subscriptions WHERE plan_id = :p)"
+#: One definition of "sold", shared with the request path. The SECURITY DEFINER function (051) is
+#: the only place this question is answered, so an RLS-scoped session cannot get a false negative.
+SOLD_SQL = "SELECT public.plan_has_subscription_history(CAST(:p AS uuid))"
 PRIVILEGE_SQL = ("SELECT COALESCE(bool_or(rolbypassrls OR rolsuper), false) FROM pg_roles "
                  "WHERE rolname = current_user")
 INSERT_SQL = ("INSERT INTO billing_plans (name, price_minor, active, description, features, "

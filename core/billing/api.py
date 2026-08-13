@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +59,25 @@ class PlanUpdate(BaseModel):
     max_managers: int = Field(default=0, ge=0)
     max_staff: int = Field(default=0, ge=0)
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanDraft(BaseModel):
+    """A structured plan under construction (PLAN-4). `features` is absent by design."""
+
+    name: str = Field(..., min_length=1)
+    price_minor: int = Field(..., ge=0)
+    description: str | None = None
+    max_managers: int = Field(default=0, ge=0)
+    max_staff: int = Field(default=0, ge=0)
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanCopy(BaseModel):
+    name: str | None = None
+
+
+class PlanActive(BaseModel):
+    active: bool
 
 
 class PlanOut(BaseModel):
@@ -148,6 +168,8 @@ async def update_plan(
             max_managers=body.max_managers, max_staff=body.max_staff, config=body.config)
     except service.CanonicalPresetLocked as exc:  # code-managed preset — see PLAN-3
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except service.SoldPlanImmutable as exc:  # commercial history — see PLAN-4
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except IntegrityError as exc:  # another plan already owns that name (UNIQUE)
         raise HTTPException(
             status.HTTP_409_CONFLICT, "a plan with that name already exists") from exc
@@ -163,6 +185,146 @@ async def list_plans(
     session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
 ) -> list[PlanOut]:
     return [PlanOut(**p) for p in await service.list_plans(session)]
+
+
+
+@router.get("/plans/capability-catalog", summary="Sellable components for the Plan Builder")
+async def capability_catalog(
+    vertical: str | None = None,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> dict[str, Any]:
+    """What an operator may put in a plan. An **allow-list projection** — internal product-truth
+    bookkeeping (`evidence_refs`, `enforced_by`) never leaves the server.
+
+    `restricted` gives read-only visibility of capabilities that exist but are not sellable; posting
+    one is refused regardless of what this returns. Elevating them would need a privileged
+    permission and an audit trail, which is deliberately not part of this ticket."""
+    from core.billing import plan_builder as pb
+    from core.tenancy.capabilities import catalog
+
+    known = set((await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+    selectable = pb.selectable_capabilities(vertical)
+    selectable_keys = {c.key for c in selectable}
+    return {
+        "capabilities": [pb.public_capability_view(c) for c in selectable],
+        "restricted": [
+            pb.public_capability_view(c) for c in catalog() if c.key not in selectable_keys],
+        "agents": list(pb.selectable_agents(frozenset(known))),
+        "channels": list(pb.selectable_channels()),
+        "verticals": sorted({c.vertical for c in catalog() if c.vertical}),
+    }
+
+
+@router.post("/plans/preview", summary="Preview what a draft plan would grant")
+async def preview_plan(
+    body: PlanDraft,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
+) -> dict[str, Any]:
+    """Deterministic preview using the resolver's own composition — no tenant is invented and no
+    throwaway subscription is created. Store-side facts are declared and returned as
+    `assumptions`."""
+    from core.billing import plan_builder as pb
+    from core.tenancy.plan_config import parse_plan_config
+
+    known = frozenset(
+        (await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+    config = parse_plan_config(body.config)
+    problems = pb.validate_draft(
+        config, known_archetypes=known,
+        max_managers=body.max_managers, max_staff=body.max_staff)
+    preview = pb.preview_draft(
+        config, known_archetypes=known, max_managers=body.max_managers,
+        max_staff=body.max_staff, plan_name=body.name)
+    eff = preview.effective
+    return {
+        "problems": [p.__dict__ for p in problems],
+        "capabilities": sorted(eff.capabilities),
+        "agents": sorted(eff.agents),
+        "channels": sorted(eff.channels),
+        "limits": {"max_managers": eff.limits.max_managers, "max_staff": eff.limits.max_staff},
+        "grants": [g.__dict__ for g in eff.grants],
+        "excluded": [e.__dict__ for e in eff.excluded],
+        "assumptions": list(preview.assumptions),
+    }
+
+
+@router.post("/plans/{plan_id}/copy", response_model=PlanOut,
+             status_code=status.HTTP_201_CREATED, summary="Copy a plan into a new custom plan")
+async def copy_plan(
+    plan_id: UUID,
+    body: PlanCopy,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> PlanOut:
+    plan = await service.copy_plan(session, plan_id, name=body.name)
+    if plan is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "plan not found")
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.plan.copied",
+        detail={"source_plan_id": str(plan_id), "new_plan_id": str(plan["id"])})
+    return PlanOut(**plan)
+
+
+@router.patch("/plans/{plan_id}/structured", response_model=PlanOut,
+              summary="Structured edit of a custom plan (Plan Builder)")
+async def update_plan_structured(
+    plan_id: UUID,
+    body: PlanDraft,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> PlanOut:
+    from core.billing import plan_builder as pb
+    from core.tenancy.plan_config import parse_plan_config
+
+    known = frozenset(
+        (await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+    config = parse_plan_config(body.config)
+    problems = pb.validate_draft(
+        config, known_archetypes=known, max_managers=body.max_managers, max_staff=body.max_staff)
+    if problems:
+        # The same guard the UI shows — enforced server-side so posting directly cannot bypass it.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            {"problems": [p.__dict__ for p in problems]})
+    try:
+        plan = await service.update_plan_structured(
+            session, plan_id, name=body.name, price_minor=body.price_minor,
+            description=body.description, config=body.config,
+            max_managers=body.max_managers, max_staff=body.max_staff)
+    except service.CanonicalPresetLocked as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except service.SoldPlanImmutable as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if plan is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "plan not found")
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.plan.structured_updated",
+        detail={"plan_id": str(plan_id)})
+    return PlanOut(**plan)
+
+
+@router.patch("/plans/{plan_id}/active", response_model=PlanOut,
+              summary="Retire or reinstate a plan")
+async def set_plan_active(
+    plan_id: UUID,
+    body: PlanActive,
+    current: CurrentAuth = Depends(get_current_auth),
+    session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
+) -> PlanOut:
+    """Allowed even on a sold plan: it governs eligibility for *future* assignment and changes
+    nothing an existing subscriber resolves."""
+    try:
+        plan = await service.set_plan_active(session, plan_id, active=body.active)
+    except service.CanonicalPresetLocked as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if plan is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "plan not found")
+    await log_platform_access(
+        session, actor_user_id=current.user_id, action="billing.plan.active_changed",
+        detail={"plan_id": str(plan_id), "active": body.active})
+    return PlanOut(**plan)
 
 
 # ---- Rollup (Financial dashboard aggregate) ----------------------------------------------------
@@ -198,7 +360,11 @@ async def assign_subscription(
     current: CurrentAuth = Depends(get_current_auth),
     session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_MANAGE)),
 ) -> None:
-    await service.assign_subscription(session, org_id, body.plan_id)
+    try:
+        await service.assign_subscription(session, org_id, body.plan_id)
+    except service.PlanNotAssignable as exc:
+        # Nothing was cancelled — the target is verified before the current subscription is touched.
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     await log_platform_access(
         session, actor_user_id=current.user_id, action="billing.subscription.assigned",
         target_org_id=org_id, detail={"plan_id": str(body.plan_id)})

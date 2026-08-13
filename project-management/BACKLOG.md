@@ -69,7 +69,7 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   Snapshot/data composition, **no live inheritance**. Presets seeded from the catalog. Also owns the
   marketing-bullet → capability mapping (several bullets may ride on one entitlement).
 
-- **PLAN-4 — Operator Plan Builder UI, including promotion authoring** · **NEXT (founder selects)**
+- **PLAN-4 — Operator Plan Builder UI, including promotion authoring** · **DONE (2026-08-13)**
   **Carried requirement from PLAN-3:** copying a canonical preset must **strip** `preset_key` and
   `preset_version`, so the copy is an ordinary operator plan the seeder can never overwrite. The
   builder is also the sanctioned way to customise a preset, since the legacy CP-1 editor now
@@ -81,7 +81,7 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   the existing channel registry; "all channels" saves an explicit snapshot, never `"*"`.
 
 - **PLAN-5 — Runtime enforcement extension + explicit inventory of remaining ungated capabilities**
-  · **QUEUED**
+  · **NEXT (founder selects)**
   **P0 — plan-change agent drift.** `assign_subscription()` swaps the subscription but never
   reconciles `agent_instances`; `activate_plan_agents()` runs only on the provisioning path. A
   downgrade therefore leaves a previously-activated agent running. **Plan reassignment must

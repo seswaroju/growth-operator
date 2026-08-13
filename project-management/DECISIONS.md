@@ -1509,3 +1509,52 @@ seats. The owner is never counted. Read-only viewers remain uncapped under CP-3 
 not imply they consume the capped seats.
 
 **Decided by:** Founder (2026-08-13), across three PLAN-3 design-review rounds.
+
+
+---
+
+## 2026-08-13 — Commercial history is immutable once sold (PLAN-4)
+
+**Decision.** A plan that **any** subscription of **any** status has ever referenced may only have
+`active` changed. Price, entitlements, agents, channels, addons, promotions, seat limits, vertical,
+**and** name/description/display copy all lock, because they surface in invoices, operator records
+and subscriber history — rewriting them changes what a merchant already bought. `active` stays
+editable: it governs eligibility for *future* assignment and alters nothing an existing subscriber
+resolves. Changing sold terms is **copy → edit the new snapshot → assign**.
+
+**Sold-history is answered by one privileged primitive.** `billing_subscriptions` is FORCE-RLS, so
+an ordinary request session sees zero rows and would report every plan as never-sold — the same
+RLS-masking that produced the corrected audit figures in BLOCKERS #31. Migration 051 adds
+`plan_has_subscription_history(uuid)`: SECURITY DEFINER, boolean-only, fixed `search_path`, no
+dynamic SQL, REVOKE FROM PUBLIC, EXECUTE granted only to `app_rw`. Requests obtain the *fact*
+without the rows, and **no API request ever runs with BYPASSRLS**. The seeder uses the same
+function, so "sold" has exactly one definition.
+
+**All plan mutations serialize on the plan row.** Edits, retirement and `assign_subscription()` take
+`SELECT … FOR UPDATE` on `billing_plans` **before** evaluating canonical/sold state. Checking first
+would leave the race the guard exists to prevent.
+
+**`active = false` means retired.** Assignment now rejects a missing or retired plan, and validates
+the target *before* cancelling the current subscription, so a failed assignment can never leave a
+store with no plan at all.
+
+**Registry existence is not sellability.** An agent needs an `agent_archetypes` row **and** a
+sellable `agent.<slug>` catalog entry; a channel needs a `CHANNEL_TYPES` entry **and** a sellable
+`channel.<slug>` entry. Today that admits only `concierge` and `whatsapp` — `instagram` and
+`google_ads` are registered but have no sellable catalog entry.
+
+**No request parameter can elevate a restricted capability.** Save validation is unconditionally
+`runtime_grantable ∧ status ∈ {available, beta} ∧ visibility ∈ {public, public_beta}`. The catalog
+endpoint may show restricted items read-only; saving one is refused regardless. Private-beta
+authoring would need a privileged permission and an audit trail — deliberately out of scope.
+
+**Preview reuses the resolver, not a copy of it.** `compose()` and `ResolutionContext` were
+extracted from `resolve()` (behaviour-preserving, proven by the existing suite). A draft belongs to
+no tenant, so preview supplies a **declared** context and returns its assumptions rather than
+fabricating a tenant and a throwaway subscription.
+
+**`config.vertical` is persisted** (`PRESET_VERSION` 1 → 2). A pre-PLAN-4 canonical snapshot that
+lacks it is never mutated; for copy only, the vertical is recovered by **exact `preset_key`
+lookup** — never by parsing a name or splitting a key.
+
+**Decided by:** Founder (2026-08-13), across two PLAN-4 design-review rounds.

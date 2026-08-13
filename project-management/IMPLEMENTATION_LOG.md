@@ -6164,3 +6164,66 @@ is affected. Recorded as BLOCKERS #31 and made impossible for the seeder by
 - Viewer seats remain uncapped by CP-3 (unchanged; flagged during design).
 
 **Commit:** `baafc5c`, merged to `main` as `cbe7e2b`. **CI:** run 31718957827 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract. **Next recommended action:** founder selects PLAN-4.
+
+
+---
+
+## 2026-08-13 · PLAN-4 — Operator Plan Builder
+
+**Branch** `feature/plan-4-plan-builder`. Approved design plus final deltas A–I, and the
+`active=false` assignment fix found during founder review.
+
+### Files changed
+
+| Path | Type | Reason |
+|---|---|---|
+| `migrations/versions/..._051_plan_subscription_history_secdef.py` | NEW | SECURITY DEFINER boolean primitive |
+| `core/billing/plan_builder.py` | NEW | Selection rules, vertical scoping, dependency validation, preview |
+| `core/billing/service.py` | MOD | `SoldPlanImmutable`, `PlanNotAssignable`, `copy_plan`, `update_plan_structured`, `set_plan_active`, `FOR UPDATE` serialization |
+| `core/billing/api.py` | MOD | capability-catalog · preview · copy · structured · active; 409 mapping |
+| `core/tenancy/entitlements.py` | MOD | `compose()` + `ResolutionContext` extracted (behaviour-preserving) |
+| `core/tenancy/plan_config.py` | MOD | typed `vertical` |
+| `core/billing/presets.py` | MOD | persist `vertical`, `PRESET_VERSION`→2, sold check via SECDEF, channel visibility |
+| `web-ops/src/components/PlanBuilder.tsx` | NEW | Builder UI |
+| `web-ops/src/api.ts`, `FinancialSection.tsx` | MOD | Client + Copy/Convert/Build, legacy badge |
+| `tests/unit/test_plan_builder.py` (28) · `tests/integration/test_plan_builder_api.py` (20) | NEW | |
+| `project-management/*` | MOD | Decisions, blockers, backlog, task |
+
+### Migration
+**051** `plan_has_subscription_history(uuid)` — SECURITY DEFINER, STABLE, boolean-only,
+`SET search_path = public, pg_temp`, schema-qualified body, no dynamic SQL, `REVOKE ALL … FROM
+PUBLIC`, `GRANT EXECUTE … TO app_rw`. Upgrade and downgrade both verified.
+
+### Commands run
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS |
+| `bash scripts/lint.sh` | PASS — 6 guards |
+| `uv run mypy core` | PASS — 218 files |
+| `uv run pytest tests/unit` | PASS — 735 |
+| fresh DB: `isolation + integration + contract` | PASS — **789 passed, 4 skipped, 0 failed** |
+| `alembic downgrade -1` / `upgrade head` | PASS — function absent then present |
+| web-ops `lint` / `tsc --noEmit` / `build` | PASS |
+
+### Proofs
+Privilege — `app_rw` reads 0 rows from `billing_subscriptions` globally yet
+`plan_has_subscription_history(sold)` returns **true**; a freshly created role (inheriting only
+PUBLIC) is refused with `InsufficientPrivilegeError`. Concurrency — edit vs assign and retire vs
+assign each resolve to exactly one accepted outcome. Sold immutability — active *and*
+cancelled-history plans refuse every commercial edit with the row byte-identical, while retirement
+still succeeds. Assignment — retired and missing plans rejected, and the existing subscription
+survives a rejected assignment unchanged. Seeding — canonical rows moved v1 → v2 then reported
+`unchanged`.
+
+### Known issues / disclosed limitations
+- **PLAN-5 owns runtime enforcement:** `/v1/imports`, `/v1/rates` and `campaigns.analytics` remain
+  ungated; **P0** plan-reassignment agent reconciliation (#30) is still open. A plan saying
+  "included" does not by itself gate a route.
+- The Builder edits structured custom plans only; legacy rows convert by copying, canonical rows are
+  view/preview/copy.
+- Promotion authoring is validated server-side; the UI editor surface is minimal (fields exist via
+  the structured config, no rich date picker yet).
+- Sold plans cannot be renamed — deliberate; copy to change any commercial or display field.
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-5.
