@@ -6443,3 +6443,41 @@ silent-lead payload is enriched at consumption, not in the event.
 ### Next recommended action
 Founder review. If accepted, the remaining pilot gap is a controlled live send against a
 founder-owned test number, which is an explicit approval, not a ticket.
+
+### PILOT-1C — merge + post-merge verification (2026-08-13, appended)
+
+**Merge** `5c531f1` (--no-ff, all five feature commits preserved as ancestors) · **main**
+`32cb1f5` · **migration head** `05ee829beb92` · **CI** run `31752615547` — success on all six
+required jobs (lint, test, isolation, migrate, evals, secret-scan).
+
+Post-merge verification found and fixed two defects, each merged separately and CI-green:
+
+1. **Reply correlation mixed two clock domains** (`c4e6f30` / merge `f08f6f4`). `mark_replied`
+   compared a Postgres-written `sent_at` against a worker-host `datetime.now(UTC)`. The local
+   Postgres runs ~18ms ahead, enough to make a real recovery look as though it arrived before the
+   send that prompted it. CI could not have caught this — its runner and database are close enough
+   in time — but in production the worker and database are always separate hosts, and a lagging
+   worker would have under-reported recoveries silently, deflating the one number a merchant judges
+   this product by. Now resolved entirely in the database's clock domain, using `clock_timestamp()`
+   so it also holds when a caller records send and reply in one transaction.
+
+2. **Two fixtures depended on ambient database state** (`464bb91` / merge `32cb1f5`). They read
+   `packs` and `agent_bindings` without creating them; those rows exist on a development database
+   because an earlier suite installed the pack. One passed on CI only because `test_pack_installer`
+   sorts earlier. Setup raised before `yield`, so teardown never ran and the leaked rows broke
+   `test_settings` with an error pointing at code PILOT-1C never touched.
+
+**Six load-bearing properties had no dedicated test** and were proven rather than asserted
+(`9ac26a7` / merge `8187b14`): diagnosis has no route to the send path (checked structurally, so
+none can be added by accident); a missing prompt binding fails closed; a plan change never
+reactivates a manually paused worker; the owner's selected reason and action survive the send;
+landing-captured consent is eligible at every gate; template parameters are encoded as a Cloud API
+body component, in order, with absent parameters producing no components key.
+
+**Fresh-database verification.** Created a new database, applied `roles.sql`, ran `alembic upgrade
+head` (69 migrations), and replicated CI's isolation job exactly — its role split (`app_rw` runtime,
+`growth_operator` migrator) and its order (`tests/isolation`, then `tests/integration`). 33 + 873
+pass. This also settled BLOCKERS #36: the three rate-ingestion failures **pass on a fresh database**,
+so they are a stale-dev-database artifact, not a code defect.
+
+**Status:** PILOT-1C is CODE-COMPLETE. It is NOT physically live-proven.
