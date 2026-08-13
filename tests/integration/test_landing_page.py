@@ -274,6 +274,15 @@ async def test_track_clamps_untrusted_body(scene: Scene) -> None:
 
 # ---- LP-2a: multi-variant generation -----------------------------------------------------------
 
+async def _pages_named(org: uuid.UUID, slug: str) -> int:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        return await conn.fetchval(
+            "SELECT count(*) FROM landing_pages WHERE org_id=$1 AND slug=$2", org, slug)
+    finally:
+        await conn.close()
+
+
 async def _versions(page_id: str) -> list[dict]:
     conn = await asyncpg.connect(_dsn())
     try:
@@ -341,13 +350,34 @@ async def test_use_llm_falls_back_to_deterministic_when_provider_off(scene: Scen
     assert await _version_planner(r.json()["page_id"], 1) == "deterministic"
 
 
-async def test_single_variant_is_backward_compatible(scene: Scene) -> None:
+async def test_default_is_three_variants(scene: Scene) -> None:
+    """LP-4b (founder): a page defaults to 3 candidate layouts — a typical page needs no more."""
     r = await scene.client.post(
         "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a), json=_body())
     assert r.status_code == 201
-    assert r.json()["variants"] == [
-        {"version_no": 1, "variant_label": "default",
-         "preview_url": r.json()["preview_url"].replace("/preview", "/versions/1/preview")}]
+    assert [v["variant_label"] for v in r.json()["variants"]] == ["classic", "focused", "story"]
+    assert len(await _versions(r.json()["page_id"])) == 3
+
+
+async def test_owner_can_ask_for_more_layouts_up_to_the_cap(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(slug="five-up", variants=5))
+    assert r.status_code == 201
+    labels = [v["variant_label"] for v in r.json()["variants"]]
+    assert labels == ["classic", "focused", "story", "catalog", "objection"]
+    # beyond the cap is refused rather than silently trimmed
+    over = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(slug="too-many", variants=6))
+    assert over.status_code == 422
+
+
+async def test_single_variant_still_available(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body(slug="just-one", variants=1))
+    assert r.status_code == 201
     assert len(await _versions(r.json()["page_id"])) == 1
 
 
@@ -644,3 +674,50 @@ async def test_captured_lead_is_tenant_isolated(scene: Scene) -> None:
     assert a.status_code == 200 and len(a.json()) == 1
     assert a.json()[0]["captured_from"].startswith("Landing page · diwali-diamond")
     assert a.json()[0]["variant"] == "classic"
+
+
+# ---- LP-4b: upload photos → auto-generated candidate pages --------------------------------------
+
+_PNG = b"\x89PNG\r\n\x1a\n" + b"x" * 64
+
+
+async def test_upload_auto_generates_candidate_pages(scene: Scene) -> None:
+    """The owner's dashboard trigger: photos in, candidate pages out (they still pick + publish)."""
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers=_owner(scene.owner_a, scene.org_a),
+        data={"slug": "festive-drop", "headline": "Everyday Diamond Pendants",
+              "offer": "from ₹29,999", "objective": "whatsapp",
+              "product_titles": "Solitaire Pendant\nHalo Pendant", "variants": 3},
+        files=[("files", ("hero.png", _PNG, "image/png")),
+               ("files", ("a.png", _PNG, "image/png")),
+               ("files", ("b.png", _PNG, "image/png"))])
+    assert r.status_code == 201, r.text
+    page_id = r.json()["page_id"]
+    assert [v["variant_label"] for v in r.json()["variants"]] == ["classic", "focused", "story"]
+    assert len(await _versions(page_id)) == 3
+
+    # the uploaded photos really are used by the rendered page
+    p = await scene.client.get(f"/v1/landing/pages/{page_id}/versions/1/preview",
+                               headers=_owner(scene.owner_a, scene.org_a))
+    assert p.status_code == 200
+    assert "Solitaire Pendant" in p.text and "lp-hero-img" in p.text
+
+
+async def test_upload_rejects_a_disallowed_file_type(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers=_owner(scene.owner_a, scene.org_a),
+        data={"slug": "bad-type", "headline": "H"},
+        files=[("files", ("payload.exe", b"MZ\x90\x00", "application/x-msdownload"))])
+    assert r.status_code == 422
+    assert await _pages_named(scene.org_a, "bad-type") == 0  # nothing was created
+
+
+async def test_upload_requires_campaign_permission(scene: Scene) -> None:
+    viewer = auth.issue_access_token(
+        sub=str(uuid.uuid4()), secret=get_settings().jwt_secret,
+        org_id=str(scene.org_a), roles=["viewer"])
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers={"Authorization": f"Bearer {viewer}"},
+        data={"slug": "nope", "headline": "H"},
+        files=[("files", ("a.png", _PNG, "image/png"))])
+    assert r.status_code == 403

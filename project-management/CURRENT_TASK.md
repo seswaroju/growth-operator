@@ -9,6 +9,36 @@ selects and approves the next ticket.
 
 ---
 
+## LP-4b · Asset upload → auto-generated pages (+ variant range 1–5, default 3) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-4b-upload-autogenerate`. The founder's original trigger: *"an upload button from
+their login dashboard so GO automatically detects and produces a landing page"* — plus the requested
+change: **more layouts on demand, max 5, default 3** ("the typical landing page might not need more").
+
+- **Variant range (founder change):** two genuinely-different archetypes added — **`catalog`**
+  (product-first: the range up front) and **`objection`** (answers the doubts before the products) —
+  so 4 and 5 are real layouts, not padding. `DEFAULT_VARIANTS = 3`, `MAX_VARIANTS = 5`; the API is
+  `ge=1, le=5` and **defaults to 3** (was: default 1, max 3). Over the cap → **422**, never silently
+  trimmed. All five verified distinct + valid.
+- `core/landing/assets.py` (NEW) — `store_assets` reuses the **existing** media pipeline: MIME
+  allow-list → size cap → **AV scan that FAILS CLOSED** (a scanner that cannot run rejects rather than
+  passing bytes through) → object store. `build_campaign` makes the **first** image the hero and the
+  rest product tiles paired with the owner's titles; an unnamed extra gets a **neutral** label
+  ("Design 2") and never an invented product or price.
+- **`POST /v1/landing/pages/from-upload`** (multipart, `campaigns:send`) — photos + the owner's words
+  in, **N candidate pages out**; they still pick (LP-2b) and publish. AV/storage stay simulated until
+  the founder enables them, exactly like the WhatsApp media path.
+- Owner console: `DEFAULT_VARIANTS`/`MAX_VARIANTS` + blurbs for the two new layouts.
+
+**Gate (all green):** ruff · mypy core **213** · guards **0** · unit **587** (+8 assets: clean→stored,
+**infected never stored**, **unscannable fails closed**, bad type/empty/oversized, count bounded,
+hero/product split, neutral placeholder, named-without-photo; +2 variant bounds/distinctness) ·
+**fresh-DB integration+isolation 683** (+5: upload auto-generates 3 and the render uses the uploaded
+hero, disallowed type 422 writes nothing, viewer 403, default-is-3, 5-up + over-cap 422) · web tsc ·
+lint · **vitest 78** · build. No migration. **Deferred:** the upload *widget* in the owner UI and the
+"pages are ready" notification — the endpoint + bounds are done and testable now.
+
+
 ## GHOST-1d · Owner recovery controls + "waiting on you" notification — **COMPLETE — merged `0c62b8b`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1d-recovery-ui`. Puts the GHOST-1b/1c backend in the owner's hands. **No

@@ -43,9 +43,15 @@ export const VARIANT_BLURB: Record<string, string> = {
   classic: "The full page — every section",
   focused: "Short and punchy — straight to the offer",
   story: "Trust-led — proof and benefits first",
+  catalog: "Product-first — the range up front",
+  objection: "Answers the doubts before the products",
   default: "Single generated page",
 };
 
 export function variantBlurb(label: string): string {
   return VARIANT_BLURB[label] ?? "Alternative layout";
 }
+
+/** LP-4b: how many layouts a page may have. Default 3 — a typical page needs no more. */
+export const DEFAULT_VARIANTS = 3;
+export const MAX_VARIANTS = 5;

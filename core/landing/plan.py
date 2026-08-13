@@ -191,7 +191,18 @@ _VARIANT_ARCHETYPES: tuple[VariantArchetype, ...] = (
     # social-proof / benefit-led — leads with trust + story before the grid.
     VariantArchetype("story", "long", "editorial", "testimonials",
                      lead=("hero", "trust_bar", "benefits", "testimonials")),
+    # product-first — the range up front for a visitor who came to browse.
+    VariantArchetype("catalog", "medium", "product", "trust_bar",
+                     lead=("hero", "product_grid", "offer_banner", "trust_bar")),
+    # objection-led — answers the doubts first; suits a considered, higher-value purchase.
+    VariantArchetype("objection", "long", "editorial", "testimonials",
+                     lead=("hero", "faq", "benefits", "trust_bar")),
 )
+
+# The owner may ask for more layouts, but a typical page does not need them (founder, 2026-08-12):
+# default 3, hard cap at the archetype set.
+DEFAULT_VARIANTS = 3
+MAX_VARIANTS = len(_VARIANT_ARCHETYPES)
 
 
 def _variant_section_plan(base_plan: list[str], arche: VariantArchetype) -> list[str]:
@@ -203,7 +214,7 @@ def _variant_section_plan(base_plan: list[str], arche: VariantArchetype) -> list
 
 
 def plan_variants(
-    campaign: CampaignContext, brand: BrandTokens, vertical: str, n: int = 3
+    campaign: CampaignContext, brand: BrandTokens, vertical: str, n: int = DEFAULT_VARIANTS
 ) -> list[tuple[str, ExperienceStrategy, LandingPageSpec]]:
     """N deterministic, genuinely-different-UX candidates → [(variant_label, strategy, spec)].
 

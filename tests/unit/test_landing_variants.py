@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from core.landing.plan import CampaignContext, ProductRef, plan_variants
+from core.landing.plan import (
+    DEFAULT_VARIANTS,
+    MAX_VARIANTS,
+    CampaignContext,
+    ProductRef,
+    plan_variants,
+)
 from core.landing.spec import BrandTokens
 from core.landing.validate import validate_spec
 
@@ -46,8 +52,23 @@ def test_focused_trims_and_story_reorders() -> None:
 def test_variant_count_is_bounded() -> None:
     assert [v[0] for v in plan_variants(_CAMP, _BRAND, "jewelry", n=1)] == ["classic"]
     assert [v[0] for v in plan_variants(_CAMP, _BRAND, "jewelry", n=2)] == ["classic", "focused"]
-    # n beyond the archetype set caps at what exists (never crashes, never fabricates)
-    assert len(plan_variants(_CAMP, _BRAND, "jewelry", n=9)) == 3
+    # LP-4b: the owner may ask for more layouts, up to the archetype set (default 3, max 5)
+    assert len(plan_variants(_CAMP, _BRAND, "jewelry")) == DEFAULT_VARIANTS == 3
+    assert [v[0] for v in plan_variants(_CAMP, _BRAND, "jewelry", n=5)] == [
+        "classic", "focused", "story", "catalog", "objection"]
+    # n beyond the set caps at what exists (never crashes, never fabricates a layout)
+    assert len(plan_variants(_CAMP, _BRAND, "jewelry", n=9)) == MAX_VARIANTS == 5
+
+
+def test_the_extra_layouts_are_genuinely_different() -> None:
+    variants = plan_variants(_CAMP, _BRAND, "jewelry", n=5)
+    sigs = {label: _sig(spec) for label, _s, spec in variants}
+    assert len(set(sigs.values())) == 5  # five distinct experiences, not padding
+    for _label, _s, spec in variants:
+        validate_spec(spec)
+    # catalog puts the range first; objection answers doubts before the products
+    assert sigs["catalog"].index("product_grid") < sigs["catalog"].index("trust_bar")
+    assert sigs["objection"].index("faq") < sigs["objection"].index("product_grid")
 
 
 def test_deterministic_same_inputs_same_variants() -> None:
