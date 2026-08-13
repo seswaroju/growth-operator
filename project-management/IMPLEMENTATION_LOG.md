@@ -6365,5 +6365,4 @@ integration/test_models_admin}.py`.
 - No permanent default model is declared — an operational decision from eval results.
 - Qwen, Gemini, Mistral, xAI not integrated; adding a compatible vendor is a registry change.
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects the next
-ticket (PILOT-1A/1C are unblocked and parallel).
+**Commit:** `b26d9d9`, merged to `main` as `c6f5063`; docstring fix `0783315`; gitleaks allowlist `cbde70c`. **CI:** run 31737504511 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract, secret-scan. **Next recommended action:** founder selects the next ticket (PILOT-1A/1C are unblocked and parallel).
