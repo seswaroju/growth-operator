@@ -1,87 +1,144 @@
-"""Real LLM client (MVP-074) — gated, httpx-based, no vendor SDK.
+"""Real LLM transport (MVP-074, rewritten for PILOT-1B) — the one place a vendor API is called.
 
-The one place a real model API is called. **Gated closed by default**: `complete()` raises
-`provider_unavailable` unless `llm_provider_enabled` is on AND an `llm_api_key` is set — so the
-system keeps running on the simulated path until a founder wires a key (secret, never committed).
-Supports **Anthropic** (project default) and **OpenAI**; the request shape is the only difference.
-Model output stays **untrusted** (CLAUDE.md §18): callers validate it (the diagnosis path re-checks
-the reason against the frozen taxonomy and abstains on anything malformed).
+**Gated closed by default**: `complete()` raises `provider_unavailable` until `llm_provider_enabled`
+is on and the *selected provider's own* credential is configured, so the system runs on the
+simulated path until a founder wires keys.
 
-Enable: `GROWTH_OPERATOR_LLM_PROVIDER_ENABLED=true` + `GROWTH_OPERATOR_LLM_API_KEY=…` (+ optional
-`GROWTH_OPERATOR_LLM_PROVIDER=openai`). Tests never hit the network — they mock the HTTP call.
+The bug this rewrite fixes: the previous client read a single global `llm_provider`, `llm_api_key`
+and `llm_api_base`, so the `provider` a route selected was **ignored**. Assigning GPT-4o to a store
+sent a Claude-shaped request to Anthropic, and "fallback" re-hit the same vendor with the same key.
+Every call now resolves its adapter, endpoint and credential from the provider registry using the
+provider it was actually asked for.
+
+Model output stays **untrusted** (CLAUDE.md §18): callers validate it. Tests never hit the network.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
 from core.common.config import get_settings
 from core.common.errors import GrowthOperatorError
-
-_DEFAULT_BASE = {"anthropic": "https://api.anthropic.com", "openai": "https://api.openai.com"}
+from core.runtime.adapters import ADAPTERS
+from core.runtime.adapters.base import NormalizedRequest, NormalizedResult
+from core.runtime.model_registry import get_model, require_capabilities
+from core.runtime.providers import (
+    ProviderNotConfigured,
+    credential_for,
+    get_provider_definition,
+)
 
 
 @dataclass(frozen=True)
 class LlmResponse:
+    """Back-compatible shape for existing callers (the diagnosis path uses it)."""
+
     text: str
     tokens_in: int = 0
     tokens_out: int = 0
 
 
+class ProviderCallFailed(Exception):
+    """A transient, fallback-safe failure: timeout, rate limit, 5xx, or an unparseable body.
+
+    Distinct from `ProviderNotConfigured`, which is a configuration fault that must surface rather
+    than be masked by trying the next provider forever."""
+
+    def __init__(self, provider: str, error_class: str, detail: str = ""):
+        self.provider, self.error_class, self.detail = provider, error_class, detail
+        super().__init__(f"{provider}: {error_class} {detail}".strip())
+
+
 def _require_enabled() -> None:
-    s = get_settings()
-    if not s.llm_provider_enabled:
+    if not get_settings().llm_provider_enabled:
         raise GrowthOperatorError("provider_unavailable", "LLM provider disabled")
-    if not s.llm_api_key:
-        raise GrowthOperatorError(
-            "provider_unavailable", "LLM provider enabled but no llm_api_key configured")
 
 
-def _build_request(system: str, user: str, model: str, max_tokens: int) -> tuple[str, dict, dict]:
-    s = get_settings()
-    base = s.llm_api_base or _DEFAULT_BASE.get(s.llm_provider, _DEFAULT_BASE["anthropic"])
-    if s.llm_provider == "openai":
-        return (
-            f"{base}/v1/chat/completions",
-            {"Authorization": f"Bearer {s.llm_api_key}", "content-type": "application/json"},
-            {"model": model, "max_tokens": max_tokens,
-             "messages": [{"role": "system", "content": system},
-                          {"role": "user", "content": user}]},
-        )
-    # anthropic (default)
-    return (
-        f"{base}/v1/messages",
-        {"x-api-key": s.llm_api_key or "", "anthropic-version": "2023-06-01",
-         "content-type": "application/json"},
-        {"model": model, "max_tokens": max_tokens, "system": system,
-         "messages": [{"role": "user", "content": user}]},
+def _classify(exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        if code == 429:
+            return "rate_limited"
+        if code >= 500:
+            return "provider_5xx"
+        return f"http_{code}"
+    if isinstance(exc, (ValueError, KeyError, TypeError)):
+        return "malformed_response"
+    return "transport_error"
+
+
+async def call_provider(
+    *, provider: str, model: str, system: str, user: str,
+    max_tokens: int | None = None, timeout: float = 30.0,
+    required_capabilities: frozenset[str] | None = None,
+    transport: Any = None,
+) -> NormalizedResult:
+    """One inference call against **the named provider**, using that provider's own adapter,
+    endpoint and credential.
+
+    Raises `ProviderNotConfigured` for configuration faults (unknown/disabled provider, missing
+    credential, unknown/disabled model, capability mismatch) and `ProviderCallFailed` for
+    fallback-safe transient failures. `transport` is an injection point for tests — CI never
+    reaches the network.
+    """
+    _require_enabled()
+    definition = get_provider_definition(provider)
+    if not definition.enabled:
+        raise ProviderNotConfigured(provider, "provider_disabled")
+
+    # Credential before model: when neither is configured, "this provider has no key" is the
+    # actionable message, and it also guarantees no request is built without one.
+    key = credential_for(definition)                # this provider's key — never another's
+    model_def = get_model(provider, model)          # raises ModelNotApproved
+    if required_capabilities:
+        require_capabilities(model_def, required_capabilities)
+
+    adapter = ADAPTERS[definition.adapter]
+    request = NormalizedRequest(
+        system=system, user=user, model=model,
+        max_tokens=max_tokens or get_settings().llm_max_tokens,
     )
+    call = adapter.build(request, endpoint=definition.endpoint, key=key)
 
-
-def _parse(provider: str, data: dict) -> LlmResponse:
-    if provider == "openai":
-        text = data["choices"][0]["message"]["content"]
-        usage = data.get("usage", {})
-        return LlmResponse(text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-    # anthropic: content is a list of blocks; concatenate the text blocks
-    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-    usage = data.get("usage", {})
-    return LlmResponse(text, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+    try:
+        if transport is not None:
+            raw = await transport(call)
+        else:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(call.url, headers=call.headers, json=call.body)
+                response.raise_for_status()
+                raw = response.json()
+        return adapter.parse(raw)
+    except (ProviderNotConfigured, GrowthOperatorError, ProviderCallFailed):
+        # An already-classified failure keeps its class — re-wrapping it as `transport_error`
+        # would discard the reason the telemetry exists to record.
+        raise
+    except Exception as exc:  # noqa: BLE001 — classified, then re-raised as fallback-safe
+        raise ProviderCallFailed(provider, _classify(exc), type(exc).__name__) from exc
 
 
 async def complete(
     system: str, user: str, *, model: str | None = None, max_tokens: int | None = None,
-    timeout: float = 30.0,
+    timeout: float = 30.0, provider: str | None = None,
 ) -> LlmResponse:
-    """One real completion. Raises `provider_unavailable` when gated off / unconfigured; HTTP errors
-    propagate (the router treats a raise as 'try the next provider')."""
-    _require_enabled()
-    s = get_settings()
-    url, headers, body = _build_request(
-        system, user, model or s.llm_model, max_tokens or s.llm_max_tokens)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, headers=headers, json=body)
-        resp.raise_for_status()
-        return _parse(s.llm_provider, resp.json())
+    """Back-compatible entry point for callers that do not route (e.g. the diagnosis path).
+
+    `provider`/`model` default to the configured single-provider settings so existing callers keep
+    working; routed callers pass both explicitly."""
+    settings = get_settings()
+    try:
+        result = await call_provider(
+            provider=provider or settings.llm_provider,
+            model=model or settings.llm_model,
+            system=system, user=user, max_tokens=max_tokens, timeout=timeout,
+        )
+    except ProviderNotConfigured as exc:
+        # Non-routing callers documented `provider_unavailable` as the closed-gate signal; keep
+        # that contract rather than leaking a new exception type into their error handling.
+        raise GrowthOperatorError("provider_unavailable", str(exc)) from exc
+    return LlmResponse(result.text, result.usage.tokens_in, result.usage.tokens_out)

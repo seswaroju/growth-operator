@@ -157,7 +157,7 @@ async def test_cost_row_attributes_to_run_and_route(env: Env) -> None:
     assert len(rows) == 1
     row = rows[0]
     assert row["run_id"] == env.run_id and row["node_key"] == "converse"
-    assert row["provider"] == "anthropic" and row["model"] == "claude-3-5-sonnet"
+    assert row["provider"] == "anthropic" and row["model"] == "claude-3-5-sonnet-20241022"
     assert row["tokens_in"] == 10 and row["tokens_out"] == 5 and row["outcome"] == "ok"
     assert row["cost_usd"] > 0
 
@@ -166,7 +166,7 @@ async def test_unrouted_node_key_uses_the_default_chain(env: Env) -> None:
     # 'priya.reason' (the executor's node_key) has no row → resolves through the seeded default.
     model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
     route = await model._route("priya.reason")
-    assert route.chain == [("anthropic", "claude-3-5-sonnet"), ("openai", "gpt-4o")]
+    assert route.chain == [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
 
 
 # ---- Per-tenant model override (CP-5) --------------------------------------------------------
@@ -215,7 +215,7 @@ async def test_override_is_org_scoped(env: Env) -> None:
     try:
         model = RoutingModel(other, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
         route = await model._route("converse")
-        assert route.chain == [("anthropic", "claude-3-5-sonnet"), ("openai", "gpt-4o")]
+        assert route.chain == [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
     finally:
         conn = await asyncpg.connect(_dsn())
         try:

@@ -65,9 +65,13 @@ class SimulatedModel:
 
 
 class RealModel:
-    """The real client (MVP-074). Gated: fails closed unless `llm_provider_enabled` AND a key are
-    configured (`core.runtime.llm_client`); returns the model's text as the reply (tool-calling via
-    the real model is a later enhancement)."""
+    """The real client (MVP-074). Gated: fails closed unless `llm_provider_enabled` AND the selected
+    provider's own credential are configured.
+
+    `tool_call` is `None` **by construction**: the pilot concierge path is retrieval-first, so the
+    model is given authorized evidence and never proposes a tool. The adapter contract can carry
+    tool-call proposals when that is deliberately enabled later, at which point they would still
+    pass through mediation before anything executes."""
 
     async def turn(
         self, *, node_key: str, prompt: str, context: dict[str, Any]
@@ -110,9 +114,12 @@ class SimulatedProvider:
 
 
 class LlmProvider:
-    """Real provider backed by `core.runtime.llm_client` (MVP-074). `name` is the route's provider
-    (recorded for cost attribution); the client uses the configured `llm_provider`. Returns the
-    model's text as the reply."""
+    """Real provider backed by `core.runtime.llm_client` (MVP-074, corrected in PILOT-1B).
+
+    **The bug this fixes:** `name` used to be recorded for cost attribution while the client called
+    whatever `settings.llm_provider` named, so a route selecting `openai` could be answered by
+    Anthropic — and a "fallback" re-hit the primary vendor with the primary's key. The provider is
+    now passed through, so each attempt resolves its own adapter, endpoint and credential."""
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -122,9 +129,14 @@ class LlmProvider:
         params: dict[str, Any],
     ) -> ModelResult:
         from core.runtime import llm_client
-        resp = await llm_client.complete(system="", user=prompt, model=model)
-        return ModelResult(tool_call=None, text=resp.text,
-                           tokens_in=resp.tokens_in, tokens_out=resp.tokens_out)
+
+        system = str(params.get("system") or "")
+        result = await llm_client.call_provider(
+            provider=self.name, model=model, system=system, user=prompt,
+            required_capabilities=frozenset(params.get("requires") or ()) or None,
+        )
+        return ModelResult(tool_call=None, text=result.text,
+                           tokens_in=result.usage.tokens_in, tokens_out=result.usage.tokens_out)
 
 
 # Optional pre-registered clients; otherwise the LLM client backs every provider name.

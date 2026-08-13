@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -25,21 +26,47 @@ from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.runtime.model import ModelResult, Provider, get_provider
+from core.runtime.model_registry import (
+    CapabilityMismatch,
+    ModelNotApproved,
+    estimate_cost,
+    get_model,
+)
+from core.runtime.providers import ProviderNotConfigured
 from core.tenancy.middleware import org_scoped_session
 
 logger = logging.getLogger("core.runtime.routing")
 
+#: Faults that mean the route itself is wrong. They are recorded and alerted, never silently
+#: absorbed — fallback must not turn a permanently broken configuration into an invisible one.
+_CONFIG_ERROR_CLASSES = frozenset(
+    {"provider_unknown", "provider_disabled", "credential_missing",
+     "model_unknown", "model_disabled", "capability_mismatch"})
+
+
+def _error_class(exc: Exception) -> str:
+    from core.runtime.llm_client import ProviderCallFailed
+
+    if isinstance(exc, ProviderNotConfigured):
+        return exc.reason
+    if isinstance(exc, ModelNotApproved):
+        return exc.reason
+    if isinstance(exc, CapabilityMismatch):
+        return "capability_mismatch"
+    if isinstance(exc, ProviderCallFailed):
+        return exc.error_class
+    return "transport_error"
+
+
 # Static holding reply when no provider answers — no tool call, so the run responds safely.
 HOLDING_TEMPLATE = "Thanks for your message — a team member will follow up with you shortly."
 
-# Placeholder per-1k-token USD estimate (input, output) by provider, until real pricing at go-live.
-_PRICE_PER_1K: dict[str, tuple[str, str]] = {
-    "anthropic": ("0.003", "0.015"),
-    "openai": ("0.0025", "0.010"),
-}
-_DEFAULT_PRICE = ("0.001", "0.002")
-# The chain used when a node_key has no row and no `default` row is seeded (fail-safe).
-_FALLBACK_CHAIN = [("anthropic", "claude-3-5-sonnet"), ("openai", "gpt-4o")]
+# Cost comes from the exact provider+model in the model registry (PILOT-1B). The previous
+# per-provider table priced two OpenAI models an order of magnitude apart identically.
+# The chain used when a node_key has no row and no `default` row is seeded (fail-safe). These
+# must be **approved registry models** — a fail-safe naming an unapproved id would itself be a
+# configuration fault, which a unit test now pins.
+_FALLBACK_CHAIN = [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
 
 
 @dataclass
@@ -49,10 +76,13 @@ class Route:
     params: dict[str, Any]
 
 
-def _estimate_cost(provider: str, tokens_in: int, tokens_out: int) -> Decimal:
-    p_in, p_out = _PRICE_PER_1K.get(provider, _DEFAULT_PRICE)
-    cost = (Decimal(tokens_in) * Decimal(p_in) + Decimal(tokens_out) * Decimal(p_out)) / 1000
-    return cost.quantize(Decimal("0.000001"))
+def _estimate_cost(provider: str, model: str, tokens_in: int, tokens_out: int) -> Decimal:
+    """Exact provider+model pricing. An unapproved pair costs 0 rather than guessing: the attempt
+    is already recorded as a configuration failure, and a fabricated number is worse than none."""
+    try:
+        return estimate_cost(get_model(provider, model), tokens_in, tokens_out)
+    except ModelNotApproved:
+        return Decimal("0.000000")
 
 
 class RoutingModel:
@@ -73,20 +103,40 @@ class RoutingModel:
     ) -> ModelResult:
         route = await self._route(node_key)
         last_error: str | None = None
-        for provider_name, model_name in route.chain:
+        for attempt_index, (provider_name, model_name) in enumerate(route.chain):
+            started = time.monotonic()
             try:
                 provider: Provider = self._get_provider(provider_name)
                 result = await provider.complete(
                     node_key=node_key, prompt=prompt, context=context, model=model_name,
                     params=route.params,
                 )
-            except Exception as exc:  # this provider is down → record a failed attempt, try next
-                last_error = f"{provider_name}: {type(exc).__name__}"
-                await self._log_cost(node_key, provider_name, model_name, 0, 0, "failed")
-                logger.warning("provider failover: %s failed on %s", provider_name, node_key)
+            except Exception as exc:
+                # Two different faults, deliberately distinguished. A *configuration* fault (unknown
+                # or disabled provider/model, missing credential, capability mismatch) is a broken
+                # route that must become visible to Operations — masking it behind fallback forever
+                # is how a misconfiguration survives. A transient failure is fallback-safe.
+                error_class = _error_class(exc)
+                latency_ms = int((time.monotonic() - started) * 1000)
+                await self._log_cost(
+                    node_key, provider_name, model_name, 0, 0, "failed",
+                    latency_ms=latency_ms, error_class=error_class, attempt_index=attempt_index)
+                last_error = f"{provider_name}: {error_class}"
+                if error_class in _CONFIG_ERROR_CLASSES:
+                    logger.error(
+                        "model route misconfigured: node=%s provider=%s model=%s reason=%s",
+                        node_key, provider_name, model_name, error_class)
+                    await self._alert_route_misconfigured(
+                        node_key, provider_name, model_name, error_class)
+                else:
+                    logger.warning(
+                        "provider failover: %s failed on %s (%s)",
+                        provider_name, node_key, error_class)
                 continue
             await self._log_cost(
-                node_key, provider_name, model_name, result.tokens_in, result.tokens_out, "ok"
+                node_key, provider_name, model_name, result.tokens_in, result.tokens_out, "ok",
+                latency_ms=int((time.monotonic() - started) * 1000),
+                attempt_index=attempt_index,
             )
             return result
         # Every provider failed → holding template (no tool call, zero successful LLM output).
@@ -137,20 +187,38 @@ class RoutingModel:
 
     async def _log_cost(
         self, node_key: str, provider: str, model: str, tokens_in: int, tokens_out: int,
-        outcome: str,
+        outcome: str, *, latency_ms: int | None = None, error_class: str | None = None,
+        attempt_index: int = 0,
     ) -> None:
-        cost = _estimate_cost(provider, tokens_in, tokens_out)
+        """One row per **attempt**. `attempt_index` (0 = primary, 1 = first fallback, …) makes
+        fallback behaviour durable without a separate boolean, and latency/error_class are what
+        let one provider be compared against another rather than merely observed."""
+        cost = _estimate_cost(provider, model, tokens_in, tokens_out)
         async with org_scoped_session(self.org_id) as s:
             await s.execute(
                 text(
                     "INSERT INTO costs_lite (org_id, run_id, node_key, provider, model, outcome, "
-                    " tokens_in, tokens_out, cost_usd) "
-                    "VALUES (:o, :r, :nk, :p, :m, :oc, :ti, :to, :cost)"
+                    " tokens_in, tokens_out, cost_usd, latency_ms, error_class, attempt_index) "
+                    "VALUES (:o, :r, :nk, :p, :m, :oc, :ti, :to, :cost, :lat, :ec, :ai)"
                 ),
                 {"o": str(self.org_id), "r": str(self.run_id), "nk": node_key, "p": provider,
-                 "m": model, "oc": outcome, "ti": tokens_in, "to": tokens_out, "cost": cost},
+                 "m": model, "oc": outcome, "ti": tokens_in, "to": tokens_out, "cost": cost,
+                 "lat": latency_ms, "ec": error_class, "ai": attempt_index},
             )
             await s.commit()
+
+    async def _alert_route_misconfigured(
+        self, node_key: str, provider: str, model: str, reason: str
+    ) -> None:
+        """Surface a broken route to Vaylorn Operations. No credential names or values."""
+        envelope = {
+            "specversion": "1.0", "id": str(uuid4()), "type": "alert.ops.v1",
+            "source": "gop/runtime", "time": datetime.now(UTC).isoformat(),
+            "data": {"severity": "error", "kind": "model_route_misconfigured",
+                     "detail": {"org_id": str(self.org_id), "node_key": node_key,
+                                "provider": provider, "model": model, "reason": reason}},
+        }
+        await self.redis.xadd("gop:events:alert.ops.v1", {"data": json.dumps(envelope)})
 
     async def _alert_all_down(self, node_key: str, last_error: str | None) -> None:
         envelope = {

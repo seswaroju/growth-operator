@@ -237,8 +237,16 @@ class Settings(BaseSettings):
     # committed. Provider is `anthropic` (project default, CLAUDE.md) or `openai`. `llm_api_base`
     # defaults per provider when unset. Model defaults to a capable frontier model.
     llm_provider: str = Field(default="anthropic")  # anthropic | openai
-    llm_api_key: str | None = Field(default=None)  # secret — never commit
-    llm_model: str = Field(default="claude-sonnet-4-5")
+    llm_api_key: str | None = Field(default=None)  # secret — never commit (legacy single-key)
+    # PILOT-1B: per-provider credentials. A fallback must authenticate as itself — reusing the
+    # primary's key against a different vendor would leak that key to a third party. Each is a
+    # SECRET set via env/SOPS and is never returned by an API, logged, or placed in a prompt.
+    llm_key_openai: str | None = Field(default=None)
+    llm_key_anthropic: str | None = Field(default=None)
+    llm_key_deepseek: str | None = Field(default=None)
+    # Must be an id present in `core.runtime.model_registry` — a unit test pins this, since an
+    # unapproved default would fail every non-routing call at runtime.
+    llm_model: str = Field(default="claude-3-5-sonnet-20241022")
     llm_api_base: str | None = Field(default=None)  # e.g. https://api.anthropic.com
     llm_max_tokens: int = Field(default=1024)
 

@@ -1613,3 +1613,47 @@ routes and five open ones). Every mapped OpenAPI operation must be bound to a su
 tests prove the guard fails when a route or tool appears unclassified.
 
 **Decided by:** Founder (2026-08-13), across two PLAN-5 design-review rounds.
+
+
+---
+
+## 2026-08-13 — Provider is not agent; model is not entitlement (PILOT-1B)
+
+**Decision.** Vaylorn owns agent semantics, prompts, retrieval, tool authorization, commercial
+authorization, approvals, safety, routing and evaluation; a vendor supplies inference. Vendor
+differences live behind a provider/adapter abstraction, and no agent or workflow branches on
+provider name. **Model selection is internal infrastructure, never a plan entitlement** — customers
+buy outcomes, not vendors.
+
+**Endpoints are platform-controlled.** A provider's URL comes from the code registry, never from
+operator input, tenant config, a model route or model output. No base-URL or API-key destination
+field exists in any operator surface: a credential plus an attacker-chosen host is an
+SSRF/exfiltration primitive.
+
+**Credentials are per provider.** A fallback authenticates as itself; reusing the primary's key
+against another vendor would leak it to a third party. Secrets never enter routes, tenant config,
+API responses, logs or prompts.
+
+**The adapter belongs to the provider, not the model** — otherwise a model could contradict its
+provider about the wire protocol.
+
+**Cost resolves from the exact provider+model.** Per-provider pricing made two models an order of
+magnitude apart indistinguishable. Pricing is operational configuration, versionable without
+touching agent logic, and is never customer pricing truth.
+
+**Configuration faults do not hide behind fallback.** Unknown/disabled provider or model, missing
+credential and capability mismatch fail fast and raise `model_route_misconfigured` to Operations;
+only timeout, rate limit, 5xx and malformed responses are fallback-safe. Model retries never
+re-trigger an external send.
+
+**Grounding is retrieval-first.** Vaylorn retrieves through the existing mediation proxy, hands the
+model an evidence block, and the model drafts prose — it holds no execution authority. Catalog text
+is treated as untrusted data: fence vocabulary is stripped so a product description cannot forge a
+boundary or issue instructions, fields are allow-listed, and a deterministic check abstains rather
+than sending an unsupported product or price claim.
+
+**Also corrected:** the seeded routes named `claude-3-5-sonnet`/`claude-3-5-haiku`, which the
+Anthropic API does not accept. Unnoticed while the transport never reached a vendor; repointed at
+the dated ids in migration 052.
+
+**Decided by:** Founder (2026-08-13), PILOT-1B authorization.

@@ -9,33 +9,30 @@ selects and approves the next ticket.
 
 ---
 
-## PLAN-5 · Runtime enforcement + agent reconciliation — **Completed — awaiting founder review** (2026-08-13)
+## PILOT-1B · Provider-agnostic real Priya runtime + grounding — **Completed — awaiting founder review** (2026-08-13)
 
-Branch `feature/plan-5-runtime-enforcement`. **Migration 051 only** (the PLAN-4 SECDEF; PLAN-5 adds
-no schema).
+Branch `feature/pilot-1b-provider-agnostic-runtime`. **Migration 052** (additive telemetry + a data
+correction).
 
-**Before this ticket the entire enforcement surface was four `requires_feature` gates.** The audit
-found three gaps beyond the three known ones: **mediation had no entitlement check at all** (an agent
-could `landing_page.publish` for a store that never bought landing pages), `recovery_sweep` processed
-**every** organization, and `campaign_fanout` kept sending after a downgrade.
+**The bug this closes:** provider selection was cosmetic. `llm_client` read a single global
+`llm_provider`/`llm_api_key`/`llm_api_base`, so assigning GPT-4o to a store sent a Claude-shaped
+request to Anthropic, and "fallback" re-hit the same vendor with the same key. Every call now
+resolves its own adapter, endpoint and credential.
 
-- `core/tenancy/entitlements.py` — `assert_entitled`, `is_entitled`, `assert_vertical_entitled`,
-  `assert_agent_executable`.
-- `core/tenancy/enforcement.py` (NEW) — per-surface inventory; every sellable capability's surfaces
-  are enforced-with-a-named-test or explicitly exempt. `missing`/`unknown` are not expressible.
-- `core/mediation/{proxy,tools}.py` — every tool declares `TOOL_CAPABILITY` or
-  `TOOL_PLAN_EXEMPT`; the proxy re-checks **agent authority and tool capability** before execute.
-- `core/runtime/executor.py` — `_drive()` is the authoritative boundary, so `start_run`,
-  `resume_run` and `resume_after_approval` all converge on it; a downgraded run ends `interrupted`.
-- Landing public runtime (`published_spec`, `record_public_event`, `capture_lead`) gated **inside
-  the services**, denying neutrally — 404/204/no-capture, never disclosing billing state.
-- `reconcile_plan_agents` **never rewrites operational status**; a manual pause survives a
-  downgrade→upgrade cycle. Commercial authority is evaluated at execution time instead.
-- Jobs classified: `recovery_sweep` and `campaign_fanout` gated (the latter halts once with
-  `halt_reason="entitlement_revoked"`); the import reaper and rate-provider ingestion stay exempt as
-  cleanup/platform infrastructure.
+- `core/runtime/providers.py` — approved vendors, platform-controlled endpoints, per-provider
+  `credential_ref`. **openai · deepseek · anthropic**, with DeepSeek proving the `openai_compatible`
+  transport works against a non-OpenAI vendor.
+- `core/runtime/model_registry.py` — approved models with capabilities, context, quality tier and
+  **exact per-model pricing** (gpt-4o vs gpt-4o-mini differ 15×; the old per-provider table priced
+  them identically). The adapter belongs to the provider, never the model.
+- `core/runtime/adapters/` — `openai_compatible` (two vendors, one implementation) and
+  `anthropic_native`. `NormalizedResult` can carry tool-call proposals later without reshaping.
+- `core/runtime/grounding.py` — retrieval-before-generation. Catalog text is fenced, marker-stripped
+  and length-bounded; a deterministic check abstains on unsupported product/price claims. **No
+  second LLM judge.**
+- `costs_lite` gains `latency_ms`, `error_class`, `attempt_index` (0 = primary).
+- `scripts/eval_models.py` — same corpus across candidates, mocked by default, `--live` opt-in.
 
-**Historical data continuity:** a cancelled store still reads conversations, customers, catalog,
-leads, campaigns, landing pages, imports, approvals and rate freshness — and can execute nothing.
+**No permanent default model is declared** — that is an operational decision from eval results.
 
-**Do not start the next ticket automatically — the founder selects it.**
+**Do not start PILOT-1C or any later ticket automatically.**
