@@ -5707,6 +5707,7 @@ integration+isolation `verify_fresh_db.sh` — 671 passed, 4 skipped, 0 errors**
 real ghost, never chases a customer waiting on the store while still surfacing it, leaves engaged
 leads alone, honours the store's threshold, and the sweep event actually starts the playbook).
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `097c77b` (merge `9fd923e`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1c (owner intervention: exclude / snooze / "they contacted me"), then LP-4a.

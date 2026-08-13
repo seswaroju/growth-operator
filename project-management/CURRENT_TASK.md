@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## GHOST-1b · Silent-lead classification + daily sweep — **COMPLETE — awaiting founder review** (2026-08-12)
+## GHOST-1b · Silent-lead classification + daily sweep — **COMPLETE — merged `9fd923e`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1b-refinements`. The founder rejected a one-shot verdict: *"how come after 24 or
 within 24 hours if the customer responds and stops again then also its a ghost? We should come up with
