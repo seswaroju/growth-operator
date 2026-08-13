@@ -1362,3 +1362,52 @@ facts. Recorded here as a deliberate deviation from
 sweep + `lead.went_silent.v1`), **GHOST-1c** (owner intervention: exclude / snooze / "they contacted
 me" — the founder's ask that a lead can be pulled out of recovery). **Decided by:** Founder
 (2026-08-12).
+
+
+---
+
+## 2026-08-13 — Capability catalog: four separate concepts, and what stays out of it (PLAN-1)
+
+**Decision.** The canonical capability catalog (`core/tenancy/capabilities.py`) keeps four concepts
+strictly apart, because conflating them is how a pricing page ends up promising what the product
+cannot do:
+
+| Concept | Question | Where |
+|---|---|---|
+| `status` | engineering/product maturity | `capabilities.py` |
+| `commercial_visibility` | eligible for commercial presentation? | `capabilities.py` |
+| effective entitlement | did this tenant buy / get granted it? | `entitlements.py` |
+| operational readiness | can this deployment/provider actually execute it? | `BLOCKERS.md` |
+
+**`runtime_grantable` means:** eligible to participate as an independent machine-authorization
+entitlement **once the structured resolver supports it**. It does *not* mean currently granted,
+globally enabled, provider connected, or deployment ready.
+
+**Operational readiness is excluded from the model.** WhatsApp (external WABA setup) and public
+landing-page serving (hosting) are implemented but not production-live. Those are deployment
+concerns, not capability maturity: both keep `status=available` / `commercial_visibility=public`,
+and execution stays gated by the existing connection/provider/live/security checks. Transient
+blocker ids are **not** encoded in `Capability`, and no substitute field (`activation_dependency`,
+`blocker_ids`, `launch_blocker`, `deployment_blocker`) may be added. A generalized
+operational-readiness model, if ever needed, is designed separately. **WEB work must re-audit
+operational readiness before the public site launches** and describe availability truthfully.
+
+**One authorization boundary may back several marketing bullets.** Campaign analytics / campaign ROI
+/ growth analytics → one `campaigns.analytics`. Landing generation / lead capture / interest
+insights → one `landing_pages`. A new entitlement is never created merely to add a pricing-table
+row; a capability may exist as customer-facing metadata with `runtime_grantable=False` while an
+existing mechanism (`enforced_by`) governs it. **CP-3 remains the sole seat enforcement** — the
+catalog describes the limit and creates no second boolean seat entitlement.
+
+**`evidence_refs` is audit metadata, never authorization.** A route string can drift, so a contract
+test checks every ref against the live OpenAPI paths. Protection comes from the catalog invariants,
+the resolver, route/tool enforcement and integration tests.
+
+**PLAN-1 did not expand runtime semantics.** The effective vocabulary stayed frozen at
+`LEGACY_EFFECTIVE_KEYS`; `seo`, `agent.marketing`, `ads.instagram` and `ads.google` stopped granting
+anything. `BASELINE_FEATURES` is retained as a **documented compatibility shim, not "free Recover"**
+— PLAN-2 resolves the final no-active-subscription semantics. Global catalog knowledge is not tenant
+entitlement: an L1 capability may never become effective for a tenant without the pack installed,
+which PLAN-2's resolver must enforce.
+
+**Decided by:** Founder (2026-08-13), across the PLAN-1 design-review loop.

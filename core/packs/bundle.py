@@ -37,6 +37,7 @@ from core.packs.contracts import (
     BindingsPack,
     CalendarPack,
     CatalogSchema,
+    CommercialPack,
     EvalSuite,
     IntegrationSpec,
     OnboardingPack,
@@ -70,6 +71,7 @@ class ParsedPack:
     onboarding: OnboardingPack | None = None
     ui: UiPack | None = None
     calendar: CalendarPack | None = None
+    commercial: CommercialPack | None = None
 
 
 # ---- Prompt anchor splitting ----------------------------------------------------------
@@ -254,6 +256,11 @@ def parse_pack_dir(pack_dir: Path) -> ParsedPack:
     onboarding = _opt("onboarding/steps.yaml", OnboardingPack.model_validate)
     ui = _opt("ui/templates.yaml", UiPack.model_validate)
     calendar = _opt("calendar/events.yaml", CalendarPack.model_validate)
+    # PLAN-1: optional, pointed at by the manifest rather than a fixed path.
+    commercial = (
+        _opt(manifest.commercial, CommercialPack.model_validate)
+        if manifest.commercial else None
+    )
 
     prompt_layers: list[PromptLayerDef] = []
     prompts_dir = pack_dir / "prompts"
@@ -265,6 +272,7 @@ def parse_pack_dir(pack_dir: Path) -> ParsedPack:
         manifest=manifest, bindings=bindings, catalog=catalog, pricing=pricing,
         prompt_layers=prompt_layers, workflows=workflows, integrations=integrations,
         evals=evals, onboarding=onboarding, ui=ui, calendar=calendar,
+        commercial=commercial,
     )
 
 

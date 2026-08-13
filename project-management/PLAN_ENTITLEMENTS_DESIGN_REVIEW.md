@@ -208,11 +208,11 @@ only new surface is the marketing site.
 
 | Ticket | Scope | Migration? |
 |---|---|---|
-| **PLAN-1** | Capability catalog: kinds, statuses, categories, dependencies, L1 vertical contributions (gold/rate via the pack, §55). Extends ENT-1a's catalog | No |
-| **PLAN-2** | Structured entitlements in `config.entitlements` + compatibility loader + `effective_entitlements` incl. **promotions** (time-derived) | No |
-| **PLAN-3** | Recover/Grow/Scale presets seeded from the catalog + copy-from-plan (snapshot, no inheritance) | Data-only |
-| **PLAN-4** | Operator **Plan Builder** UI: grouped/searchable selector, promotions editor, plan preview, subscriber-impact confirmation, audit detail | No |
-| **PLAN-5** | Extend enforcement to the listed capabilities + publish the ungated list | No |
+| **PLAN-1** | **Canonical capability catalog + vocabulary. No runtime expansion.** | No |
+| **PLAN-2** | **Structured entitlement resolver:** provenance, subscription-state semantics, pack filtering for L1, promotion **evaluation**, compatibility loader | No |
+| **PLAN-3** | **Recover/Grow/Scale presets.** Snapshot/data composition, no live inheritance | Data-only |
+| **PLAN-4** | **Operator Plan Builder UI**, including promotion **authoring** | No |
+| **PLAN-5** | **Runtime enforcement extension** + explicit inventory of remaining ungated capabilities | No |
 | **ANNOUNCE-1** | Extract `core/media/` (WhatsApp + landing move onto it) — pure refactor, no behaviour change | No |
 | **ANNOUNCE-2** | Announcement attachments: metadata table, upload (AV fail-closed), operator composer | **Yes** |
 | **ANNOUNCE-3** | Owner rendering + authenticated download (never expose `s3://`) | No |
@@ -401,3 +401,46 @@ contractually supportable**.
 **Constraints:** do **not** invent "recovered revenue" attribution the data model cannot defend;
 do **not** create a second analytics system — **extend the existing insights/read-model
 architecture** (`business_metrics` rollup + `core/insights`).
+
+
+---
+
+# PART 7 — CANONICAL TICKET SEQUENCE (founder-ratified 2026-08-13) — **FROZEN**
+
+Ratified verbatim. This sequence is identical in this file, `BACKLOG.md`, `CURRENT_TASK.md` and
+`IMPLEMENTATION_LOG.md`. **Ticket IDs must not drift between documents.**
+
+| Ticket | Scope |
+|---|---|
+| **PLAN-1** | Canonical capability catalog + vocabulary. No runtime expansion. |
+| **PLAN-2** | Structured entitlement resolver: provenance, subscription-state semantics, pack filtering for L1, promotion evaluation, compatibility loader. |
+| **PLAN-3** | Recover / Grow / Scale presets. Snapshot/data composition, no live inheritance. |
+| **PLAN-4** | Operator Plan Builder UI, including promotion authoring. |
+| **PLAN-5** | Runtime enforcement extension + explicit inventory of remaining ungated capabilities. |
+
+**Promotion ownership was the drift.** It is split explicitly: **semantics/evaluation in PLAN-2,
+authoring UI in PLAN-4.** Earlier text assigning "the promotion system" wholly to PLAN-4 is corrected.
+
+## Operational readiness is NOT in the capability model (founder ruling, 2026-08-13)
+
+WhatsApp is implemented but blocked from real production use by external WABA/provider setup;
+landing-page public serving is implemented but not yet deployed to public hosting. **Both are
+operational/deployment-readiness concerns, not capability identity or maturity.** Transient blocker
+ids (#3, #8, #10) are therefore **not** encoded in `Capability` — and no substitute field
+(`blocker_ids`, `launch_blocker`, `deployment_blocker`) may be added either. `BLOCKERS.md` remains
+their source of truth. If a generalized operational-readiness model is ever needed, it must be
+designed separately from the canonical product catalog.
+
+Both keep `status = available`, `commercial_visibility = public`. Execution continues to require the
+existing connection/provider/live/security gates. **WEB work must re-audit operational readiness
+before the public site launches**: if WABA is unresolved then, the copy must truthfully describe
+current availability (setup required / pilot / waitlist) rather than implying live service.
+
+Four concepts stay separate:
+
+| Concept | Question it answers | Where it lives |
+|---|---|---|
+| `status` | engineering/product maturity | `capabilities.py` |
+| `commercial_visibility` | eligible for commercial presentation? | `capabilities.py` |
+| effective entitlement | did this tenant buy / get granted it? | `entitlements.py` |
+| operational readiness | can this deployment/tenant/provider execute it? | `BLOCKERS.md`, connection state |

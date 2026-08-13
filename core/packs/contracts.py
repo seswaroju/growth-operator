@@ -74,6 +74,7 @@ class PackManifest(_Strict):
     onboarding: str | None = None
     ui: str | None = None
     calendar_pack: str | None = None
+    commercial: str | None = None   # PLAN-1: optional vertical commercial capabilities
     evals_required: list[str] = []
     signing: Signing | None = None
 
@@ -214,6 +215,30 @@ class CalendarEvent(_Strict):
 class CalendarPack(_Strict):
     events: list[CalendarEvent]
     recurrence: dict[str, Any] | None = None
+
+
+class CapabilityDef(_Strict):
+    """A vertical-specific commercial capability contributed by a pack (PLAN-1).
+
+    `key` is namespaced to `<pack>.<key>` on load, so a pack can never shadow an L0 capability.
+    Declaring one here puts it in the **global** catalog only — it never becomes effective for a
+    tenant that has not installed the pack (PLAN-2 owns that filtering)."""
+
+    key: str
+    label: str
+    description: str
+    category: str
+    kind: Literal["feature", "agent", "channel", "channel_capability", "addon", "limit"]
+    status: Literal["available", "beta", "partial", "planned"]
+    commercial_visibility: Literal["public", "public_beta", "private_beta", "internal", "planned"]
+    runtime_grantable: bool = False
+    enforced_by: str | None = None
+    evidence_refs: list[str] = []
+    depends_on: list[str] = []
+
+
+class CommercialPack(_Strict):
+    capabilities: list[CapabilityDef] = []
 
 
 class EvalSuite(_Open):

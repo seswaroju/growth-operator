@@ -1,17 +1,23 @@
-"""Plan entitlements — which capabilities a store's plan actually includes (ENT-1a).
+"""Tenant effective-access resolver — what a store's plan actually lets it use (ENT-1a, PLAN-1).
 
-Before this, only **seats** (CP-3) and **agents** (CP-2b) were plan-gated: a starter-tier store
+Before ENT-1a, only **seats** (CP-3) and **agents** (CP-2b) were plan-gated: a starter-tier store
 could still open Campaigns and send one, because the only check was a *role* permission.
 Tiering is a revenue boundary, so it is enforced **server-side** here; hiding things in the UI
-(ENT-1b) is convenience, never the boundary.
+is convenience, never the boundary.
 
-Two rules keep this safe to introduce mid-flight:
+**Division of labour (PLAN-1).** `core/tenancy/capabilities.py` owns the canonical, global,
+org-independent product vocabulary — what capabilities exist. This module owns the tenant-specific
+question — what *this* store may use. The catalog is deliberately wider: a capability may be
+declared `runtime_grantable` (eligible to become an independent machine entitlement once PLAN-2's
+structured resolver lands) long before it is effective for anyone.
 
-1. **A baseline every plan includes** — the things no tier would ever sell separately. Existing
-   stores keep working unchanged (today every plan's `features` list is empty).
-2. **Additive per plan** — a tier grants extra features on top of the baseline, stored in the
-   existing `billing_plans.features` column (written by the plan builder since CP-1, never read
-   until now — so **no migration**).
+**PLAN-1 changes vocabulary, not authorization.** The effective set stays frozen at
+`LEGACY_EFFECTIVE_KEYS` — the exact ENT-1a set minus four keys that were grantable but unsafe
+(`seo` and `agent.marketing` are not built; `ads.instagram` and `ads.google` have no
+customer-reachable path). Nothing newly declared in the catalog becomes effective here. PLAN-2 is
+where the resolver intentionally adopts the structured contract, adds provenance, resolves
+no-active-subscription semantics, and filters vertical capabilities against a tenant's installed
+packs.
 
 Generic/platform-invariant: these are platform capabilities, never vertical nouns (Rule Zero).
 """
@@ -25,46 +31,50 @@ from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.tenancy.capabilities import L0_CAPABILITIES, resolve_alias
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
 from core.tenancy.repository import set_org_context
 
-# ---- The catalog ------------------------------------------------------------------------------
-# Baseline: included in every plan, including the entry tier.
+# ---- Keys (canonical spellings live in capabilities.py) ---------------------------------------
 CONVERSATIONS = "conversations"        # the inbox + concierge replies
 CATALOG = "catalog"                    # catalog + pricing/quotes
 CUSTOMERS = "customers"                # CRM: contacts, leads, timeline
 GHOST_RECOVERY = "ghost_recovery"      # silent-lead diagnosis + recovery (the wedge)
-
-# Tier-differentiated: a plan must grant these explicitly.
 CAMPAIGNS_WHATSAPP = "campaigns.whatsapp"   # bulk WhatsApp campaigns
 LANDING_PAGES = "landing_pages"             # generated landing pages for paid traffic
-ADS_INSTAGRAM = "ads.instagram"             # Instagram publishing / ads
-ADS_GOOGLE = "ads.google"                   # Google Ads campaigns
-SEO = "seo"                                 # SEO/content surface (not built yet — grantable early)
-AGENT_MARKETING = "agent.marketing"         # a dedicated marketing agent for the store
 
+# Retained so historical imports and stored plan rows keep resolving. None of these grant anything:
+# `resolve_alias` maps them onto their canonical capability, which is then refused below.
+ADS_INSTAGRAM = "ads.instagram"        # → social.instagram_publishing (partial, internal)
+ADS_GOOGLE = "ads.google"              # partial, internal
+SEO = "seo"                            # planned — not built
+AGENT_MARKETING = "agent.marketing"    # planned — no such archetype
+
+# ---- The PLAN-1 compatibility shim -------------------------------------------------------------
+# **This is not the catalog.** It is the frozen ENT-1a effective vocabulary minus the four unsafe
+# keys, and it is the ONLY thing `normalize()` consults. A capability cannot become effective by
+# being added to the catalog — that requires deliberately editing this set, which a unit test
+# guards. PLAN-2 replaces the shim with the structured resolver.
+LEGACY_EFFECTIVE_KEYS: frozenset[str] = frozenset({
+    CONVERSATIONS, CATALOG, CUSTOMERS, GHOST_RECOVERY,   # ENT-1a baseline
+    CAMPAIGNS_WHATSAPP, LANDING_PAGES,                   # ENT-1a grantable, retained
+})
+
+# Compatibility shim, **not** a product tier. A store with no active subscription retaining baseline
+# access is a migration accommodation so existing stores are not locked out of their own inbox
+# mid-flight. This is not "free Recover". PLAN-2 defines the final no-active-subscription semantics.
 BASELINE_FEATURES: frozenset[str] = frozenset(
     {CONVERSATIONS, CATALOG, CUSTOMERS, GHOST_RECOVERY})
 
-GRANTABLE_FEATURES: tuple[str, ...] = (
-    CAMPAIGNS_WHATSAPP, LANDING_PAGES, ADS_INSTAGRAM, ADS_GOOGLE, SEO, AGENT_MARKETING,
-)
+# What a plan may additionally grant today.
+GRANTABLE_FEATURES: tuple[str, ...] = (CAMPAIGNS_WHATSAPP, LANDING_PAGES)
 
 ALL_FEATURES: frozenset[str] = BASELINE_FEATURES | frozenset(GRANTABLE_FEATURES)
 
-FEATURE_LABEL: dict[str, str] = {
-    CONVERSATIONS: "Conversations",
-    CATALOG: "Catalog & quotes",
-    CUSTOMERS: "Customers",
-    GHOST_RECOVERY: "Silent-lead recovery",
-    CAMPAIGNS_WHATSAPP: "WhatsApp campaigns",
-    LANDING_PAGES: "Landing pages",
-    ADS_INSTAGRAM: "Instagram ads",
-    ADS_GOOGLE: "Google Ads",
-    SEO: "SEO",
-    AGENT_MARKETING: "Dedicated marketing agent",
-}
+# Owner-facing names come from the canonical catalog — one source of truth for copy. L0 only, so
+# importing this module never touches the filesystem.
+FEATURE_LABEL: dict[str, str] = {c.key: c.label for c in L0_CAPABILITIES}
 
 
 class FeatureNotInPlan(Exception):
@@ -77,10 +87,25 @@ class FeatureNotInPlan(Exception):
 
 
 def normalize(raw: object) -> frozenset[str]:
-    """Only recognised feature ids survive — a typo in a plan never grants something real."""
+    """Reduce a stored plan `features` list to what it may actually grant today.
+
+    A key survives only if it is in `LEGACY_EFFECTIVE_KEYS`. Historical spellings are mapped
+    through `resolve_alias` first, so an old row is understood rather than silently ignored — and
+    then refused on its merits if its capability is not effective. A typo, an unknown key, a
+    not-built capability (`seo`), an unreachable one (`ads.google`) and any **pack-contributed**
+    capability all grant nothing. Pack-contributed keys are refused because activating one safely
+    requires knowing which packs the tenant installed, and this function has no such context —
+    PLAN-2's resolver owns that."""
     if not isinstance(raw, list):
         return frozenset()
-    return frozenset(f for f in raw if isinstance(f, str) and f in ALL_FEATURES)
+    granted: set[str] = set()
+    for f in raw:
+        if not isinstance(f, str):
+            continue
+        canonical = resolve_alias(f)
+        if canonical in LEGACY_EFFECTIVE_KEYS:
+            granted.add(canonical)
+    return frozenset(granted)
 
 
 async def entitlements(session: AsyncSession, org_id: UUID) -> frozenset[str]:

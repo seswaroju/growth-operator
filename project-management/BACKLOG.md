@@ -40,52 +40,44 @@ Status: **DESIGN-REVIEW-FIRST** (founder requires a written review before code) 
 The architecture must support arbitrary further plans (Pilot, Custom, Launch Offer, Enterprise,
 Jewelry Premium, Association, Founder…) built from the *same* entitlement system.
 
-- **PLAN-0 — Design review (§75 A–N)** · **DESIGN-REVIEW-FIRST — THE NEXT DELIVERABLE**
-  A written review, before any code, covering: (A) existing architecture to reuse, (B) capability
-  inventory table, (C) Recover/Grow/Scale vs **actual repo readiness**, (D) persistence
-  recommendation (`config` JSONB vs normalized tables), (E) machine-readable default plans,
-  (F) entitlement resolver design, (G) what gets gated now vs follow-up, (H) promotion semantics
-  (start-inclusive / end-exclusive / UTC), (I) announcement attachment architecture without coupling
-  notifications→WhatsApp, (J) UI changes, (K) files affected, (L) backward compatibility for existing
-  `features` / `config.agents` / `config.channels` / `config.addons`, (M) test categories,
-  (N) ticket slicing. **Plus the §74 honesty table** (capability · repo evidence · maturity ·
-  sellable? · proposed plan).
+> **Canonical sequence — founder-ratified 2026-08-13, FROZEN.** Identical in
+> `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md` (Part 7), `CURRENT_TASK.md` and `IMPLEMENTATION_LOG.md`.
+> Ticket IDs must not drift between documents.
 
-- **PLAN-1 — Capability catalog + structured entitlement contract** · **QUEUED**
-  One authoritative registry: `key, label, description, category, kind, status, dependencies,
-  commercial_visibility`. Kinds: `feature | agent | channel | channel_capability | addon | limit`.
-  Statuses: `available | beta | planned`. **Customer-perceivable capabilities only** — never
-  infrastructure (RLS, Redis, outbox, LangGraph…). Vertical packs (L1) may contribute
-  vertical-specific commercial capabilities (e.g. gold/rate operations) **without** polluting L0
-  (Rule Zero). *Extends ENT-1a's catalog, which was a first cut.*
+- **PLAN-0 — Design review (§75 A–N)** · **DONE** — `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md`
 
-- **PLAN-2 — Effective entitlement resolver + backward compatibility** · **QUEUED**
-  `effective_entitlements(org_id)` / `is_entitled(org_id, key)` = active subscription → plan
-  permanent entitlements + currently-active promotions (+ future tenant overrides). Centralized —
-  no `if plan.config["foo"]` scattered around. Compatibility loader for existing `features` /
-  `config.*`; an unmappable legacy value is **preserved as legacy/custom display**, never discarded.
-  *Extends ENT-1a's `entitlements()`.*
+- **PLAN-1 — Canonical capability catalog + vocabulary. No runtime expansion.** · **DONE
+  (2026-08-13)** — `core/tenancy/capabilities.py`. One authoritative registry: `key, label,
+  description, category, kind, status, commercial_visibility, runtime_grantable, enforced_by,
+  evidence_refs, depends_on, vertical`. Customer-perceivable capabilities only. L1 packs contribute
+  vertical capabilities without polluting L0 (Rule Zero). **Deliberately did not widen
+  authorization:** the effective set stayed frozen at `LEGACY_EFFECTIVE_KEYS`, and `seo`,
+  `agent.marketing`, `ads.instagram`, `ads.google` stopped granting anything.
 
-- **PLAN-3 — Recover/Grow/Scale presets + operator plan builder UI** · **QUEUED**
-  Structured builder replacing the free-text/comma-separated editor: grouped + searchable capability
-  selection, **start-from-existing-plan copy (explicit snapshot, NO live inheritance)**, staff limit,
-  positioning metadata (`recommended`), plan **preview showing the business promise** (not machine
-  keys), and a **subscriber-impact confirmation** before material removals ("12 active subscribers;
-  you're removing Campaigns"). Channels come from the **existing channel registry**; "all channels"
-  saves an explicit **snapshot**, never `"*"`.
+- **PLAN-2 — Structured entitlement resolver** · **NEXT (not started — founder selects)**
+  Provenance, subscription-state semantics (the final no-active-subscription rule; the current
+  `BASELINE_FEATURES` shim is transitional), **pack filtering for L1 capabilities**, promotion
+  **evaluation** (time-derived: `enabled AND starts_at <= now AND (ends_at IS NULL OR now <
+  ends_at)`, UTC, start-inclusive/end-exclusive), compatibility loader. This is where the resolver
+  intentionally adopts the structured capability contract. An unmappable legacy value is preserved
+  as legacy/custom display, never silently discarded.
 
-- **PLAN-4 — Temporary promotional entitlements** · **QUEUED**
-  Plan-level entitlement with `source=promotion`, `starts_at`, `ends_at`, `promotion_label`.
-  **Expiry is time-derived, never cron-dependent**: `enabled AND starts_at <= now AND (ends_at IS
-  NULL OR now < ends_at)`, UTC, **start inclusive / end exclusive**. Expired promos stay visible to
-  the operator as history but are not effective. Designed so **tenant-specific** overrides remain
-  possible later without rework.
+- **PLAN-3 — Recover/Grow/Scale presets** · **QUEUED**
+  Snapshot/data composition, **no live inheritance**. Presets seeded from the catalog. Also owns the
+  marketing-bullet → capability mapping (several bullets may ride on one entitlement).
 
-- **PLAN-5 — Initial runtime enforcement (prove the model, don't retrofit everything)** · **QUEUED**
-  Gate enough key capabilities to demonstrate correctness; **explicitly list what remains ungated**
-  rather than claiming complete coverage (§35). Entitlements never bypass approvals/tool
-  grants/execution tokens/budgets/RLS/consent — those stay independent (§57).
-  *ENT-1a already gates `landing_pages` + `campaigns.whatsapp`.*
+- **PLAN-4 — Operator Plan Builder UI, including promotion authoring** · **QUEUED**
+  Grouped + searchable capability selection, start-from-existing-plan copy (explicit snapshot),
+  staff limit, positioning metadata (`recommended`), plan preview showing the business promise (not
+  machine keys), and a subscriber-impact confirmation before material removals. Channels come from
+  the existing channel registry; "all channels" saves an explicit snapshot, never `"*"`.
+
+- **PLAN-5 — Runtime enforcement extension + explicit inventory of remaining ungated capabilities**
+  · **QUEUED**
+  **Known gaps to close:** `/v1/imports` (catalog ingestion) and `/v1/rates` (rate operations) are
+  sold as Scale-only but gated today only by role permissions — every tier can reach them.
+  `campaigns.analytics` and `jewelry.rate_operations` are declared boundaries that are not yet
+  effective. Entitlements never bypass approvals/tool grants/execution tokens/budgets/RLS/consent.
 
 **Commercial invariants to honour throughout:** planned features are never sellable (SEO/AEO/GEO =
 **planned, do not sell**); Google Ads = **Beta** if it only creates gated/paused campaigns; channel
