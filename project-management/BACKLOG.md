@@ -54,7 +54,7 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   authorization:** the effective set stayed frozen at `LEGACY_EFFECTIVE_KEYS`, and `seo`,
   `agent.marketing`, `ads.instagram`, `ads.google` stopped granting anything.
 
-- **PLAN-2 — Structured entitlement resolver** · **NEXT (not started — founder selects)**
+- **PLAN-2 — Structured entitlement resolver** · **DONE (2026-08-13)**
   Provenance, subscription-state semantics (the final no-active-subscription rule; the current
   `BASELINE_FEATURES` shim is transitional), **pack filtering for L1 capabilities**, promotion
   **evaluation** (time-derived: `enabled AND starts_at <= now AND (ends_at IS NULL OR now <
@@ -62,7 +62,10 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   intentionally adopts the structured capability contract. An unmappable legacy value is preserved
   as legacy/custom display, never silently discarded.
 
-- **PLAN-3 — Recover/Grow/Scale presets** · **QUEUED**
+- **PLAN-3 — Recover/Grow/Scale presets** · **NEXT (founder selects)**
+  Presets **must write `entitlement_schema_version: 1`** plus canonical machine keys to
+  `config.entitlements` — never new authorization truth into free-text `features`. Also owns the
+  marketing-bullet → capability mapping.
   Snapshot/data composition, **no live inheritance**. Presets seeded from the catalog. Also owns the
   marketing-bullet → capability mapping (several bullets may ride on one entitlement).
 
@@ -74,6 +77,11 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
 
 - **PLAN-5 — Runtime enforcement extension + explicit inventory of remaining ungated capabilities**
   · **QUEUED**
+  **P0 — plan-change agent drift.** `assign_subscription()` swaps the subscription but never
+  reconciles `agent_instances`; `activate_plan_agents()` runs only on the provisioning path. A
+  downgrade therefore leaves a previously-activated agent running. **Plan reassignment must
+  reconcile/deactivate agent instances no longer included, and no live plan-switching rollout may
+  occur before this is closed.**
   **Known gaps to close:** `/v1/imports` (catalog ingestion) and `/v1/rates` (rate operations) are
   sold as Scale-only but gated today only by role permissions — every tier can reach them.
   `campaigns.analytics` and `jewelry.rate_operations` are declared boundaries that are not yet

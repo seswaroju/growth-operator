@@ -815,5 +815,8 @@ async def test_me_reports_the_stores_entitlements(scene: Scene) -> None:
     assert r.status_code == 200
     features = r.json()["features"]
     assert "landing_pages" in features            # granted by this store's plan
-    assert "ghost_recovery" in features           # baseline — every tier has the wedge
+    # PLAN-2: this is a *legacy* plan (no `entitlement_schema_version`), so the compatibility
+    # loader reconstructs ENT-1a's historical semantics. Not a baseline tier — a structured plan
+    # would receive only what it explicitly lists.
+    assert "ghost_recovery" in features
     assert "campaigns.whatsapp" not in features   # not on this plan

@@ -11,13 +11,23 @@ question — what *this* store may use. The catalog is deliberately wider: a cap
 declared `runtime_grantable` (eligible to become an independent machine entitlement once PLAN-2's
 structured resolver lands) long before it is effective for anyone.
 
-**PLAN-1 changes vocabulary, not authorization.** The effective set stays frozen at
-`LEGACY_EFFECTIVE_KEYS` — the exact ENT-1a set minus four keys that were grantable but unsafe
-(`seo` and `agent.marketing` are not built; `ads.instagram` and `ads.google` have no
-customer-reachable path). Nothing newly declared in the catalog becomes effective here. PLAN-2 is
-where the resolver intentionally adopts the structured contract, adds provenance, resolves
-no-active-subscription semantics, and filters vertical capabilities against a tenant's installed
-packs.
+**PLAN-2 adopts the structured contract.** `resolve()` returns one structured commercial read
+model — capabilities, agents, channels, limits, provenance and exclusions — from
+`billing_plans.config` (see `plan_config.py`). Machine authorization now lives in
+`config.entitlements`; the free-text `billing_plans.features` column is **legacy compatibility
+input only**, never permanent authority.
+
+**No active subscription means zero paid capabilities.** ENT-1a returned a baseline to any store,
+subscribed or not; that was a migration accommodation, not a product tier, and it is gone. This is
+not "free Recover" — authentication and RBAC, not entitlements, govern account and data access, and
+none of the account/support/export/privacy routes are entitlement-gated. An **active legacy** plan
+still reconstructs ENT-1a's historical semantics inside the compatibility loader, so no existing
+subscriber silently loses what it had.
+
+**PLAN-2 resolves; it does not enforce.** The four existing `requires_feature` gates are unchanged
+and nothing new became plan-gated: `catalog.ingestion`, `campaigns.analytics` and pack capabilities
+are computed here but still ungated on their routes. PLAN-5 owns enforcement expansion, including
+reconciling agent instances when a plan is reassigned.
 
 Generic/platform-invariant: these are platform capabilities, never vertical nouns (Rule Zero).
 """
@@ -25,15 +35,20 @@ Generic/platform-invariant: these are platform capabilities, never vertical noun
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.tenancy.capabilities import L0_CAPABILITIES, resolve_alias
+from core.channels.registry import CHANNEL_TYPES
+from core.tenancy.capabilities import L0_CAPABILITIES, by_key, resolve_alias
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
+from core.tenancy.plan_config import parse_plan_config, parse_promotions
 from core.tenancy.repository import set_org_context
 
 # ---- Keys (canonical spellings live in capabilities.py) ---------------------------------------
@@ -61,17 +76,6 @@ LEGACY_EFFECTIVE_KEYS: frozenset[str] = frozenset({
     CAMPAIGNS_WHATSAPP, LANDING_PAGES,                   # ENT-1a grantable, retained
 })
 
-# Compatibility shim, **not** a product tier. A store with no active subscription retaining baseline
-# access is a migration accommodation so existing stores are not locked out of their own inbox
-# mid-flight. This is not "free Recover". PLAN-2 defines the final no-active-subscription semantics.
-BASELINE_FEATURES: frozenset[str] = frozenset(
-    {CONVERSATIONS, CATALOG, CUSTOMERS, GHOST_RECOVERY})
-
-# What a plan may additionally grant today.
-GRANTABLE_FEATURES: tuple[str, ...] = (CAMPAIGNS_WHATSAPP, LANDING_PAGES)
-
-ALL_FEATURES: frozenset[str] = BASELINE_FEATURES | frozenset(GRANTABLE_FEATURES)
-
 # Owner-facing names come from the canonical catalog — one source of truth for copy. L0 only, so
 # importing this module never touches the filesystem.
 FEATURE_LABEL: dict[str, str] = {c.key: c.label for c in L0_CAPABILITIES}
@@ -86,16 +90,110 @@ class FeatureNotInPlan(Exception):
         super().__init__(f"{label} is not included in this plan")
 
 
-def normalize(raw: object) -> frozenset[str]:
-    """Reduce a stored plan `features` list to what it may actually grant today.
+# ---- Structured effective entitlements (PLAN-2) ------------------------------------------------
 
-    A key survives only if it is in `LEGACY_EFFECTIVE_KEYS`. Historical spellings are mapped
-    through `resolve_alias` first, so an old row is understood rather than silently ignored — and
-    then refused on its merits if its capability is not effective. A typo, an unknown key, a
-    not-built capability (`seo`), an unreachable one (`ads.google`) and any **pack-contributed**
-    capability all grant nothing. Pack-contributed keys are refused because activating one safely
-    requires knowing which packs the tenant installed, and this function has no such context —
-    PLAN-2's resolver owns that."""
+
+@dataclass(frozen=True)
+class Grant:
+    """Why one capability is effective. `legacy_compat` is never reported as a native plan grant —
+    PLAN-4 uses that distinction to find plans still needing migration to the structured schema."""
+
+    key: str
+    source: Literal["plan", "promotion", "legacy_compat"]
+    promotion_label: str | None = None
+    ends_at: datetime | None = None  # promotions only; tz-aware UTC
+
+
+@dataclass(frozen=True)
+class Excluded:
+    """Something the plan asked for that did not become effective, and why. Kept so an operator can
+    be told *"you typed `seo`; it granted nothing because it is planned"* rather than it silently
+    vanishing."""
+
+    key: str
+    component: Literal["capability", "agent", "channel", "promotion", "config"]
+    reason: str
+
+
+@dataclass(frozen=True)
+class EffectiveLimits:
+    """Reported for preview/debugging. **CP-3 remains the only seat enforcement** — nothing here
+    creates a second mechanism."""
+
+    max_managers: int = 0
+    max_staff: int = 0
+
+
+@dataclass(frozen=True)
+class EffectiveEntitlements:
+    """One structured commercial read model for a tenant.
+
+    `capabilities` is the **only** component consumed by `requires_feature()`. `agents` and
+    `channels` are separate structured components deliberately *not* folded into capability keys:
+    agents stay enforced by CP-2b, and a channel selection is a commercial choice that says nothing
+    about whether the channel is connected, provisioned, live, or consented — that is operational
+    readiness, resolved elsewhere."""
+
+    capabilities: frozenset[str] = frozenset()
+    agents: frozenset[str] = frozenset()
+    channels: frozenset[str] = frozenset()
+    limits: EffectiveLimits = EffectiveLimits()
+    grants: tuple[Grant, ...] = ()
+    excluded: tuple[Excluded, ...] = ()
+    subscription_state: Literal["active", "cancelled", "none"] = "none"
+    plan_id: UUID | None = None
+    plan_name: str | None = None
+    addons: tuple[str, ...] = ()  # display metadata only — never authorization
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.capabilities
+
+
+# ENT-1a's historical paid baseline. It exists **only** inside the legacy compatibility loader and
+# is not a product tier: a legacy plan predates structured entitlements, so without reconstructing
+# what ENT-1a implicitly granted, a legacy `campaigns.whatsapp` plan would lose `customers` and the
+# dependency validator would correctly — but destructively — reject it. Deliberately private.
+_LEGACY_ENT1A_BASELINE: frozenset[str] = frozenset(
+    {CONVERSATIONS, CATALOG, CUSTOMERS, GHOST_RECOVERY})
+
+_SUBSCRIPTION_SQL = text(
+    # One row always. `ever.existed` distinguishes "cancelled history" from "never subscribed"
+    # deterministically in the query rather than inferring it from unrelated state.
+    # `billing_plans.active` is deliberately NOT filtered: that flag means "eligible for new
+    # assignment", so retiring a plan must not revoke an existing active subscriber's access.
+    "WITH act AS (SELECT plan_id FROM billing_subscriptions "
+    "             WHERE org_id = :o AND status = 'active'), "
+    "     ever AS (SELECT EXISTS (SELECT 1 FROM billing_subscriptions WHERE org_id = :o) "
+    "                     AS existed) "
+    "SELECT ever.existed, act.plan_id, p.name AS plan_name, p.features, p.config, "
+    "       p.max_managers, p.max_staff "
+    "FROM ever LEFT JOIN act ON true LEFT JOIN billing_plans p ON p.id = act.plan_id"
+)
+
+_TENANT_AGENTS_SQL = text(
+    # An archetype the tenant is actually *bound* to. `agent_instances.status` is deliberately not
+    # filtered: paused / shadow / circuit_open are operational states, not entitlement truth. This
+    # is inherently pack-aware because a binding only exists via the pack that created it.
+    "SELECT DISTINCT ar.slug FROM agent_instances ai "
+    "JOIN agent_bindings ab ON ab.id = ai.binding_id "
+    "JOIN agent_archetypes ar ON ar.id = ab.archetype_id "
+    "WHERE ai.org_id = :o"
+)
+
+_INSTALLED_PACKS_SQL = text(
+    "SELECT p.slug FROM pack_installations pi JOIN packs p ON p.id = pi.pack_id "
+    "WHERE pi.org_id = :o AND pi.status = 'active'"
+)
+
+
+def normalize(raw: object) -> frozenset[str]:
+    """Reduce a stored legacy `features` list to the capabilities it may actually grant.
+
+    Historical spellings are mapped through `resolve_alias` first, so an old row is understood
+    rather than silently ignored — and then refused on its merits. A typo, an unknown key, a
+    not-built capability (`seo`), an unreachable one (`ads.google`) and any pack-contributed
+    capability all grant nothing here; pack-contributed keys need installed-pack context, which
+    this context-free function does not have (the resolver applies it)."""
     if not isinstance(raw, list):
         return frozenset()
     granted: set[str] = set()
@@ -108,31 +206,208 @@ def normalize(raw: object) -> frozenset[str]:
     return frozenset(granted)
 
 
-async def entitlements(session: AsyncSession, org_id: UUID) -> frozenset[str]:
-    """The store's capabilities: the baseline plus whatever its **active** plan grants.
+def implied_legacy_channels(capabilities: frozenset[str]) -> frozenset[str]:
+    """Channels a set of **legacy** capabilities necessarily requires.
 
-    A store with no active subscription still gets the baseline — the entry experience — rather than
-    being locked out of its own inbox."""
+    Legacy plans predate `config.channels`, so a legacy `campaigns.whatsapp` grant carries no
+    channel selection — and under component-aware dependency validation it would fail closed,
+    silently breaking a plan that worked under ENT-1a. Derived from the canonical catalog's own
+    `depends_on` metadata rather than a hardcoded list, so it cannot drift from PLAN-1.
+
+    **Legacy compatibility only.** An implied channel is *not* evidence that the plan explicitly
+    chose that channel; it is reconstructed state, and the resolver records it as such so a future
+    plan builder cannot mistake it for a historical operator decision. Nothing else is implied —
+    no capabilities, agents, addons, limits or arbitrary dependencies."""
+    out: set[str] = set()
+    for key in capabilities:
+        cap = by_key(key)
+        if cap is None:
+            continue
+        for dep in cap.depends_on:
+            dep_cap = by_key(dep)
+            if dep_cap is not None and dep_cap.kind == "channel":
+                out.add(dep.removeprefix("channel."))
+    return frozenset(out)
+
+
+def _dependency_satisfied(
+    dep: str, capabilities: set[str], channels: set[str], agents: set[str]
+) -> tuple[bool, str]:
+    """Component-aware dependency check.
+
+    PLAN-1 deliberately contains dependencies that live outside `capabilities` —
+    `campaigns.whatsapp` needs `channel.whatsapp` (a channel, not runtime-grantable) and a pack
+    capability may need `pricing` (governed by RBAC). Requiring every dependency to be a granted
+    capability would wrongly drop both. Satisfaction is therefore decided by the dependency's
+    canonical kind/governance, and a missing dependency is **never** auto-granted."""
+    cap = by_key(dep)
+    if cap is None:
+        return False, f"unknown_dependency:{dep}"
+    if cap.kind == "channel":
+        return (
+            (dep.removeprefix("channel.") in channels),
+            f"missing_channel_selection:{dep}",
+        )
+    if cap.kind == "agent":
+        return (dep.removeprefix("agent.") in agents), f"missing_agent_selection:{dep}"
+    if cap.kind == "limit":
+        return True, ""  # CP-3 owns limits
+    if cap.runtime_grantable:
+        return (dep in capabilities), f"missing_dependency:{dep}"
+    if cap.enforced_by and cap.enforced_by.startswith("rbac:"):
+        # Governed per-request per-user by role permissions, not per-plan: structurally satisfied.
+        return True, ""
+    return False, f"governed_elsewhere:{cap.enforced_by or 'unknown'}"
+
+
+async def resolve(
+    session: AsyncSession, org_id: UUID, *, now: datetime | None = None
+) -> EffectiveEntitlements:
+    """Resolve a tenant's structured commercial entitlements.
+
+    Deterministic precedence: active subscription → structured (`config.entitlements`) **or** legacy
+    compatibility → agents → channels → promotions → alias canonicalisation → catalog/grantable
+    filter → installed-pack filter → component-aware dependencies.
+
+    A promotion may *add* a capability but never bypasses catalog validity, `runtime_grantable`,
+    pack requirements, dependency requirements, or any security/approval/runtime gate.
+    """
+    now = now or datetime.now(UTC)
     await set_org_context(session, org_id)
-    row = (
-        await session.execute(
-            text("SELECT p.features FROM billing_subscriptions s "
-                 "JOIN billing_plans p ON p.id = s.plan_id "
-                 "WHERE s.org_id = :o AND s.status = 'active' "
-                 "ORDER BY s.started_at DESC LIMIT 1"),
-            {"o": str(org_id)})
-    ).mappings().first()
-    granted: frozenset[str] = frozenset()
-    if row is not None:
-        raw = row["features"]
-        if isinstance(raw, str):
-            import json
-            try:
-                raw = json.loads(raw)
-            except ValueError:
-                raw = []
-        granted = normalize(raw)
-    return BASELINE_FEATURES | granted
+    row = (await session.execute(_SUBSCRIPTION_SQL, {"o": str(org_id)})).mappings().first()
+
+    ever = bool(row and row["existed"])
+    if row is None or row["plan_id"] is None:
+        # No paid entitlements without an active subscription. This is not "free Recover":
+        # authentication and RBAC — not entitlements — govern account and data access.
+        return EffectiveEntitlements(subscription_state="cancelled" if ever else "none")
+
+    excluded: list[Excluded] = []
+    config = parse_plan_config(row["config"])
+    limits = EffectiveLimits(int(row["max_managers"] or 0), int(row["max_staff"] or 0))
+
+    # --- 1. Capability source: structured config, or the legacy compatibility path -------------
+    legacy_mode = not config.is_structured
+    candidates: dict[str, Grant] = {}
+    implied_channels: frozenset[str] = frozenset()
+
+    if legacy_mode:
+        legacy_caps = _LEGACY_ENT1A_BASELINE | normalize(row["features"])
+        for key in legacy_caps:
+            candidates[key] = Grant(key, "legacy_compat")
+        implied_channels = implied_legacy_channels(legacy_caps)
+    elif not config.is_known_schema:
+        excluded.append(Excluded(
+            f"entitlement_schema_version={config.entitlement_schema_version}", "config",
+            "unknown_entitlement_schema_version"))
+    elif config.entitlements is None:
+        # Structured plans never fall back to the legacy display column — fail closed instead.
+        excluded.append(
+            Excluded("entitlements", "config", "structured_plan_missing_entitlements"))
+    else:
+        for key in config.entitlements:
+            if isinstance(key, str):
+                candidates.setdefault(resolve_alias(key), Grant(resolve_alias(key), "plan"))
+
+    structured_ok = legacy_mode or (config.is_known_schema and config.entitlements is not None)
+
+    # --- 2. Agents: selected AND a real archetype AND bound for this tenant --------------------
+    agents: set[str] = set()
+    if structured_ok and config.agents:
+        bound = set((await session.execute(_TENANT_AGENTS_SQL, {"o": str(org_id)})).scalars().all())
+        known = set(
+            (await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+        for slug in config.agents:
+            if slug not in known:
+                excluded.append(Excluded(slug, "agent", "unknown_archetype"))
+            elif slug not in bound:
+                # Globally valid but unsupported by this tenant's installed vertical pack.
+                excluded.append(Excluded(slug, "agent", "no_tenant_binding"))
+            else:
+                agents.add(slug)
+
+    # --- 3. Channels: plan selection only; connection/provider/live state is never consulted ---
+    channels: set[str] = set(implied_channels)
+    if structured_ok:
+        for ch in config.channels:
+            if ch in CHANNEL_TYPES:
+                channels.add(ch)
+            else:
+                excluded.append(Excluded(ch, "channel", "unknown_channel_type"))
+
+    # --- 4. Promotions: absolute UTC calendar windows, evaluated at read time ------------------
+    if structured_ok:
+        promos, promo_errors = parse_promotions(config.promotions)
+        for err in promo_errors:
+            excluded.append(Excluded(err, "promotion", "malformed_promotion"))
+        for promo in promos:
+            key = resolve_alias(promo.capability_key)
+            if not promo.active_at(now):
+                excluded.append(Excluded(key, "promotion", "promotion_not_active"))
+                continue
+            # A promotion only *adds* a candidate; every filter below still applies to it.
+            candidates.setdefault(
+                key, Grant(key, "promotion", promo.label, promo.ends_at))
+
+    # --- 5. Catalog validity + runtime_grantable ----------------------------------------------
+    installed: set[str] | None = None
+    surviving: dict[str, Grant] = {}
+    for key, grant in candidates.items():
+        cap = by_key(key)
+        if cap is None:
+            excluded.append(Excluded(key, "capability", "not_in_catalog"))
+            continue
+        if not cap.runtime_grantable:
+            reason = (
+                f"governed_by:{cap.enforced_by}" if cap.enforced_by
+                else f"not_grantable:{cap.status}")
+            excluded.append(Excluded(key, "capability", reason))
+            continue
+        # --- 6. Installed-pack filter: global catalog knowledge is not tenant entitlement ------
+        if cap.vertical is not None:
+            if installed is None:
+                rows = await session.execute(_INSTALLED_PACKS_SQL, {"o": str(org_id)})
+                installed = set(rows.scalars().all())
+            if cap.vertical not in installed:
+                excluded.append(Excluded(key, "capability", f"pack_not_installed:{cap.vertical}"))
+                continue
+        surviving[key] = grant
+
+    # --- 7. Component-aware dependencies; iterate so a dropped key cascades deterministically --
+    while True:
+        keys = set(surviving)
+        dropped = False
+        for key in sorted(keys):
+            cap = by_key(key)
+            assert cap is not None
+            for dep in cap.depends_on:
+                ok, reason = _dependency_satisfied(dep, keys, channels, agents)
+                if not ok:
+                    excluded.append(Excluded(key, "capability", reason))
+                    del surviving[key]
+                    dropped = True
+                    break
+        if not dropped:
+            break
+
+    return EffectiveEntitlements(
+        capabilities=frozenset(surviving),
+        agents=frozenset(agents),
+        channels=frozenset(channels),
+        limits=limits,
+        grants=tuple(sorted(surviving.values(), key=lambda g: g.key)),
+        excluded=tuple(excluded),
+        subscription_state="active",
+        plan_id=row["plan_id"],
+        plan_name=row["plan_name"],
+        addons=tuple(config.addons) if structured_ok else (),
+    )
+
+
+async def entitlements(session: AsyncSession, org_id: UUID) -> frozenset[str]:
+    """The capabilities a store's plan currently grants. Thin wrapper over `resolve()` so
+    `requires_feature` and `/v1/orgs/me` keep their existing shape."""
+    return (await resolve(session, org_id)).capabilities
 
 
 async def has_feature(session: AsyncSession, org_id: UUID, feature: str) -> bool:

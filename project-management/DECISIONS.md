@@ -1411,3 +1411,51 @@ entitlement: an L1 capability may never become effective for a tenant without th
 which PLAN-2's resolver must enforce.
 
 **Decided by:** Founder (2026-08-13), across the PLAN-1 design-review loop.
+
+
+---
+
+## 2026-08-13 — Machine authorization moves off `billing_plans.features` (PLAN-2)
+
+**Decision.** `billing_plans.config` is the structured plan contract; `billing_plans.features`
+(free-form `list[str]`, predating the capability catalog) is **legacy compatibility input only** and
+never permanent authority. Mode is decided **solely** by `entitlement_schema_version` — never by
+`entitlements is None` — so a typo such as `"entitlments"` cannot silently reactivate the legacy
+column. Absent → legacy; `1` → structured (`features` ignored); anything else → fail closed.
+PLAN-3 presets must write `entitlement_schema_version: 1` with canonical machine keys.
+
+**No active subscription = zero paid capabilities.** ENT-1a's baseline is gone as a public concept:
+`BASELINE_FEATURES`, `GRANTABLE_FEATURES` and `ALL_FEATURES` were deleted rather than left inert,
+because a constant named "baseline" implies a free Recover tier that does not exist. Authentication
+and RBAC — not entitlements — govern account and data access, and no account/support/export/privacy
+route is entitlement-gated.
+
+**An active *legacy* plan still reconstructs ENT-1a semantics** inside the compatibility loader:
+historical baseline ∪ valid legacy features, **plus the channel selections those capabilities
+necessarily imply**. The implication is derived from the catalog's own `depends_on` metadata, is
+narrow (channels only — never capabilities, agents, addons, limits or arbitrary dependencies), and
+is legacy-only. Without it, component-aware dependency validation would correctly but destructively
+reject a legacy `campaigns.whatsapp` plan that has no `config.channels`. An implied channel is
+reconstructed state, **not** evidence the plan explicitly chose that channel.
+
+**One boundary per governing mechanism.** Agents are validated as *selected ∧ real archetype ∧ bound
+for this tenant* — instance status (`active`/`paused`/`shadow`/`circuit_open`) is operational state,
+never entitlement truth — and **CP-2b remains the enforcement**. **CP-3 remains the sole seat
+enforcement**; limits are reported only. Channel entitlement stays separate from connection,
+provider, live and consent state. Addons are display metadata with no authorization meaning.
+
+**Promotions are absolute calendar windows** stored as typed JSONB under `config.promotions`,
+evaluated read-time (`enabled ∧ starts_at <= now ∧ (ends_at IS NULL ∨ now < ends_at)`, UTC,
+start-inclusive/end-exclusive, no cron). They are **not** per-subscriber trials; a
+subscription-relative duration is a separate semantic, deliberately not implemented. A promotion may
+add a capability but never bypasses catalog validity, `runtime_grantable`, pack requirements,
+dependency requirements or any security/approval/runtime gate.
+
+**`cancelled` = immediately unentitled** — the schema has no `current_period_end`, so no billing-
+period grace was invented. **`billing_plans.active` means "eligible for new assignment"**: retiring
+a plan must not revoke an existing active subscriber, and the resolver does not filter on it.
+
+**No migration.** `billing_plans.config` is existing JSONB; nothing about promotions required
+independent querying or lifecycle at MVP scale.
+
+**Decided by:** Founder (2026-08-13), across three PLAN-2 design-review corrections.

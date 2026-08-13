@@ -20,12 +20,7 @@ from core.tenancy.capabilities import (
     resolve_alias,
     validate_catalog,
 )
-from core.tenancy.entitlements import (
-    ALL_FEATURES,
-    BASELINE_FEATURES,
-    GRANTABLE_FEATURES,
-    LEGACY_EFFECTIVE_KEYS,
-)
+from core.tenancy.entitlements import LEGACY_EFFECTIVE_KEYS
 
 # The ENT-1a effective vocabulary, hard-coded as history. PLAN-1 may only *subtract* from this.
 ENT1A_BASELINE = frozenset({"conversations", "catalog", "customers", "ghost_recovery"})
@@ -137,10 +132,10 @@ def test_catalog_declares_boundaries_that_are_not_yet_effective() -> None:
     assert not {"campaigns.analytics", "catalog.ingestion"} & LEGACY_EFFECTIVE_KEYS
 
 
-def test_ent1a_public_surface_still_holds() -> None:
-    assert BASELINE_FEATURES.isdisjoint(GRANTABLE_FEATURES)
-    assert ALL_FEATURES == BASELINE_FEATURES | frozenset(GRANTABLE_FEATURES)
-    assert ALL_FEATURES == LEGACY_EFFECTIVE_KEYS
+def test_the_legacy_effective_vocabulary_is_all_real_grantable_capabilities() -> None:
+    for key in LEGACY_EFFECTIVE_KEYS:
+        cap = by_key(key)
+        assert cap is not None and cap.runtime_grantable, key
 
 
 # ---- Vertical capabilities need pack context (PLAN-2 obligation) --------------------------------

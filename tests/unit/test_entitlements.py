@@ -6,29 +6,31 @@ from core.tenancy.entitlements import (
     ADS_GOOGLE,
     ADS_INSTAGRAM,
     AGENT_MARKETING,
-    ALL_FEATURES,
-    BASELINE_FEATURES,
     CAMPAIGNS_WHATSAPP,
     GHOST_RECOVERY,
-    GRANTABLE_FEATURES,
     LANDING_PAGES,
+    LEGACY_EFFECTIVE_KEYS,
     SEO,
     FeatureNotInPlan,
     normalize,
 )
 
 
-def test_the_entry_tier_still_gets_the_wedge() -> None:
-    """Founder's tiering: the starter plan is 'ghost leads only' — so recovery is baseline, and
-    the paid surfaces are not."""
-    assert GHOST_RECOVERY in BASELINE_FEATURES
-    assert CAMPAIGNS_WHATSAPP not in BASELINE_FEATURES
-    assert LANDING_PAGES not in BASELINE_FEATURES
+def test_the_wedge_is_part_of_the_legacy_effective_vocabulary() -> None:
+    """Founder's tiering: the entry plan is 'ghost leads only'. Under PLAN-2 that is reconstructed
+    by the legacy compatibility loader for an ACTIVE legacy subscription — it is not a free tier,
+    and there is no public `BASELINE_FEATURES` constant implying one."""
+    assert GHOST_RECOVERY in LEGACY_EFFECTIVE_KEYS
+    assert CAMPAIGNS_WHATSAPP in LEGACY_EFFECTIVE_KEYS
+    assert LANDING_PAGES in LEGACY_EFFECTIVE_KEYS
 
 
-def test_baseline_and_grantable_are_disjoint_and_complete() -> None:
-    assert BASELINE_FEATURES.isdisjoint(GRANTABLE_FEATURES)
-    assert ALL_FEATURES == BASELINE_FEATURES | frozenset(GRANTABLE_FEATURES)
+def test_the_public_surface_no_longer_advertises_a_baseline_tier() -> None:
+    """A constant named `BASELINE_FEATURES` would imply a free Recover tier that does not exist."""
+    import core.tenancy.entitlements as ent
+
+    for gone in ("BASELINE_FEATURES", "GRANTABLE_FEATURES", "ALL_FEATURES"):
+        assert not hasattr(ent, gone), gone
 
 
 def test_normalize_drops_anything_not_in_the_catalog() -> None:
@@ -65,3 +67,73 @@ def test_the_error_names_the_feature_in_plain_words() -> None:
     exc = FeatureNotInPlan(CAMPAIGNS_WHATSAPP)
     assert exc.feature == CAMPAIGNS_WHATSAPP
     assert "WhatsApp campaigns" in str(exc) and "not included in this plan" in str(exc)
+
+
+# ---- PLAN-2: legacy implied channels -----------------------------------------------------------
+
+
+def test_legacy_campaigns_implies_the_whatsapp_channel() -> None:
+    """A legacy plan predates `config.channels`, so the channel its capabilities require is
+    reconstructed from the catalog's own dependency metadata. Without this, component-aware
+    dependency validation would correctly but destructively reject a legacy campaigns plan."""
+    from core.tenancy.entitlements import implied_legacy_channels
+
+    assert implied_legacy_channels(frozenset({CAMPAIGNS_WHATSAPP})) == frozenset({"whatsapp"})
+
+
+def test_implication_is_narrow_and_derived_not_hardcoded() -> None:
+    """Only channel-kind dependencies are implied — never capabilities, agents or addons."""
+    from core.tenancy.entitlements import implied_legacy_channels
+
+    # `landing_pages` depends on `catalog` (a capability) → nothing is implied.
+    assert implied_legacy_channels(frozenset({LANDING_PAGES})) == frozenset()
+    assert implied_legacy_channels(frozenset()) == frozenset()
+    assert implied_legacy_channels(frozenset({"not-a-capability"})) == frozenset()
+
+
+def test_every_implied_channel_is_a_real_registered_channel_type() -> None:
+    from core.channels.registry import CHANNEL_TYPES
+    from core.tenancy.entitlements import LEGACY_EFFECTIVE_KEYS, implied_legacy_channels
+
+    assert implied_legacy_channels(LEGACY_EFFECTIVE_KEYS) <= set(CHANNEL_TYPES)
+
+
+# ---- PLAN-2: component-aware dependency satisfaction -------------------------------------------
+
+
+def test_a_channel_dependency_is_satisfied_by_the_channel_selection() -> None:
+    from core.tenancy.entitlements import _dependency_satisfied
+
+    ok, _ = _dependency_satisfied("channel.whatsapp", set(), {"whatsapp"}, set())
+    assert ok is True
+
+
+def test_a_missing_channel_selection_fails_closed_with_a_named_reason() -> None:
+    from core.tenancy.entitlements import _dependency_satisfied
+
+    ok, reason = _dependency_satisfied("channel.whatsapp", set(), set(), set())
+    assert ok is False and reason == "missing_channel_selection:channel.whatsapp"
+
+
+def test_an_rbac_governed_dependency_is_structurally_satisfied() -> None:
+    """`pricing` is not runtime-grantable — RBAC decides it per request, per user, not per plan.
+    Requiring it in `capabilities` would wrongly drop every capability that depends on it."""
+    from core.tenancy.entitlements import _dependency_satisfied
+
+    ok, _ = _dependency_satisfied("pricing", set(), set(), set())
+    assert ok is True
+
+
+def test_a_grantable_dependency_must_actually_be_granted() -> None:
+    from core.tenancy.entitlements import _dependency_satisfied
+
+    assert _dependency_satisfied("customers", {"customers"}, set(), set())[0] is True
+    ok, reason = _dependency_satisfied("customers", set(), set(), set())
+    assert ok is False and reason == "missing_dependency:customers"
+
+
+def test_an_unknown_dependency_fails_closed() -> None:
+    from core.tenancy.entitlements import _dependency_satisfied
+
+    ok, reason = _dependency_satisfied("nonsense", set(), set(), set())
+    assert ok is False and reason == "unknown_dependency:nonsense"
