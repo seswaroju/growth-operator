@@ -6302,5 +6302,4 @@ organization, `campaign_fanout` kept sending after a downgrade, and coverage was
 - Denial observability is a structured log + audit record per denial; successful checks are not
   logged (no cheap sink at that volume).
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects the next
-ticket.
+**Commit:** `bfaaacc`, merged to `main` as `f5190de`. **CI:** run 31729955488 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract, secret-scan. **Next recommended action:** founder selects the next ticket.
