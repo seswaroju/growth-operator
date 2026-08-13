@@ -9,6 +9,36 @@ selects and approves the next ticket.
 
 ---
 
+## ENT-1a · Plan entitlements (server-side enforcement) — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/ent-1a-plan-entitlements`. **Founder question that surfaced it:** *"based on the plan
+only those options are visible to tenants… basic starter → only ghost leads; middle → WhatsApp
+campaign, ads; top → SEO, dedicated marketing agent."* **Audit finding: only seats (CP-3) and agents
+(CP-2b) were plan-gated.** Channels, features and the owner nav were **not** — a starter store could
+open Campaigns and send one, because the only check was a *role* permission. Tiering is a revenue
+boundary, so it is now enforced **server-side**. **No migration** (uses the existing, never-read
+`billing_plans.features` column).
+
+- `core/tenancy/entitlements.py` (NEW) — canonical catalog: **baseline** (`conversations`, `catalog`,
+  `customers`, **`ghost_recovery`** — the entry tier keeps the wedge) + **grantable**
+  (`campaigns.whatsapp`, `landing_pages`, `ads.instagram`, `ads.google`, `seo`, `agent.marketing`).
+  `entitlements(org)` = baseline ∪ the active plan's features; `normalize()` drops anything not in the
+  catalog, so **a typo in a plan never grants something real**. `requires_feature(f)` mirrors
+  `requires(perm)` → **403 RFC7807** naming the feature (no new canonical error code invented).
+- **Non-breaking by design:** the baseline means existing stores keep working (every plan's `features`
+  is `[]` today); tiers grant extras additively.
+- **Gates applied:** `POST /v1/landing/pages` + `/pages/from-upload` (`landing_pages`),
+  campaign create + send (`campaigns.whatsapp`). **Role and plan are independent gates — a caller
+  needs both.** `GET /v1/me` now returns the store's `features` (for ENT-1b's nav).
+
+**Gate (all green):** ruff · mypy core **214** · guards **0** · unit **593** (+4 catalog: entry tier
+keeps the wedge, baseline/grantable disjoint, typo-never-grants, error names the feature) · **fresh-DB
+integration+isolation 689** (+4: **starter plan → 403 and nothing created**, the upload trigger is
+gated too, **upgrading the plan unlocks it**, `/me` reports the store's entitlements). Two fixtures
+now subscribe their test store to a plan — a real store always has one. No migration.
+**Next:** ENT-1b (owner nav hides ungranted features + operator plan-builder ticks), then the widget.
+
+
 ## LP-4b · Asset upload → auto-generated pages (+ variant range 1–5, default 3) — **COMPLETE — merged `82b5f79`, CI green** (2026-08-12)
 
 Branch `feature/lp-4b-upload-autogenerate`. The founder's original trigger: *"an upload button from

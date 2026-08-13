@@ -38,6 +38,7 @@ from core.support.api import owner_router as support_owner_router
 from core.tenancy.analytics_admin import router as analytics_admin_router
 from core.tenancy.api_keys import router as api_keys_router
 from core.tenancy.customer_health_admin import router as customer_health_admin_router
+from core.tenancy.entitlements import register_entitlement_handlers
 from core.tenancy.flags_router import router as flags_router
 from core.tenancy.invites import router as invites_router
 from core.tenancy.ops_admin import router as ops_admin_router
@@ -73,6 +74,7 @@ if _cors_origins:
 
 register_exception_handlers(app)
 register_rbac_handlers(app)
+register_entitlement_handlers(app)
 setup_telemetry(app)  # no-op unless an OTLP endpoint is configured
 setup_error_tracking(app)  # no-op unless an error-tracking DSN is configured (security S2)
 app.include_router(health_router)

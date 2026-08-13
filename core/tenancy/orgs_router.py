@@ -24,6 +24,7 @@ from core.common.config import Settings, get_settings
 from core.common.db import get_session
 from core.tenancy import auth, repository
 from core.tenancy.deps import CurrentAuth, get_current_auth
+from core.tenancy.entitlements import entitlements
 from core.tenancy.middleware import get_db
 
 router = APIRouter(prefix="/v1", tags=["orgs"])
@@ -67,6 +68,10 @@ class MeResponse(BaseModel):
     user: UserModel
     org: OrgModel | None = None
     roles: list[str] = Field(default_factory=list)
+    # ENT-1a: the capabilities this store's plan includes. The UI uses it to hide what isn't
+    # included; the server enforces it independently (`requires_feature`), so this is never
+    # the security boundary.
+    features: list[str] = Field(default_factory=list)
 
 
 def _now() -> datetime:
@@ -155,4 +160,7 @@ async def me(
         return MeResponse(user=user_model, org=None, roles=[])
     org = await repository.get_organization(session, membership.org_id)
     assert org is not None
-    return MeResponse(user=user_model, org=_org_model(org), roles=[membership.role])
+    granted = await entitlements(session, membership.org_id)
+    return MeResponse(
+        user=user_model, org=_org_model(org), roles=[membership.role],
+        features=sorted(granted))
