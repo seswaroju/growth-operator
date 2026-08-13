@@ -9,6 +9,29 @@ selects and approves the next ticket.
 
 ---
 
+## GHOST-1d · Owner recovery controls + "waiting on you" notification — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/ghost-1d-recovery-ui`. Puts the GHOST-1b/1c backend in the owner's hands. **No
+migration.**
+
+- **"N customers waiting on your reply"** — a new `waiting` item in the owner notification feed,
+  derived from the *same deterministic classifier* the sweep uses (`recovery.waiting_on_store`) — no
+  table, no duplicate state. These are warm leads the store is actively losing; the customer is never
+  chased for the store's own silence.
+- **Recovery controls on the lead card** — **"They contacted me"** (resets the silence clock; the
+  lead can re-ghost later), **"Don't chase"** (exclude), and **"Chase again"** (resume) when a lead is
+  already excluded/snoozed, plus a state line ("Not being chased" / "Paused for now").
+- `GET /v1/leads` now returns `recovery_state` + `recovery_snooze_until` so the UI can act;
+  `web/src/api.ts` gains `setLeadRecovery`. The notification `kind` union gained `waiting` — **the
+  compiler found all three call sites** (icon map, label map, bell), which is exactly why it's typed.
+
+**Gate (all green):** ruff · mypy core **212** · guards **0** · unit **578** · **fresh-DB 678** (+2:
+waiting customers surface in the feed; a ghost does **not** appear as waiting) · web **tsc** ·
+**oxlint** (2 pre-existing warnings) · **vitest 76** · **build**. **This completes the ghost-recovery
+wedge end to end — detection, diagnosis, approval, recovery, and owner control.** **Next:** LP-4b
+(asset upload → auto-generate variants → notify), or a pilot-readiness pass.
+
+
 ## LP-4a · Owner console: landing pages + "captured from" — **COMPLETE — merged `641e997`, CI green** (2026-08-12)
 
 Branch `feature/lp-4a-owner-landing-ui`. The first ticket that makes today's landing/lead backend

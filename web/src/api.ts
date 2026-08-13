@@ -420,6 +420,22 @@ export interface Lead {
   variant: string | null;
   channel_type: string | null;
   utm: Record<string, string>;
+  /** GHOST-1c/1d: the owner's override on silent-lead recovery. */
+  recovery_state: string;
+  recovery_snooze_until: string | null;
+}
+
+export type RecoveryAction = "exclude" | "snooze" | "contacted" | "resume";
+
+/** Owner override on silent-lead recovery ("they walked in", "not now", "chase again"). */
+export function setLeadRecovery(
+  token: string, leadId: string, action: RecoveryAction,
+  opts: { until?: string; note?: string } = {},
+): Promise<{ lead_id: string; recovery_state: string }> {
+  return authed(`/v1/leads/${leadId}/recovery`, token, {
+    method: "POST",
+    body: JSON.stringify({ action, until: opts.until ?? null, note: opts.note ?? null }),
+  });
 }
 
 // ---- Landing pages (/v1/landing, campaigns:read|send) ----------------------
@@ -754,7 +770,9 @@ export function listOwnerDefinitions(token: string): Promise<{ definitions: Owne
 // A unified feed derived from existing signals: pending approvals, ticket updates, automation alerts.
 
 export interface NotificationItem {
-  kind: "approval" | "ticket" | "automation" | "announcement";
+  kind: "approval" | "ticket" | "automation" | "announcement" | "waiting";
+  /** `waiting` only: how many customers are awaiting a reply. */
+  count?: number;
   ref: string;
   title: string;
   tier?: number;

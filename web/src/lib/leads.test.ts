@@ -8,7 +8,8 @@ function lead(stage: string): Lead {
     id: crypto.randomUUID(), stage, source: "whatsapp", score: null,
     contact_name: "X", contact_phone: null, next_followup_at: null, updated_at: "2026-08-07",
     captured_from: "WhatsApp", landing_page_id: null, landing_slug: null, variant: null,
-    channel_type: "whatsapp", utm: {},
+    channel_type: "whatsapp", utm: {}, recovery_state: "auto",
+    recovery_snooze_until: null,
   };
 }
 
