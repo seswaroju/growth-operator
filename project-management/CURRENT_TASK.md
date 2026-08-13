@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## ENT-1a · Plan entitlements (server-side enforcement) — **COMPLETE — awaiting founder review** (2026-08-12)
+## ENT-1a · Plan entitlements (server-side enforcement) — **COMPLETE — merged `6bdbe5f`, CI green** (2026-08-12)
 
 Branch `feature/ent-1a-plan-entitlements`. **Founder question that surfaced it:** *"based on the plan
 only those options are visible to tenants… basic starter → only ghost leads; middle → WhatsApp

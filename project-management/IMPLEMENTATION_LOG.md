@@ -5947,7 +5947,7 @@ failures seen locally are the **pre-existing** BLOCKER #22b DB pollution (they p
 (+4: starter plan → 403 with nothing created, upload trigger gated, upgrade unlocks, `/me` reports
 entitlements).
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `40b8ea1` (merge `6bdbe5f`). Pushed to `main`; **GitHub CI green** (all 6 jobs).
 
 **Next action:** ENT-1b (owner nav hides what the plan does not include + operator plan-builder
 feature ticks), then the upload widget.
