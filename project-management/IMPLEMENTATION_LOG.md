@@ -5902,7 +5902,7 @@ rendered element, not the stylesheet class). `MAX_ASSETS` is documented as **dis
 **Commands / gate (all green):** `ruff check .` · `mypy core` (**213**) · `guards.py` (**0**) ·
 `pytest tests/unit` (**589**) · **fresh-DB integration+isolation — 685 passed, 4 skipped, 0 errors**.
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `67ac4fa` (merge `b07d0df`). Pushed to `main`; **GitHub CI green** (all 6 jobs).
 
 **Next action:** the owner-facing upload widget + "your pages are ready" notification, or a
 pilot-readiness pass.
