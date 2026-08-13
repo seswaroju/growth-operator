@@ -242,7 +242,7 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
 - **Severity:** Low (test-only). **Description:** `test_business_metrics.py` seeded leads with `datetime.now(UTC)` but asserted against `date.today()` (local), a UTC/local off-by-one that went red only when the local/UTC date boundary differed — surfaced when the system date rolled over mid-session (it passed during MVP-073a/b earlier the same day). Confirmed pre-existing (fails on main with the stage-3 work stashed), not a workflow-engine regression.
 - **Resolution:** aligned the test's day basis to `datetime.now(UTC).date()` (MVP-073c change set). Full suite green.
 
-### 28. Ghost-recovery workflow: two refinements never re-enabled after the CAPTURE-GAP migration
+### ~~28. Ghost-recovery workflow: two refinements never re-enabled after the CAPTURE-GAP migration~~ — RESOLVED 2026-08-12
 
 - **Severity:** Medium — this is the **product wedge**, so the gap matters commercially even though
   the core loop runs. No runtime risk: the workflow parses, compiles, and runs gated-simulated today.
@@ -262,11 +262,31 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
      than the spec.
   (The third deferral — writing the owner's pick to `lead_diagnoses` — **is** done: the
   `approval_gate` has `label_sink: lead_diagnoses`.)
-- **Next action:** a small follow-up ticket — re-enable `classify_ghost` + the silence-window trigger
-  against the now-present columns, extend the eval set with shop-stopped-replying cases, and refresh
-  the workflow header. Founder to schedule.
+- **Resolution (2026-08-12) — delivered by GHOST-1b + GHOST-1c, and the deeper defect they exposed:**
+  1. **ghost vs shop-stopped-replying — DONE**, deterministically in `core/customers/recovery.classify`
+     rather than as the spec's `classify_ghost` agent step: a customer who spoke last and was never
+     answered is `shop_stopped_replying` → **the owner is told, the customer is never chased**. Dropping
+     the agent call (no model needed to compare two timestamps) is recorded as a deliberate deviation in
+     DECISIONS 2026-08-12. Covered by `test_customer_waiting_on_the_store_is_never_a_ghost` +
+     `test_sweep_never_chases_a_customer_waiting_on_the_store`.
+  2. **The silence window — DONE and improved.** Not a fixed 24h post-quote dwell but an
+     **owner-configurable** threshold (`recovery.silence_hours`, default **72**) measured from the
+     **customer's** last message, so a lead that replies and goes quiet again **re-enters** recovery —
+     the founder's case, which a fixed post-quote window could not express.
+  3. **The stale header — DONE**: `silent_lead_reactivation.yaml`'s CAPTURE-GAP comment now states
+     reality instead of deferrals.
+  4. **The eval-set extension is moot**: shop-stopped-replying is no longer a diagnosis *reason* to be
+     evaluated statistically — it is a deterministic pre-diagnosis classification with direct unit +
+     integration tests.
+- **Bigger defect this uncovered (also fixed):** the workflow could not fire **at all** — no code
+  advanced a lead's stage, nothing emitted the trigger event, and the pack's trigger name could never
+  match the routing lookup. Fixed in **GHOST-1a** (`00eedea`), with GHOST-1b (`097c77b`) and GHOST-1c
+  (`0f44f7e`) completing the loop.
+- **Residual (enhancement, NOT a blocker):** the **sales-handoff branch** — escalating a high-value or
+  repeatedly-unrecovered lead to a named human salesperson instead of another message — remains
+  unbuilt. Noted in the workflow header; schedule as a normal ticket if the pilot wants it.
 
-### 29. Vault `topics.yaml` lands outside the vault (lead.stage_changed.v1 nullable widening)
+### 29. Vault `topics.yaml` lands outside the vault (two lead event lines)
 
 - **Severity:** Low — narrative/doc sync only. **No runtime or test risk** (the drift tests read the
   vendored `spec/events/topics.yaml`, which IS updated; the vault original is not test-checked — same
@@ -276,6 +296,14 @@ Unresolved problems. Update in place as status changes; move to a strikethrough 
   landing form — can still emit the transition that starts ghost recovery. Updated in
   `spec/events/topics.yaml` + regenerated `core/events/types.py`; the vault original still says
   `rfc3339`.
-- **Next action (founder):** in the vault `docs/implementation/events/topics.yaml`, change the
-  `lead.stage_changed.v1` payload to
-  `{lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}`. File save is the record.
+- **Second line (GHOST-1b):** a **new** event `lead.went_silent.v1` was added — it is what actually
+  starts ghost recovery once the daily sweep detects silence. Registered in
+  `spec/events/topics.yaml`, `core/events/topics.py` (ALLOWED_EVENT_TYPES) and the regenerated
+  `core/events/types.py`; the vault original has neither change.
+- **Next action (founder):** in the vault `docs/implementation/events/topics.yaml` make the two edits
+  spelled out below (exact text supplied 2026-08-12), then this blocker is closed:
+  1. change `lead.stage_changed.v1`'s payload to
+     `{lead_id: uuid, stage: string, last_customer_msg_at: rfc3339|null}`;
+  2. add a new entry `lead.went_silent.v1` (producer `crm`, consumer `workflows`) with payload
+     `{lead_id: uuid, stage: string, silence_hours: int, last_customer_msg_at: rfc3339|null}`.
+  File save is the record (the vault is not git-tracked).
