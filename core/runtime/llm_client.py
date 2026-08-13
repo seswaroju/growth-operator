@@ -81,10 +81,10 @@ async def call_provider(
     """One inference call against **the named provider**, using that provider's own adapter,
     endpoint and credential.
 
-    Raises `ProviderNotConfigured` for configuration faults (unknown/disabled provider, missing
-    credential, unknown/disabled model, capability mismatch) and `ProviderCallFailed` for
-    fallback-safe transient failures. `transport` is an injection point for tests — CI never
-    reaches the network.
+    Raises `ProviderNotConfigured` when the setup is wrong — an unknown or disabled provider, no
+    key for it, an unknown or disabled model, or a capability the model lacks. Raises
+    `ProviderCallFailed` for fallback-safe transient failures. `transport` is an injection point
+    for tests; CI never reaches the network.
     """
     _require_enabled()
     definition = get_provider_definition(provider)
