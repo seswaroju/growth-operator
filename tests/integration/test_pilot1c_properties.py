@@ -125,6 +125,9 @@ class Recon:
         self.org = uuid.uuid4()
         self.plan_small = uuid.uuid4()
         self.plan_big = uuid.uuid4()
+        #: Only set when THIS fixture created them — shared rows are never torn down.
+        self.created_binding: uuid.UUID | None = None
+        self.created_pack: uuid.UUID | None = None
 
     def _config(self, agents: list[str]) -> str:
         return json.dumps({
@@ -145,13 +148,33 @@ class Recon:
         await self.conn.execute(
             "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active')",
             self.org, self.plan_big)
+        # Build every precondition this scene needs. A fresh database has no packs at all, and a
+        # developer database has them because some earlier suite installed one — so a fixture that
+        # reads without creating passes locally and fails on CI, for reasons that look unrelated to
+        # the test. Anything created here is tracked and torn down; anything found is left alone.
         pack = await self.conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
+        if pack is None:
+            pack = uuid.uuid4()
+            await self.conn.execute(
+                "INSERT INTO packs (id, slug, version, platform_api, manifest, bundle_uri, "
+                "signature, status) VALUES ($1,'jewelry','1','1','{}'::jsonb,'x','x','published')",
+                pack)
+            self.created_pack = pack
         await self.conn.execute(
             "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
             self.org, pack)
         arch = await self.conn.fetchval("SELECT id FROM agent_archetypes WHERE slug='nurture'")
+        # Create the binding when it is absent. It exists on a database that has installed the pack
+        # and is missing on a fresh one — CI runs fresh, so a fixture that assumed it would pass
+        # locally and fail there, which is exactly the class of test that erodes trust in CI.
         binding = await self.conn.fetchval(
             "SELECT id FROM agent_bindings WHERE pack_id=$1 AND archetype_id=$2", pack, arch)
+        if binding is None:
+            binding = await self.conn.fetchval(
+                "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "
+                "kpi_defs, tier_defaults) VALUES ($1,$2,'N','[]'::jsonb,'[]'::jsonb,'[]'::jsonb) "
+                "RETURNING id", pack, arch)
+            self.created_binding = binding
         self.instance = await self.conn.fetchval(
             "INSERT INTO agent_instances (org_id, binding_id, persona_name, status, "
             "permission_manifest) VALUES ($1,$2,'N','paused','{}'::jsonb) RETURNING id",
@@ -166,8 +189,11 @@ async def recon() -> AsyncIterator[Recon]:
     dbmod.get_sessionmaker.cache_clear()
     conn = await asyncpg.connect(_dsn())
     r = Recon(conn)
-    await r.setup()
+    # Setup inside the try: a fixture that raises before `yield` never runs its teardown, so a
+    # half-built scene leaks rows and fails *other* suites — which is how one broken fixture becomes
+    # a red build nobody can attribute.
     try:
+        await r.setup()
         yield r
     finally:
         await conn.execute("DELETE FROM agent_instances WHERE org_id=$1", r.org)
@@ -176,6 +202,10 @@ async def recon() -> AsyncIterator[Recon]:
         await conn.execute("DELETE FROM billing_plans WHERE id = ANY($1::uuid[])",
                            [r.plan_small, r.plan_big])
         await conn.execute("DELETE FROM organizations WHERE id=$1", r.org)
+        if r.created_binding is not None:
+            await conn.execute("DELETE FROM agent_bindings WHERE id=$1", r.created_binding)
+        if r.created_pack is not None:
+            await conn.execute("DELETE FROM packs WHERE id=$1", r.created_pack)
         await conn.close()
         await dbmod.get_engine().dispose()
         dbmod.get_engine.cache_clear()
