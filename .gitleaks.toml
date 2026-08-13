@@ -19,6 +19,13 @@ regexes = [
   # type annotation for passing a signing-key OBJECT at runtime — not a credential. A real leaked
   # key could never contain the literal type name, so this stays targeted.
   '''private_key: Ed25519PrivateKey''',
+  # core/runtime/llm_client.py docstring (PILOT-1B): the `generic-api-key` heuristic reads the
+  # PROSE "credential, unknown/disabled" as an assignment and extracts `unknown/disabled` as the
+  # "secret". No secret is or was present. The docstring was reworded on the tree, but the phrase
+  # remains in commit b26d9d9 and the scan covers full history, which rewording forward cannot
+  # reach. Anchored on that exact English phrase — a real key could not contain it, so this
+  # cannot mask a leak.
+  '''credential, unknown/disabled''',
 ]
 paths = [
   # SOPS-encrypted secrets are safe to commit BY DESIGN (that is the whole point of SOPS). Their
