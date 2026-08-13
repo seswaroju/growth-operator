@@ -5711,3 +5711,48 @@ leads alone, honours the store's threshold, and the sweep event actually starts 
 lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1c (owner intervention: exclude / snooze / "they contacted me"), then LP-4a.
+
+---
+
+## 2026-08-12 — GHOST-1c · Owner intervention over silent-lead recovery
+
+**Ticket:** GHOST-1c — the founder's ask from the GHOST-1b design round: *"maybe owner's intervention
+if the lead can be removed from ghost as they contacted"*.
+
+**Founder decision (AskUserQuestion):** `contacted` **resets the silence clock and stays in `auto`**,
+rather than excluding the lead permanently — truthful, and a customer who visits once and then goes
+cold is still recovered later instead of being lost forever.
+
+**Files created:** `migrations/versions/…050_lead_recovery_controls.py`.
+**Files modified:** `core/customers/recovery.py` (override honoured in `classify` + `set_recovery`
+actions), `core/customers/api.py` (`lead_router` + `POST /v1/leads/{id}/recovery`),
+`core/api/main.py` (register), `core/audit/taxonomy.py` (`lead.recovery_set`),
+`tests/unit/test_recovery_classify.py` (+4), `tests/integration/test_ghost_ignition.py` (+5; fixture
+teardown now clears append-only `audit_log` rows), tracking docs.
+
+**Migration:** **050** (`93111b93b290 → e3d33a70ce53`) — `leads` + `recovery_state`
+(`auto|excluded|snoozed`, CHECK), `recovery_snooze_until`, `recovery_note`, `recovery_set_by`,
+`recovery_set_at`. Additive/nullable → safe on a populated table; RLS already present.
+**up/down/up verified.**
+
+**Behaviour:** the owner's decision is evaluated **before** any inference, so it outranks even
+`shop_stopped_replying`. An **expired snooze falls through to `auto`** on the next sweep (no cleanup
+job). `contacted` stamps `last_customer_msg_at = now()` + `last_message_direction='inbound'`, so the
+lead leaves `ghost` immediately **and can re-enter weeks later** — proven by a test that sweeps twice.
+
+**APIs:** `POST /v1/leads/{id}/recovery` (`customers:write`) `{action, until?, note?}` → the new
+state; **422** on an unknown action or a snooze without a future date; **404** cross-tenant; **403**
+for a viewer. Every action writes an audited `lead.recovery_set` entry. **Events/Frontend:** none —
+the owner UI + the "customers waiting on you" feed item ride with LP-4a.
+
+**Security:** Rule Zero preserved (guards 0); RLS-scoped (cross-tenant 404 tested); RBAC-gated;
+audited. This ticket can only ever *reduce* who gets contacted — no new external side effect.
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**212**) · `guards.py` (**0**) ·
+**alembic 050 up/down/up** · `pytest tests/unit` (**578**, +4) · **fresh-DB integration+isolation
+`verify_fresh_db.sh` — 676 passed, 4 skipped, 0 errors** (+5).
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** LP-4a (owner web console: landing pages + variants + "captured from" column + the
+recovery controls and the "N customers are waiting on your reply" notification).

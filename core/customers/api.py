@@ -14,14 +14,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.audit.taxonomy import ACTOR_USER, LEAD_RECOVERY_SET
+from core.audit.writer import AuditEntry
+from core.audit.writer import write as audit_write
 from core.customers import annotations as crm_annotations
-from core.customers import dpdp, service
+from core.customers import dpdp, recovery, service
 from core.tenancy.deps import CurrentAuth
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE, ORG_MANAGE
 from core.tenancy.rbac import requires
 
 router = APIRouter(prefix="/v1/customers", tags=["customers"])
+# GHOST-1c: lead-level owner controls live under /v1/leads (the pipeline's own namespace).
+lead_router = APIRouter(prefix="/v1/leads", tags=["leads"])
 
 
 class CustomerSummary(BaseModel):
@@ -252,3 +257,46 @@ async def erase_customer(
     if erased is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "customer not found")
     await session.commit()
+
+
+# ---- GHOST-1c: owner intervention over silent-lead recovery --------------------------------------
+
+class RecoveryAction(BaseModel):
+    """`exclude` (never chase) · `snooze` (until a date) · `contacted` (they reached us another
+    way — resets the silence clock) · `resume` (back to automatic)."""
+    action: str = Field(..., pattern=r"^(exclude|snooze|contacted|resume)$")
+    until: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+class RecoveryState(BaseModel):
+    lead_id: UUID
+    recovery_state: str
+    recovery_snooze_until: datetime | None = None
+    recovery_note: str | None = None
+
+
+@lead_router.post("/{lead_id}/recovery", response_model=RecoveryState,
+                  summary="Owner override on silent-lead recovery")
+async def set_lead_recovery(
+    lead_id: UUID,
+    body: RecoveryAction,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_WRITE)),
+    session: AsyncSession = Depends(get_db),
+) -> RecoveryState:
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    try:
+        result = await recovery.set_recovery(
+            session, current.org_id, lead_id, action=body.action, until=body.until,
+            note=body.note, actor_id=current.user_id)
+    except recovery.RecoveryActionInvalid as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    if result is None:  # RLS-scoped → unknown/other-org both 404
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "lead not found")
+    await audit_write(session, AuditEntry(
+        org_id=current.org_id, actor_type=ACTOR_USER,
+        actor_id=str(current.user_id) if current.user_id else None,
+        action=LEAD_RECOVERY_SET, resource=str(lead_id),
+        payload={"action": body.action, "state": result["recovery_state"]}))
+    return RecoveryState(lead_id=lead_id, **result)
