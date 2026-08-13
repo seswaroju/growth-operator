@@ -6226,4 +6226,4 @@ survives a rejected assignment unchanged. Seeding — canonical rows moved v1 �
   the structured config, no rich date picker yet).
 - Sold plans cannot be renamed — deliberate; copy to change any commercial or display field.
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-5.
+**Commit:** `2ec9743`, merged to `main` as `7c9b998`. **CI:** run 31723212130 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract. **Next recommended action:** founder selects PLAN-5.
