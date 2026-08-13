@@ -16,12 +16,12 @@ Status: **DESIGN-REVIEW-FIRST** (founder requires a written review before code) 
 
 ## 0. ⚠️ Outstanding input needed from the founder
 
-- **The second vision prompt was TRUNCATED at 50,000 characters.** Received: its §1 (founder intent —
-  public marketing site, no self-service signup yet) and the §2 heading ("IMPORTANT SURFACE
-  SEPARATION"). **Everything after that is missing** — presumably the site structure, prospect/lead
-  capture, sales → tenant conversion, guided onboarding, and its own required-response section.
-  **Action: founder to re-send part 2** (in chunks, or as a file in the vault I can read).
-- **Design review owed before any implementation** (their §75 A–N). See PLAN-0 below.
+- ✅ **Both vision prompts received in full** (2026-08-12). Both design reviews delivered:
+  `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md` and `WEB_ACQUISITION_DESIGN_REVIEW.md`. **No implementation
+  started** — awaiting founder decisions.
+- **Six product-truth decisions block honest packaging AND website copy** (appointment booking,
+  segmentation, Support Agent, competitor watchlist, analytics split, nurture). See the entitlements
+  review's audit table.
 
 ---
 
@@ -112,7 +112,9 @@ machine keys ≠ marketing copy; no coupon/discount/metered-billing engine.
 
 ## C. Public website / acquisition / onboarding (spec **INCOMPLETE — see §0**)
 
-- **WEB-0 — Receive the full spec, then design review** · **BLOCKED (founder to re-send part 2)**
+- **WEB-1…6 + ONBOARD-1** · **QUEUED** — full design review delivered in
+  `WEB_ACQUISITION_DESIGN_REVIEW.md` (§115 A–S). Depends on PLAN-1/PLAN-2 for the public plan
+  projection.
   Known so far: a public company/product site so a visitor is **not** dropped on a login screen;
   must explain what GO is, the problem, differentiation, Recover/Grow/Scale + pricing, how the AI
   works, trust, what genuinely exists, how to talk to us, how to become a customer, and where
