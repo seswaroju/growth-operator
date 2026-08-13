@@ -22,6 +22,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.customers.consent import POSITIVE_TRANSACTIONAL, marketing_allowed
 from core.tenancy.repository import set_org_context
 from core.workflows.schema import parse_duration_s
 
@@ -31,8 +32,10 @@ GUARD_NAMES: frozenset[str] = frozenset({
 })
 
 # Marketing consent requires the strongest signal; other purposes accept an implicit opt-in.
-_CONSENT_OK_STRICT = frozenset({"explicit"})
-_CONSENT_OK_LOOSE = frozenset({"explicit", "implicit"})
+# PILOT-1C: one definition of marketing consent, shared with the send gate and campaign audience.
+# This guard previously accepted only "explicit" while the authoritative send gate accepted only
+# {"opted_in", "granted"} — a contact could pass here and be refused at the boundary that matters.
+_CONSENT_OK_LOOSE = POSITIVE_TRANSACTIONAL
 
 
 class UnknownGuard(ValueError):
@@ -112,8 +115,9 @@ async def _consent_valid(session: AsyncSession, ctx: GuardContext, args: tuple[s
     status = (await session.execute(
         text("SELECT consent_status FROM contacts WHERE id = :c"),
         {"c": str(ctx.contact_id)})).scalar_one_or_none()
-    ok = _CONSENT_OK_STRICT if purpose == "marketing" else _CONSENT_OK_LOOSE
-    return status in ok
+    if purpose == "marketing":
+        return marketing_allowed(status)
+    return status in _CONSENT_OK_LOOSE
 
 
 async def _within_send_window(

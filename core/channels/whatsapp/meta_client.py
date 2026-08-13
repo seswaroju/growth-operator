@@ -12,7 +12,9 @@ Nothing here logs the access token.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -126,13 +128,25 @@ class MetaClient:
 
     async def send_template(
         self, phone_number_id: str, access_token: str, to: str, name: str, language: str,
+        *, parameters: Sequence[str] = (),
     ) -> SendResult:
-        """Send an approved template message (used by the gated send adapter, MVP-035)."""
+        """Send an approved template message (used by the gated send adapter, MVP-035).
+
+        `parameters` fill the template's body variables in order — `{{1}}`, `{{2}}`, … Cloud API
+        expects them as a `body` component; a template with variables sent without them is rejected
+        by Meta, which is why the transport carries them rather than the caller string-formatting
+        the text (a template's text is fixed at approval time and cannot be rewritten here)."""
         if self.simulated:
             return SendResult(ok=True, provider_message_id=f"wamid.SIM-{uuid.uuid4().hex[:16]}")
+        template: dict[str, Any] = {"name": name, "language": {"code": language}}
+        if parameters:
+            template["components"] = [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(p)} for p in parameters],
+            }]
         payload = {
             "messaging_product": "whatsapp", "to": to, "type": "template",
-            "template": {"name": name, "language": {"code": language}},
+            "template": template,
         }
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
