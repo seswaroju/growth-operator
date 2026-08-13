@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { availableActions, statusLabel, statusTone, variantBlurb } from "./landing";
+import {
+  availableActions, DEFAULT_VARIANTS, MAX_VARIANTS, statusLabel, statusTone, variantBlurb,
+} from "./landing";
 
 describe("landing status presentation", () => {
   it("reads 'Live' for a published page", () => {
@@ -39,5 +41,18 @@ describe("variantBlurb", () => {
   it("describes the known variants and degrades gracefully", () => {
     expect(variantBlurb("focused")).toMatch(/short/i);
     expect(variantBlurb("something-new")).toBe("Alternative layout");
+  });
+});
+
+describe("variant bounds (LP-4b)", () => {
+  it("defaults to 3 layouts and caps at 5", () => {
+    expect(DEFAULT_VARIANTS).toBe(3);
+    expect(MAX_VARIANTS).toBe(5);
+    expect(DEFAULT_VARIANTS).toBeLessThan(MAX_VARIANTS);
+  });
+
+  it("describes the extra layouts", () => {
+    expect(variantBlurb("catalog")).toMatch(/product-first/i);
+    expect(variantBlurb("objection")).toMatch(/doubts/i);
   });
 });

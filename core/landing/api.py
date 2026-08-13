@@ -12,16 +12,23 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.common.db import get_session
+from core.landing import assets as landing_assets
 from core.landing import leads, lifecycle, ratelimit, service
+from core.landing.assets import AssetRejected
 from core.landing.leads import LeadRejected
 from core.landing.lifecycle import InvalidTransition
-from core.landing.plan import CampaignContext, ProductRef
+from core.landing.plan import (
+    DEFAULT_VARIANTS,
+    MAX_VARIANTS,
+    CampaignContext,
+    ProductRef,
+)
 from core.landing.render import render_html
 from core.landing.validate import SpecInvalid
 from core.tenancy.deps import CurrentAuth
@@ -72,8 +79,9 @@ class LandingCreate(BaseModel):
     hero_image_url: str | None = None
     products: list[ProductIn] = Field(default_factory=list)
     campaign_id: UUID | None = None
-    # LP-2a: >1 generates that many genuinely-different-UX candidate versions for the owner to pick.
-    variants: int = Field(default=1, ge=1, le=3)
+    # LP-2a/LP-4b: how many genuinely-different-UX candidates to generate for the owner to pick.
+    # Default 3; a typical page does not need more, but up to MAX_VARIANTS is allowed.
+    variants: int = Field(default=DEFAULT_VARIANTS, ge=1, le=MAX_VARIANTS)
     # LP-2c: use the gated LLM strategy planner for the variants (falls back to deterministic when
     # the provider is off — so this is a no-op unless a key is wired).
     use_llm: bool = False
@@ -455,3 +463,45 @@ async def archive_page(
     except InvalidTransition as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return _status_or_404(page_id, new_status)
+
+
+@router.post("/pages/from-upload", response_model=LandingCreated,
+             status_code=status.HTTP_201_CREATED,
+             summary="Upload campaign photos → auto-generate candidate pages (owner)")
+async def create_from_upload(
+    slug: str = Form(..., min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9\-]*$"),
+    headline: str = Form(..., min_length=1, max_length=200),
+    offer: str = Form(default="", max_length=200),
+    subheadline: str = Form(default="", max_length=300),
+    objective: str = Form(default="whatsapp"),
+    wa_number: str = Form(default="", max_length=32),
+    product_titles: str = Form(default=""),   # newline- or comma-separated, in image order
+    variants: int = Form(default=DEFAULT_VARIANTS, ge=1, le=MAX_VARIANTS),
+    files: list[UploadFile] = File(...),
+    current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
+    session: AsyncSession = Depends(get_db),
+) -> LandingCreated:
+    """The owner's dashboard trigger: photos in, candidate pages out (they still pick + publish).
+
+    Every byte is MIME-checked, size-capped and **AV-scanned fail-closed** before it is stored."""
+    if current.org_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no org context")
+    payloads: list[tuple[str, str, bytes]] = []
+    for f in files:
+        payloads.append((f.filename or "image", f.content_type or "", await f.read()))
+    titles = [t.strip() for t in product_titles.replace(",", "\n").split("\n") if t.strip()]
+    try:
+        stored = await landing_assets.store_assets(current.org_id, payloads)
+        campaign = landing_assets.build_campaign(
+            headline=headline, offer=offer, subheadline=subheadline, objective=objective,
+            wa_number=wa_number, assets=stored, product_titles=titles)
+        page_id, rows = await landing_assets.generate_from_upload(
+            session, current.org_id, campaign=campaign, slug=slug, n=variants,
+            created_by=current.user_id)
+    except AssetRejected as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except SpecInvalid as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"invalid page: {exc}") from exc
+    return LandingCreated(
+        page_id=page_id, slug=slug, preview_url=f"/v1/landing/pages/{page_id}/preview",
+        variants=_variant_rows(page_id, rows))

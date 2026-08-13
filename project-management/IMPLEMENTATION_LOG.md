@@ -5836,3 +5836,43 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-4b (asset upload → auto-generate the 3 variants → notify the owner), or a
 pilot-readiness pass over the remaining founder-side blockers.
+
+---
+
+## 2026-08-12 — LP-4b · Asset upload → auto-generated pages (+ variant range 1–5, default 3)
+
+**Ticket:** LP-4b (founder: "Let's start LP-4b with a small change. Also, we need an option to add
+more with a max of 4-5 and default to 3. The typical landing page might not need more.").
+
+**Founder change — variant range:** `DEFAULT_VARIANTS = 3`, `MAX_VARIANTS = 5` (was default 1, max 3).
+Rather than padding the set, two genuinely-different archetypes were added: **`catalog`**
+(product-first) and **`objection`** (FAQ/benefits before the products). All five verified distinct and
+valid. Over the cap returns **422** instead of silently trimming. **Behaviour change disclosed:**
+`POST /pages` without `variants` now creates **3** versions, not 1 — the LP-2a back-compat test was
+rewritten to assert the new default (a 1-variant page is still available explicitly).
+
+**Files created:** `core/landing/assets.py`, `tests/unit/test_landing_assets.py` (8).
+**Files modified:** `core/landing/plan.py` (2 archetypes + the bound constants),
+`core/landing/api.py` (bounds + `POST /pages/from-upload`), `web/src/lib/landing.ts` (+ test),
+`tests/unit/test_landing_variants.py` (+2), `tests/integration/test_landing_page.py` (+5), docs.
+
+**Behaviour:** `store_assets` reuses the **existing** media pipeline — MIME allow-list, size cap,
+**AV scan that fails closed** (a scanner error rejects; unscanned bytes are never stored), object
+store. `build_campaign` makes the first image the hero and the rest product tiles paired with the
+owner's titles; an extra image without a title gets a **neutral** placeholder rather than an invented
+product, and a named product without a photo still gets a tile. `POST /pages/from-upload` (multipart,
+`campaigns:send`) then runs the normal LP-2a generation — the owner still picks and publishes.
+
+**Migration/Events:** none. **Security:** no unscanned byte can reach a page; AV + object storage
+default to the **simulated** implementations until the founder enables them (same posture as the
+WhatsApp media path); the route is RBAC-gated (viewer → 403) and org-scoped; a rejected upload writes
+nothing. Rule Zero preserved (guards 0).
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**213**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**587**) · **fresh-DB integration+isolation — 683 passed, 4 skipped, 0 errors** ·
+web `tsc` · `lint` · `vitest` (**78**) · `build`.
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** the owner-facing **upload widget** + a "your pages are ready" notification (small
+follow-up), or a pilot-readiness pass over the founder-side blockers.
