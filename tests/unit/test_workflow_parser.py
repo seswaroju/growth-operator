@@ -61,16 +61,24 @@ def test_kirana_workflows_parse() -> None:
 # ---- Acceptance: grammar-freeze enforcement ------------------------------------------
 
 
-def test_silent_lead_reactivation_v4_parses_via_the_sugar() -> None:
-    # The ghost-recovery workflow (MVP-073i v4) uses the Option-A sugar and now parses + compiles:
-    # `diagnose`/`compose` → agent_task, `approval_gate` → a ranked human_task; the block-style
-    # guards keep `touch_cap(3, 30d)` intact (not comma-split).
+def test_silent_lead_reactivation_parses_via_the_sugar() -> None:
+    # The ghost-recovery workflow uses the Option-A sugar and parses + compiles: `diagnose` →
+    # agent_task, `approval_gate` → a ranked human_task; the block-style guards keep
+    # `touch_cap(3, 30d)` intact (not comma-split).
+    #
+    # PILOT-1C moved this from v4 to v5 and the assertions got STRONGER, not weaker. v4 had two
+    # AGENT steps (diagnose + compose) and no step that reached the customer at all — it could
+    # complete "successfully" having sent nothing. v5 drops the generative composer in favour of a
+    # deterministic approved template and adds the TOOL step that actually sends, so the shape
+    # asserted here is now: reason, ask the human, send, wait.
     p = _parse_file(_JEWELRY / "silent_lead_reactivation.yaml")
-    assert p.workflow_key == "silent_lead_reactivation" and p.version == 4
+    assert p.workflow_key == "silent_lead_reactivation" and p.version == 5
     assert GuardRef("touch_cap", ("3", "30d")) in p.guards
     from core.workflows.program import compile_program
     ops = [i["op"] for i in compile_program(p.dsl)]
-    assert ops.count("AGENT") == 2 and "HUMAN" in ops  # diagnose + compose, approval_gate
+    assert ops.count("AGENT") == 1 and "HUMAN" in ops   # diagnose, approval_gate
+    assert "TOOL" in ops                                 # the send that v4 never had
+    assert ops.index("HUMAN") < ops.index("TOOL") < ops.index("WAIT")
 
 
 def test_unknown_step_type_rejected() -> None:

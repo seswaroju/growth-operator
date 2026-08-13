@@ -66,6 +66,7 @@ async def _messages_send(
     from core.audit.writer import AuditEntry
     from core.audit.writer import write as audit_write
     from core.channels.whatsapp.send import SEND_ACTION, SendRefused, send
+    from core.channels.whatsapp.templates import TemplateNotSendable
 
     body = str(params.get("body") or "")
     conversation_id = params.get("conversation_id") or (
@@ -73,10 +74,25 @@ async def _messages_send(
             text("SELECT conversation_id FROM agent_runs WHERE id = :r"), {"r": str(ctx.run_id)}
         )
     ).scalar_one_or_none()
+
+    # Template send (PILOT-1C). A ghost lead is silent by definition, so the 24-hour service window
+    # has closed and WhatsApp accepts only an approved template. The key is a pack-authored
+    # constant reaching this tool through the workflow DSL — never composed by a model — and the
+    # MVP-035 gate independently refuses any key this store has not had approved, so an agent that
+    # invented one gets `TemplateNotSendable` rather than a send.
+    template_key = params.get("template_key")
+    template: tuple[str, str] | None = None
+    if template_key:
+        template = (str(template_key), str(params.get("template_language") or "en"))
+        # `body` is what we STORE as the conversation record; the wire content is the approved
+        # template. Storing the rendered text keeps the owner's inbox honest about what was sent.
+        body = body or await _render_stored_body(session, ctx.org_id, template, params)
     if not body or not conversation_id:
         raise GrowthOperatorError(
             "config_schema_violation", "messages.send needs a body and a conversation")
     conv_id = UUID(str(conversation_id))
+    attempt_id = (UUID(str(params["recovery_attempt_id"]))
+                  if params.get("recovery_attempt_id") else None)
 
     # Mint the send authorization + run the send in the proxy's session (one tenant transaction).
     # A separate session would nest a second per-org advisory lock and deadlock; keeping it in the
@@ -95,11 +111,73 @@ async def _messages_send(
             audit_id=capability.id, execution_token=token, session=session,
             message_class=params.get("message_class", "transactional"),
             figure_refs=list(params.get("figure_refs", [])),
+            template=template,
+            template_parameters=tuple(str(p) for p in params.get("template_parameters", ())),
+            idempotency_key=(str(params["idempotency_key"])
+                             if params.get("idempotency_key") else None),
+            recovery_attempt_id=attempt_id,
         )
     except SendRefused as exc:
+        await _record_attempt_outcome(session, ctx.org_id, attempt_id, blocked=exc.code)
         return {"sent": False, "refused": exc.code, "conversation_id": str(conv_id)}
+    except TemplateNotSendable as exc:
+        # Not an error the run should die on: the store's template is missing or unapproved, which
+        # is an operational fact the owner can fix. Reported, never retried into a second attempt.
+        await _record_attempt_outcome(
+            session, ctx.org_id, attempt_id, blocked="template_not_sendable")
+        return {"sent": False, "refused": "template_not_sendable", "template": exc.template_key,
+                "conversation_id": str(conv_id)}
+
+    # The lifecycle transition happens in the proxy's transaction, alongside the message row and
+    # the audit outcome — so an attempt can never be marked sent by a transaction that later rolls
+    # back, and can never be left `proposed` after a message actually went out.
+    if attempt_id is not None and not outcome.already_dispatched:
+        from core.customers import recovery_attempts
+
+        if outcome.sent:
+            await recovery_attempts.mark_sent(
+                session, ctx.org_id, attempt_id, message_id=outcome.message_id,
+                template_key=template[0] if template else None,
+                template_language=template[1] if template else None)
+        else:
+            # A retryable provider failure is genuinely ambiguous: the request may have been
+            # accepted before we lost the answer. Recorded as `delivery_unknown` — which counts as
+            # a touch — rather than resolved into a second message to the same customer.
+            await recovery_attempts.mark_failed(
+                session, ctx.org_id, attempt_id,
+                reason="provider_send_failed", unknown=outcome.retryable)
     return {"sent": outcome.sent, "conversation_id": str(conv_id),
-            "message_id": str(outcome.message_id) if outcome.message_id else None}
+            "message_id": str(outcome.message_id) if outcome.message_id else None,
+            "provider_message_id": outcome.provider_message_id,
+            "already_dispatched": outcome.already_dispatched}
+
+
+async def _record_attempt_outcome(
+    session: AsyncSession, org_id: UUID, attempt_id: UUID | None, *, blocked: str
+) -> None:
+    """A gate refused before any external effect. Recorded so the owner can see *why* a silent lead
+    was not contacted — an invisible refusal is indistinguishable from a broken product."""
+    if attempt_id is None:
+        return
+    from core.customers import recovery_attempts
+
+    await recovery_attempts.mark_blocked(session, org_id, attempt_id, reason=blocked)
+
+
+async def _render_stored_body(
+    session: AsyncSession, org_id: UUID, template: tuple[str, str], params: dict[str, Any]
+) -> str:
+    """The text stored on the conversation for a template send: the approved template body with its
+    `{{n}}` placeholders filled from the same parameters sent to Meta. Read from the store's own
+    approved template row — never reconstructed by a model, so the record cannot drift from the
+    wire content."""
+    from core.channels.whatsapp.templates import get_template
+
+    tpl = await get_template(session, org_id, template[0], template[1])
+    text_body = str((tpl or {}).get("body") or "")
+    for i, value in enumerate(params.get("template_parameters", ()), start=1):
+        text_body = text_body.replace(f"{{{{{i}}}}}", str(value))
+    return text_body or template[0]
 
 
 async def _landing_generate(

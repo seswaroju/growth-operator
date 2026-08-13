@@ -32,6 +32,7 @@ def _install_consumers() -> None:
     (Python caches modules), so this is safe to call more than once."""
     import core.approvals.notify  # noqa: F401  approval.requested → notify owner
     import core.campaigns.consumer  # noqa: F401  campaign.executed → record send counts
+    import core.customers.recovery_consumer  # noqa: F401  msg.received → credit recovery
     import core.events.consumer  # noqa: F401  msg.received logger
     import core.payments.receipt_consumer  # noqa: F401  approval.resolved → deliver receipt
     import core.runtime.planner  # noqa: F401  msg.received → classify + route + enqueue run

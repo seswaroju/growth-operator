@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.approvals.service import create_approval
 from core.customers import origins
+from core.customers.consent import CANONICAL_MARKETING_CONSENT
 from core.landing.service import clip as _clip
 from core.landing.service import clip_utm as _clip_utm
 from core.tenancy import entitlements
@@ -91,14 +92,14 @@ async def _published_page(session: AsyncSession, page_id: UUID) -> dict[str, Any
 async def _upsert_contact(
     session: AsyncSession, org_id: UUID, *, phone: str, name: str | None, email: str | None
 ) -> UUID:
-    """Reuse the store's existing contact for this phone, or create it. Consent is **explicit** —
+    """Reuse the store's existing contact for this phone, or create it. Consent is **granted** —
     the visitor ticked the consent box on the form."""
     contact_id = (
         await session.execute(
             text("INSERT INTO contacts (org_id, phone, consent_status) "
-                 "VALUES (:o, :p, 'explicit') "
+                 f"VALUES (:o, :p, '{CANONICAL_MARKETING_CONSENT}') "
                  "ON CONFLICT (org_id, phone) DO UPDATE SET updated_at = now(), "
-                 "  consent_status = 'explicit' RETURNING id"),
+                 f"  consent_status = '{CANONICAL_MARKETING_CONSENT}' RETURNING id"),
             {"o": str(org_id), "p": phone})
     ).scalar_one()
     # Only fill blanks — never overwrite what the store already knows about this customer.

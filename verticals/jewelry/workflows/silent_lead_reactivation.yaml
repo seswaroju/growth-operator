@@ -1,29 +1,27 @@
-# Silent-lead (ghost) recovery — diagnosis-first (jewelry pack, MVP-073i).
-# v3 (PROPOSED shorthand) -> v4: rewritten to the frozen grammar + Option-A sugar (DECISIONS
-# 2026-08-09), so it PARSES, COMPILES, and RUNS gated-simulated. See
-# docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md + 10-agents/ghost-diagnosis-prompt.md.
+# Silent-lead (ghost) recovery — the complete vertical slice (jewelry pack).
 #
-# CAPTURE-GAP status (refreshed 2026-08-12 — the gaps this header used to defer are closed):
-#   - ghost vs shop-stopped-replying: DONE, deterministically, in `core/customers/recovery.classify`
-#     (GHOST-1b). A customer who spoke last and was never answered is `shop_stopped_replying` — the
-#     OWNER is told and the customer is never chased. The spec's `classify_ghost` agent step was
-#     dropped in favour of facts (DECISIONS 2026-08-12): no model call to compare two timestamps.
-#   - the silence window: DONE and improved (GHOST-1b). Not a fixed 24h post-quote dwell but an
-#     owner-configurable threshold (`recovery.silence_hours`, default 72) measured from the
-#     CUSTOMER's last message, so a lead that replies and goes quiet again re-enters recovery.
-#   - the owner's pick → `lead_diagnoses`: DONE (the approval_gate's `label_sink` below).
-#   - STILL OPEN (enhancement, not a blocker): the sales-handoff branch — escalating a high-value or
-#     repeatedly-unrecovered lead to a named human salesperson instead of another message.
-# Owner overrides (exclude / snooze / contacted / resume) are enforced by the same classifier (GHOST-1c).
+# v5 (PILOT-1C): this playbook now actually sends. v4 diagnosed the ghost, asked the owner to
+# decide, composed a message — and then waited 96 hours for a reply to something nobody had sent.
+# Every step existed except the one that reaches the customer, so the workflow could complete
+# "successfully" having done nothing. The `tool_call` step closes that gap.
+#
+# What the platform guarantees around this file, so that reading it is not the safety argument:
+#   - Naming a tool here grants nothing. The manifest, the acting agent's execution authority, the
+#     tool's capability gate, rate limits, budgets and the tier engine all apply inside mediation.
+#   - The acting principal is derived from THIS workflow's persisted identity, not from anything
+#     written below. A copy of this file installed as an owner-built workflow resolves no principal.
+#   - `{const:}` values are pack-authored constants. No model chooses the template.
+#   - An unresolved `input_map` reference fails the step. It never silently sends a literal.
+#
+# See docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md +
+#     docs/10-agents/ghost-diagnosis-prompt.md
+#
+# Recovery starts when SILENCE IS DETECTED, not when the quote goes out, so a lead that replies and
+# goes quiet again re-enters as a new episode (GHOST-1b). A customer waiting on the STORE is never
+# chased — `core/customers/recovery.classify` tells the owner instead. Owner overrides
+# (exclude / snooze / resume) are enforced by that same classifier (GHOST-1c).
 workflow: silent_lead_reactivation
-version: 4
-# GHOST-1b: recovery starts when SILENCE IS DETECTED, not when the quote goes out — a lead that
-# replies and then goes quiet again must be able to re-enter. `core/customers/recovery` sweeps daily,
-# classifies each engaged lead from facts (who spoke last + how long since the customer's last
-# message, threshold = the store's `recovery.silence_hours`, default 72), and emits this event only
-# for genuine ghosts. A customer who is waiting on the STORE is never chased — the owner is told
-# instead. (GHOST-1a's `lead.stage_changed.v1` remains the lifecycle signal that makes a lead a
-# recovery candidate; it no longer starts the playbook directly.)
+version: 5
 trigger:
   event: {type: lead.went_silent.v1, condition: "payload.stage == 'quoted'"}
 # Block style so YAML does not split the comma inside touch_cap(3, 30d).
@@ -34,8 +32,9 @@ guards:
   - touch_cap(3, 30d)
 concurrency: {key: "subject.lead_id", policy: drop}
 steps:
-  # Diagnosis (frontier tier) — ranked distribution over the 8 reasons + abstain. Output binds under
-  # `diagnose` so the gate + composer read `diagnose.ranked` / `diagnose.top_reason`.
+  # 1. Diagnosis (frontier tier). Non-effectful: reads the pre-silence thread, returns a ranked
+  # distribution over the pack's declared reasons. Output binds under `diagnose`, and a reason the
+  # model invented never survives validation against verticals/jewelry/agents/ghost_reasons.yaml.
   - diagnose:
       archetype: nurture
       task: ghost_diagnosis
@@ -43,19 +42,41 @@ steps:
       timeout: 30s
       input_map: {thread: "subject.pre_silence_thread", sku: "subject.quoted_catalog_item"}
       output: [top_reason, ranked, abstain, confidence_top, recommended_action_id]
-  # Nothing sends autonomously (audit-before-act): confident -> the recommended action; abstain ->
-  # the owner picks from the ranked options, or declines. The pick becomes the ground-truth label.
+
+  # 2. Nothing sends autonomously. Confident → the recommended action; abstain → the owner picks
+  # from the ranked options, or declines with "I'll handle it". The pick is written to
+  # `lead_diagnoses` as the ground-truth label — the owner knows this customer and we do not.
   - approval_gate:
       options_from: "diagnose.ranked"
       recommended: "diagnose.recommended_action_id"
       allow_owner_handle: true
       label_sink: lead_diagnoses
-  # Compose the reason-conditioned template; {{ledger.*}} placeholders fill on the send path.
-  - compose:
-      archetype: nurture
-      task: reason_conditioned_recovery
-      timeout: 2m
-      input_map: {action: "diagnose.recommended_action_id", reason: "diagnose.top_reason"}
+
+  # 3. The send. One deterministic approved template for the pilot: the diagnosis decides whether
+  # to reach out and what the owner is told, not what the customer reads. Reason-conditioned copy
+  # is a later ticket, and shipping the label first means the owner's picks accumulate as training
+  # data before any generated copy exists.
+  #
+  # `idempotency_key` is derived from the silence episode, so a redelivered event, a re-sweep and a
+  # second worker all compute the same key and the durable pre-dispatch claim collapses them into
+  # exactly one message. `recovery_attempt_id` ties the provider's answer back to the attempt row,
+  # which is what makes "sent", "delivered" and "replied" separate, provable facts.
+  - tool_call:
+      name: messages.send
+      output_as: send
+      timeout: 60s
+      input_map:
+        conversation_id: "subject.conversation_id"
+        recovery_attempt_id: "subject.recovery_attempt_id"
+        idempotency_key: "subject.idempotency_key"
+        template_key: {const: pilot_recovery_check_in}
+        template_language: {const: en}
+        template_parameters: "subject.template_parameters"
+        message_class: {const: marketing}
+
+  # 4. Did they come back? The wait is registered against the conversation resolved at start; the
+  # reply itself is credited to this attempt by `core/customers/recovery_consumer`, which requires
+  # the reply to have arrived AFTER the send.
   - wait: {for: reply, timeout: 96h}
   - branch:
       cases:

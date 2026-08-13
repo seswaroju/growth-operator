@@ -155,6 +155,47 @@ async def _ingest_media(
     return media_list
 
 
+def _statuses(payload: dict[str, Any]) -> list[tuple[str, str]]:
+    """Yield (provider_message_id, status) for each delivery status in a webhook payload."""
+    out: list[tuple[str, str]] = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            for st in change.get("value", {}).get("statuses", []):
+                pmid, status = st.get("id"), st.get("status")
+                if pmid and status:
+                    out.append((str(pmid), str(status)))
+    return out
+
+
+#: Provider statuses we record. `read` is deliberately absent: whether a customer opened a message
+#: is not something the owner needs, and storing it would collect more about a person than the job
+#: requires.
+_RECORDED_STATUSES = {"delivered", "failed"}
+
+
+async def _apply_statuses(session: AsyncSession, payload: dict[str, Any]) -> None:
+    """Apply provider delivery statuses to the message and any recovery attempt behind it.
+
+    Matched on `provider_message_id` — the provider's own identifier for its own statement. The
+    org is derived from the matched message row, never from the webhook: a payload cannot name the
+    tenant whose records it updates."""
+    from core.customers import recovery_attempts
+    from core.tenancy.repository import set_org_context
+
+    for provider_message_id, status in _statuses(payload):
+        if status not in _RECORDED_STATUSES:
+            continue
+        org_id = (await session.execute(
+            text("UPDATE messages SET status = :st WHERE provider_message_id = :pm "
+                 "AND status <> :st RETURNING org_id"),
+            {"st": status, "pm": provider_message_id})).scalar_one_or_none()
+        if org_id is None or status != "delivered":
+            continue
+        await set_org_context(session, UUID(str(org_id)))
+        await recovery_attempts.mark_delivered(
+            session, UUID(str(org_id)), provider_message_id=provider_message_id)
+
+
 async def _normalize_one(
     session: AsyncSession, event_id: UUID, payload: dict[str, Any]
 ) -> list[tuple[UUID, UUID]]:
@@ -162,7 +203,12 @@ async def _normalize_one(
     opted out and should receive a transactional confirmation after this event commits."""
     messages = _messages(payload)
     if not messages:
-        await _mark_processed(session, event_id)  # status update etc. — nothing to route
+        # Delivery statuses used to be dropped here with the comment "nothing to route", which is
+        # why `delivered` was unreachable: the only system that can say a message was delivered was
+        # never being listened to. PILOT-1C processes them, because reporting `sent` as `delivered`
+        # would be a claim about the world we could not substantiate.
+        await _apply_statuses(session, payload)
+        await _mark_processed(session, event_id)
         return []
 
     pnid = messages[0][0]

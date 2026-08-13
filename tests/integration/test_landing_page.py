@@ -608,9 +608,12 @@ async def test_lead_capture_creates_crm_records_with_full_attribution(scene: Sce
     assert lead["variant"] == "classic"
     utm = json.loads(lead["utm"]) if isinstance(lead["utm"], str) else lead["utm"]
     assert utm == {"source": "instagram", "campaign": "diwali"}
-    # contact: real CRM row, digits-only phone, explicit consent
+    # contact: real CRM row, digits-only phone, marketing consent. PILOT-1C: the value is
+    # `granted` — the canonical spelling the send gate and campaign audience already required.
+    # Landing capture used to write `explicit`, which passed the recovery guard and was then
+    # refused at the boundary that actually sends. Legacy `explicit` rows stay positive.
     assert lead["phone"] == "919000012345" and lead["full_name"] == "Priya"
-    assert lead["consent_status"] == "explicit"
+    assert lead["consent_status"] == "granted"
 
     # the funnel event was recorded, and the concierge follow-up is PARKED (never sent)
     assert "landing_page.form_submitted" in await _events(page_id)

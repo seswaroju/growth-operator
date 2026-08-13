@@ -37,7 +37,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from fastapi import Depends
@@ -50,6 +50,9 @@ from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
 from core.tenancy.plan_config import PlanConfig, parse_plan_config, parse_promotions
 from core.tenancy.repository import set_org_context
+
+if TYPE_CHECKING:  # annotation only — tenancy must not depend on the runtime package at import time
+    from core.runtime.internal_workers import InternalWorkerGrant
 
 # ---- Keys (canonical spellings live in capabilities.py) ---------------------------------------
 CONVERSATIONS = "conversations"        # the inbox + concierge replies
@@ -548,7 +551,8 @@ _INSTANCE_SQL = text(
 
 
 async def assert_agent_executable(
-    session: AsyncSession, org_id: UUID, instance_id: UUID
+    session: AsyncSession, org_id: UUID, instance_id: UUID, *,
+    worker: InternalWorkerGrant | None = None,
 ) -> str:
     """Authorise one agent execution step. Returns the archetype slug.
 
@@ -556,6 +560,15 @@ async def assert_agent_executable(
     store (isolation), its archetype is in the store's **current** entitlements (commercial
     authority), and its operational status permits running (operator intent). A commercially
     removed agent cannot execute even while its row still says `active`.
+
+    `worker` is the **internal-worker** path (PILOT-1C). A customer buys *Ghost Lead Recovery*, not
+    a "Nurture Agent", so the archetype implementing a purchased capability is not itself sellable
+    and appears in no plan. Passing a grant substitutes the *capability's* entitlement for the
+    archetype's — never widens it: the grant must cover this exact archetype, the capability must
+    be currently held, and isolation plus operational status still apply unchanged. The caller must
+    have derived the grant from persisted, trusted facts (see `core.workflows.tool_step`); this
+    function cannot tell where a grant came from, which is precisely why the registry refuses to
+    cover any sellable archetype.
     """
     await set_org_context(session, org_id)
     row = (await session.execute(_INSTANCE_SQL, {"i": str(instance_id)})).mappings().first()
@@ -563,7 +576,13 @@ async def assert_agent_executable(
         raise AgentNotExecutable("unknown or foreign agent instance")
     slug = str(row["slug"])
     if slug not in (await resolve(session, org_id)).agents:
-        raise AgentNotExecutable("archetype is not included in the current plan", archetype=slug)
+        if worker is None or worker.archetype != slug:
+            raise AgentNotExecutable(
+                "archetype is not included in the current plan", archetype=slug)
+        if not await is_entitled(session, org_id, worker.capability):
+            raise AgentNotExecutable(
+                f"capability {worker.capability} is not included in the current plan",
+                archetype=slug)
     if row["status"] not in EXECUTABLE_AGENT_STATUS:
         raise AgentNotExecutable(f"operational status is {row['status']}", archetype=slug)
     return slug

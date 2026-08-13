@@ -14,6 +14,26 @@ templates:
       Hi {{1}}, please review and approve the design quote for {{2}}.
       Reply YES to confirm, or share any changes and our team will assist.
 
+  # PILOT-1C: the template the recovery playbook actually sends.
+  #
+  # `reactivation` below is NOT used for recovery. It claims "fresh designs just arrived", which we
+  # cannot know is true for any particular store on any particular day — a fabricated new-arrival
+  # claim is a lie told in the merchant's name, to their own customer, and it is the merchant who
+  # answers for it. It is kept only so existing installs keep resolving.
+  #
+  # This one asserts nothing about stock, price, urgency or scarcity. It says who is writing, why,
+  # and offers a graceful way to say no — "shall we leave it" is a real option, because a customer
+  # who has genuinely moved on should be able to end this in one word rather than be pursued. Two
+  # parameters, both always available: the customer's name and the store's name. Nothing here
+  # depends on a quoted item, so the message is never wrong when the item cannot be proved.
+  - template_key: pilot_recovery_check_in
+    language: en
+    category: MARKETING
+    body: >-
+      Hi {{1}}, this is {{2}}. You'd asked us about a piece a little while back and
+      we didn't want to leave it unanswered. Would you like us to pick it up again,
+      or shall we leave it for now? Either reply is genuinely helpful.
+
   - template_key: reactivation
     language: en
     category: MARKETING

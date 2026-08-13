@@ -102,9 +102,21 @@ def _find_grant(manifest: dict[str, Any], tool_name: str) -> dict[str, Any] | No
 
 def _validate_params(params: dict[str, Any], constraints: dict[str, Any] | None) -> str | None:
     """Enforce schema-shaped constraints (e.g. {"strategy": {"enum": [...]}}). Scalar policy
-    constraints are left to the policy engine. Returns an error message, or None if valid."""
+    constraints are left to the policy engine. Returns an error message, or None if valid.
+
+    PILOT-1C: a **list-shaped** constraint now refuses the call instead of being skipped. Installed
+    packs carried grants of the form `{"<param>": ["<allowed>"]}`, which read like an allow-list and
+    enforced nothing — non-dict entries were filtered out here, so an agent's only send constraint
+    was silently inert. A constraint the platform cannot enforce is worse than no constraint,
+    because someone wrote it and believed it. Scalars stay permitted: they are documented
+    policy-engine inputs, not failed enums.
+    """
     if not constraints:
         return None
+    listish = sorted(k for k, v in constraints.items() if isinstance(v, (list, tuple)))
+    if listish:
+        return (f"params_constraints {listish} are written as bare lists, which enforce nothing; "
+                'write them as {"<param>": {"enum": [...]}}')
     schema_props = {k: v for k, v in constraints.items() if isinstance(v, dict)}
     if not schema_props:
         return None

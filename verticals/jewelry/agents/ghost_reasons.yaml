@@ -1,0 +1,69 @@
+# Ghost reason taxonomy (jewelry pack) — the closed set of answers diagnosis may return.
+#
+# Source: docs/32-jewelry-mvp-playbooks/ghost-reason-taxonomy.md +
+#         docs/32-jewelry-mvp-playbooks/reason-conditioned-recovery-spec.md
+#
+# This lives in the PACK, not in core. "Why did this customer stop replying" has a different answer
+# set in every industry, and a platform that hard-coded gold rates would be a jewelry product with
+# extra steps (Rule Zero).
+#
+# The platform's contract with this file is narrow and total: a diagnosis result is accepted only if
+# its reason appears here. A model naming anything else — a plausible-sounding reason it invented, a
+# reason from another vertical, a prompt-injected string from the customer's own message — is
+# discarded and the diagnosis abstains to the owner. There is no path by which an unknown reason
+# reaches an owner's screen, and no path by which it selects an action.
+#
+# `action_id` is what the reason routes to when the owner accepts the recommendation. It is a label
+# in PILOT-1C: every accepted recovery sends the same deterministic approved template. Reason-
+# conditioned copy is a later ticket, and shipping the label first means the owner's picks start
+# accumulating as training data before any generated copy exists.
+version: 1
+reasons:
+  - id: gold_rate_timing
+    action_id: act_rate_lock
+    label: "Waiting on the metal rate"
+    description: "Holding off for a better rate rather than rejecting the piece or the price."
+
+  - id: sticker_shock
+    action_id: act_value_reframe
+    label: "Total price was higher than expected"
+    description: "The overall figure landed badly. Distinct from an EMI gap: this is 'too much', not 'not yet'."
+
+  - id: making_charge_objection
+    action_id: act_making_flex
+    label: "Making charges specifically"
+    description: "Metal cost accepted, making charge contested. A distinct objection with its own play."
+
+  - id: comparison_shopping
+    action_id: act_differentiator_anchor
+    label: "Comparing with another store"
+    description: "Actively quoted elsewhere. About differentiation, not affordability."
+
+  - id: consult_family
+    action_id: act_warm_decision_check
+    label: "Needs a family decision"
+    description: "Not a rejection — a decision that involves someone who is not in the chat."
+
+  - id: financing_emi_gap
+    action_id: act_finance_offer
+    label: "Cannot fund it yet"
+    description: "Wants the piece, needs a scheme or instalment. Confusion pair with sticker_shock."
+
+  - id: design_not_right
+    action_id: act_design_pivot
+    label: "The design itself"
+    description: "The only non-price reason. Must route AWAY from figures — a price nudge here is tone-deaf."
+
+  - id: authenticity_buyback_trust
+    action_id: act_trust_proof
+    label: "Trust: purity, certification or buy-back"
+    description: "Doubt about the goods or the store, not the number."
+
+#: What the model returns when the thread does not support a confident answer. Present as a
+#: first-class outcome so abstaining is a normal result rather than a failure — the owner picking
+#: from ranked options IS the designed path, not a degraded one.
+abstain:
+  id: abstain
+  action_id: act_abstain_owner_pick
+  label: "Not clear from the conversation"
+  description: "Too little signal to diagnose. The owner picks, and their pick becomes the label."

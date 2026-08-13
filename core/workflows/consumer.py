@@ -12,6 +12,7 @@ and tested here and in `triggers`. Until then, event-waits resolve via the timeo
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +22,8 @@ from core.events.consumer import consumer
 from core.events.topics import stream_name
 from core.tenancy.middleware import org_scoped_session
 from core.workflows import executor, waits
+
+logger = logging.getLogger(__name__)
 
 
 @consumer(stream_name("msg.received.v1"), "workflow-reply-wait")
@@ -57,6 +60,33 @@ async def on_approval_resolved(envelope: dict[str, Any]) -> None:
         return
     decision = "approved" if data.get("decision") == "approved" else "rejected"
     await executor.resume_human(org_id, UUID(str(wf_run_id)), decision)
+
+
+@consumer(stream_name("approval.resolved.v1"), "workflow-tool-call")
+async def on_tool_approval_resolved(envelope: dict[str, Any]) -> None:
+    """A resolved `workflow.tool_call` approval → re-enter the parked step (approve) or compensate
+    (reject). Its own consumer group, so a failure resuming a tool cannot stall human-task wakes."""
+    org_id = UUID(str(envelope["subject"]))
+    data = envelope.get("data") or {}
+    approval_id = data.get("approval_id")
+    if not approval_id:
+        return
+    async with org_scoped_session(org_id) as s:
+        appr = (await s.execute(
+            text("SELECT action_type, payload FROM approvals WHERE id = :id"),
+            {"id": str(approval_id)})).mappings().first()
+    if appr is None or appr["action_type"] != executor.WORKFLOW_TOOL_ACTION:
+        return
+    payload = appr["payload"]
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    wf_run_id = payload.get("workflow_run_id")
+    if not wf_run_id:
+        return
+    decision = "approved" if data.get("decision") == "approved" else "rejected"
+    # The approved tool comes from the APPROVAL's payload, not the event — the human approved a
+    # specific effect, and the event only reports their verdict.
+    await executor.resume_tool(org_id, UUID(str(wf_run_id)), decision, payload.get("tool"))
 
 
 @consumer(stream_name("approval.resolved.v1"), "workflow-activation")

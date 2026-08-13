@@ -12,13 +12,14 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.customers.consent import marketing_sql_in_list
 from core.tenancy.repository import set_org_context
 
 # Mirrors send()'s marketing-consent policy (_POSITIVE_CONSENT) — a contact the send gate would
 # accept must be in the audience, and vice-versa. Keep these two in lockstep.
 _AUDIENCE_SQL = text(
     "SELECT c.id FROM contacts c "
-    "WHERE c.consent_status IN ('opted_in', 'granted') "
+    f"WHERE c.consent_status IN ({marketing_sql_in_list()}) "
     "  AND NOT EXISTS ("
     "    SELECT 1 FROM suppressions s "
     "    WHERE s.contact_id = c.id AND s.scope IN ('marketing', 'all')) "

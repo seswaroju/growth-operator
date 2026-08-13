@@ -14,7 +14,8 @@ expected_result:
   status: active
   instances_paused: 4          # concierge, nurture, campaigner, ops (support archetype unseeded)
   catalog_schema_version: 2
-  prompt_layers_candidate: 9    # 4 concierge + 1 campaigner + 1 nurture + 2 ops + 1 support
+  # PILOT-1C added nurture/ghost_diagnosis — the diagnosis step fails closed without it.
+  prompt_layers_candidate: 10   # 4 concierge + 1 campaigner + 2 nurture + 2 ops + 1 support
   bindings: 4
   deferred_steps: []            # workflows seeded (MVP-072); nothing deferred
   # indexes_queued: 3           # pending MVP-042

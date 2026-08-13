@@ -58,7 +58,8 @@ def test_parse_jewelry_pack_dir() -> None:
     p = parse_pack_dir(VERTICALS / "jewelry")
     assert isinstance(p, ParsedPack)
     assert p.manifest.pack == "jewelry"
-    assert len(p.prompt_layers) == 9  # 4+1+1+2+1 across the five prompt files
+    # 4+2+1+2+1 across the five prompt files (nurture gained ghost_diagnosis in PILOT-1C).
+    assert len(p.prompt_layers) == 10
     assert len(p.workflows) == 4 and len(p.integrations) == 4 and len(p.evals) == 6
     assert p.onboarding is not None and p.ui is not None and p.calendar is not None
 

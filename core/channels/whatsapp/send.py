@@ -40,6 +40,7 @@ from core.audit.writer import write as audit_write
 from core.channels.whatsapp.credentials import load_credentials
 from core.channels.whatsapp.meta_client import MetaClient, SendResult
 from core.channels.whatsapp.templates import assert_template_sendable
+from core.customers.consent import POSITIVE_MARKETING
 from core.events.outbox import emit
 from core.pricing import extract, ledger
 from core.tenancy.middleware import org_scoped_session
@@ -50,8 +51,10 @@ SEND_ACTION = "msg.send"
 FIGURE_OVERRIDE_ACTION = "msg.send.figure_override"
 MAX_RETRIES = 3
 _MAX_BACKOFF_S = 30.0
-# Positive marketing consent values (platform default; pack-extensible later — MVP-036).
-_POSITIVE_CONSENT = frozenset({"opted_in", "granted"})
+# PILOT-1C: the canonical predicate, shared with the workflow guard and campaign audience.
+# Legacy `explicit` (written by landing capture before PILOT-1C) is accepted so a real
+# consenting customer is not refused by a spelling difference.
+_POSITIVE_CONSENT = POSITIVE_MARKETING
 
 MessageClass = Literal["marketing", "transactional"]
 # Ledger-check enforcement mode (MVP-054): block (default, fail-closed), warn (W2), or off.
@@ -75,6 +78,10 @@ class SendOutcome:
     message_id: UUID | None
     provider_message_id: str | None = None
     retryable: bool = False
+    #: True when this call did NOT dispatch because the idempotency key was already claimed. The
+    #: caller is seeing someone else's outcome, which is exactly the point — but a lifecycle that
+    #: recorded a second "sent" transition from it would double-count a single customer touch.
+    already_dispatched: bool = False
 
 
 def _assert_not_suppressed(scopes: set[str], message_class: MessageClass) -> None:
@@ -185,6 +192,56 @@ async def _send_session(
             yield s
 
 
+
+@dataclass(frozen=True)
+class _Claim:
+    message_id: UUID
+    already_dispatched: bool
+    sent: bool = False
+    provider_message_id: str | None = None
+
+
+async def _claim_dispatch(
+    org_id: UUID, *, conversation_id: UUID, body: str, audit_id: UUID | None,
+    idempotency_key: str, recovery_attempt_id: UUID | None,
+) -> _Claim:
+    """Durably claim the right to dispatch this key, in its own committed transaction.
+
+    Returns the claim when this caller won. When another caller already holds the key, returns that
+    row's current outcome with `already_dispatched=True` — the caller must NOT reach the provider.
+
+    The row is written `dispatching`, not `queued`: between this commit and the provider's answer
+    the true state is genuinely unknown, and that has to be representable. `sent` is only set once
+    the provider accepts.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        async with org_scoped_session(org_id) as s:
+            message_id = (await s.execute(
+                text(
+                    "INSERT INTO messages (org_id, conversation_id, direction, sender, body, "
+                    " audit_id, status, idempotency_key, recovery_attempt_id) "
+                    "VALUES (:org, :conv, 'outbound', 'agent', :body, :aid, 'dispatching', "
+                    " :key, :rid) RETURNING id"),
+                {"org": str(org_id), "conv": str(conversation_id), "body": body,
+                 "aid": str(audit_id) if audit_id else None, "key": idempotency_key,
+                 "rid": str(recovery_attempt_id) if recovery_attempt_id else None},
+            )).scalar_one()
+        return _Claim(message_id=message_id, already_dispatched=False)
+    except IntegrityError:
+        pass  # someone else holds the key — read their outcome instead of sending again
+
+    async with org_scoped_session(org_id) as s:
+        row = (await s.execute(
+            text("SELECT id, status, provider_message_id FROM messages "
+                 "WHERE org_id = :org AND idempotency_key = :key"),
+            {"org": str(org_id), "key": idempotency_key})).mappings().one()
+    return _Claim(
+        message_id=row["id"], already_dispatched=True,
+        sent=row["status"] == "sent", provider_message_id=row["provider_message_id"])
+
+
 async def send(
     *,
     org_id: UUID,
@@ -197,6 +254,9 @@ async def send(
     figure_override_by: UUID | None = None,
     message_class: MessageClass = "marketing",
     template: tuple[str, str] | None = None,
+    template_parameters: Sequence[str] = (),
+    idempotency_key: str | None = None,
+    recovery_attempt_id: UUID | None = None,
     meta_client: MetaClient | None = None,
     sleeper: Sleeper = asyncio.sleep,
     session: AsyncSession | None = None,
@@ -207,7 +267,15 @@ async def send(
 
     ``template`` = (template_key, language) sends an approved template instead of freeform
     text (``body`` is still stored as the message record); a non-approved template is refused
-    by the MVP-035 gate. Every rupee amount in ``body`` must match an unexpired ledger row
+    by the MVP-035 gate. ``template_parameters`` fill the template's ``{{1}}``, ``{{2}}`` … body
+    variables.
+
+    ``idempotency_key`` makes dispatch **at most once** for that key within the org. The queued row
+    is claimed in its OWN committed transaction *before* the provider is called — a uniqueness
+    check performed afterwards would not help, because two workers could both reach Meta first. A
+    second caller with the same key never dispatches; it returns the first call's outcome.
+
+    Every rupee amount in ``body`` must match an unexpired ledger row
     (MVP-054); ``figure_check`` selects block/warn/off and ``figure_override_by`` is the
     tier-3 owner who accepts an unledgered figure (audited).
     """
@@ -261,29 +329,47 @@ async def send(
         if creds is None:
             raise SendRefused("approval_required", "channel not connected")
 
-        message_id: UUID = (
-            await s.execute(
-                text(
-                    "INSERT INTO messages "
-                    "(org_id, conversation_id, direction, sender, body, audit_id, status) "
-                    "VALUES (:org, :conv, 'outbound', 'agent', :body, :aid, 'queued') "
-                    "RETURNING id"
-                ),
-                {"org": str(org_id), "conv": str(conversation_id), "body": body,
-                 "aid": str(audit_id)},
-            )
-        ).scalar_one()
         to, phone_number_id, access_token = (
             conv["phone"], creds["phone_number_id"], creds["access_token"]
         )
-    # queued row committed; audit_id is guaranteed non-None past gate 1
+        if idempotency_key is None:
+            message_id = (
+                await s.execute(
+                    text(
+                        "INSERT INTO messages "
+                        "(org_id, conversation_id, direction, sender, body, audit_id, status) "
+                        "VALUES (:org, :conv, 'outbound', 'agent', :body, :aid, 'queued') "
+                        "RETURNING id"
+                    ),
+                    {"org": str(org_id), "conv": str(conversation_id), "body": body,
+                     "aid": str(audit_id)},
+                )
+            ).scalar_one()
+
+    # An idempotent send claims its key in a SEPARATE, IMMEDIATELY COMMITTED transaction, because
+    # the caller's transaction (the mediation proxy's) is still open here and could roll back after
+    # the provider had already accepted the message. The unique index on (org_id, idempotency_key)
+    # is what serialises two concurrent callers: the loser blocks, then sees the violation and
+    # reuses the winner's outcome instead of dispatching again.
+    if idempotency_key is not None:
+        claim = await _claim_dispatch(
+            org_id, conversation_id=conversation_id, body=body, audit_id=audit_id,
+            idempotency_key=idempotency_key, recovery_attempt_id=recovery_attempt_id)
+        if claim.already_dispatched:
+            return SendOutcome(
+                sent=claim.sent, message_id=claim.message_id,
+                provider_message_id=claim.provider_message_id, already_dispatched=True)
+        message_id = claim.message_id
+
+    # audit_id is guaranteed non-None past gate 1
     assert audit_id is not None
 
     # --- External send with bounded retries (gated-simulated) ---
     async def _do() -> SendResult:
         if template is not None:
             return await client.send_template(
-                phone_number_id, access_token, to, template[0], template[1]
+                phone_number_id, access_token, to, template[0], template[1],
+                parameters=tuple(template_parameters),
             )
         return await client.send_text(phone_number_id, access_token, to, body)
 

@@ -45,7 +45,14 @@ SHOP_STOPPED_REPLYING = "shop_stopped_replying"
 EXCLUDED = "excluded"
 
 # Stages a recovery may act on: the customer engaged but hasn't closed either way.
-ENGAGED_STAGES = ("quoted", "negotiating", "contacted")
+#
+# This tuple used to read ("quoted", "negotiating", "contacted"). Neither `negotiating` nor
+# `contacted` is a stage the CRM can store — `leads.stage` permits new/qualified/quoted/
+# visit_booked/won/lost — so two of the three entries selected nothing and the sweep only ever
+# matched `quoted`. Naming stages that cannot exist reads like coverage while providing none, so
+# the tuple now states what is actually true. A unit test checks every entry against the database
+# constraint, and adding `negotiating` is a CRM stage change, not an edit here.
+ENGAGED_STAGES = ("quoted",)
 _TERMINAL_STAGES = ("won", "lost")
 
 

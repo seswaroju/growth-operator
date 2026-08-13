@@ -15,7 +15,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 STEP_TYPES: tuple[str, ...] = (
-    "agent_task", "human_task", "wait", "branch", "emit", "set", "loop",
+    "agent_task", "human_task", "tool_call", "wait", "branch", "emit", "set", "loop",
 )
 
 # A duration/timeout is either a literal like "72h" / "30d" or an integer of seconds; `wait` also
@@ -80,6 +80,7 @@ DSL_SCHEMA: dict[str, Any] = {
             "maxProperties": 1,
             "properties": {
                 "agent_task": {"$ref": "#/$defs/agent_task"},
+                "tool_call": {"$ref": "#/$defs/tool_call"},
                 "human_task": {"$ref": "#/$defs/human_task"},
                 "wait": {"$ref": "#/$defs/wait"},
                 "branch": {"$ref": "#/$defs/branch"},
@@ -104,6 +105,22 @@ DSL_SCHEMA: dict[str, Any] = {
                 "tier": {"type": "string", "enum": ["frontier", "standard", "nano"]},
                 "output": {"type": "array", "items": {"type": "string"}},
                 "output_as": {"type": "string"},
+            },
+        },
+        # PILOT-1C: execute an EXISTING mediated tool. Deliberately minimal — resolve inputs,
+        # call the mediation proxy, bind the result. No retry policy, no parallelism, no
+        # tool-specific branching, and never a direct provider import: naming a tool here grants
+        # nothing, because the manifest, the acting principal's authority and the tool's own
+        # capability gate all still apply inside mediation.
+        "tool_call": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string"},
+                "input_map": {"type": "object"},
+                "output_as": {"type": "string"},
+                "timeout": _DURATION,
             },
         },
         "human_task": {

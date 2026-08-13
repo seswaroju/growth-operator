@@ -794,3 +794,35 @@ export function getNotifications(token: string): Promise<NotificationFeed> {
 export function markNotificationsSeen(token: string): Promise<{ ok: boolean }> {
   return authed("/v1/notifications/seen", token, { method: "POST" });
 }
+
+/** PILOT-1C: one recovery of one silence episode. Three timestamps, three separate claims. */
+export interface RecoveryAttempt {
+  id: string;
+  lead_id: string;
+  status: string;
+  selected_reason: string | null;
+  owner_handled: boolean;
+  failure_reason: string | null;
+  started_at: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  replied_at: string | null;
+}
+
+export interface RecoverySummary {
+  sent: number;
+  delivered: number;
+  replied: number;
+  blocked: number;
+  failed: number;
+  delivery_unknown: number;
+  owner_handled: number;
+}
+
+export function getRecoverySummary(token: string): Promise<RecoverySummary> {
+  return authed<RecoverySummary>("/v1/leads/recovery/summary", token);
+}
+
+export function getRecoveryAttempts(token: string): Promise<RecoveryAttempt[]> {
+  return authed<RecoveryAttempt[]>("/v1/leads/recovery/attempts", token);
+}

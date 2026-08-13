@@ -126,27 +126,93 @@ async def test_within_send_window_blocks_in_quiet_hours(scene: dict[str, uuid.UU
 # ---- touch_cap -----------------------------------------------------------------------
 
 
+async def _conversation(conn: asyncpg.Connection, org: uuid.UUID, contact: uuid.UUID) -> uuid.UUID:
+    ch = await conn.fetchval(
+        "INSERT INTO channels (org_id, type, external_id, credentials_ref) "
+        "VALUES ($1,'whatsapp',$2,'vault://x') RETURNING id",
+        org, f"ext-{uuid.uuid4().hex[:6]}")
+    return await conn.fetchval(
+        "INSERT INTO conversations (org_id, contact_id, channel_id) VALUES ($1,$2,$3) "
+        "RETURNING id", org, contact, ch)
+
+
+async def _lead(conn: asyncpg.Connection, org: uuid.UUID, contact: uuid.UUID) -> uuid.UUID:
+    return await conn.fetchval(
+        "INSERT INTO leads (org_id, contact_id, stage) VALUES ($1,$2,'quoted') RETURNING id",
+        org, contact)
+
+
+async def _accepted_recovery(
+    conn: asyncpg.Connection, org: uuid.UUID, contact: uuid.UUID, conv: uuid.UUID, day: int,
+) -> None:
+    """One provider-accepted recovery, each on its own silence episode — the partial unique index
+    permits exactly one accepted send per episode."""
+    lead = await _lead(conn, org, contact)
+    await conn.execute(
+        "INSERT INTO recovery_attempts (org_id, lead_id, contact_id, conversation_id, "
+        " silence_episode_anchor, status, sent_at) "
+        "VALUES ($1,$2,$3,$4, now() - make_interval(days => $5), 'sent', now())",
+        org, lead, contact, conv, day + 1)
+
+
 async def test_touch_cap_blocks_over_limit(scene: dict[str, uuid.UUID]) -> None:
+    """The cap counts what the platform actually sent this customer.
+
+    PILOT-1C narrowed what counts. This used to count every outbound message on the contact's
+    conversations, which conflated a shop owner answering a customer with us chasing someone who
+    went quiet. A touch is now a recovery attempt the provider accepted."""
     org, contact = scene["org"], scene["contact"]
     conn = await asyncpg.connect(_dsn())
     try:
-        ch = await conn.fetchval(
-            "INSERT INTO channels (org_id, type, external_id, credentials_ref) "
-            "VALUES ($1,'whatsapp',$2,'vault://x') RETURNING id",
-            org, f"ext-{uuid.uuid4().hex[:6]}")
-        conv = await conn.fetchval(
-            "INSERT INTO conversations (org_id, contact_id, channel_id) VALUES ($1,$2,$3) "
-            "RETURNING id", org, contact, ch)
-        for _ in range(3):
+        conv = await _conversation(conn, org, contact)
+        for day in range(3):
+            await _accepted_recovery(conn, org, contact, conv, day)
+    finally:
+        await conn.close()
+    # 3 accepted sends in window: cap of 3 blocks (count < n is False), cap of 5 passes.
+    assert await _eval(org, GuardRef("touch_cap", ("3", "30d")),
+                       _ctx(org, contact_id=contact)) is False
+    assert await _eval(org, GuardRef("touch_cap", ("5", "30d")),
+                       _ctx(org, contact_id=contact)) is True
+
+
+async def test_owner_replies_do_not_consume_the_recovery_cap(
+    scene: dict[str, uuid.UUID]
+) -> None:
+    """The case that was silently broken: an attentive shop exhausted its own recovery allowance
+    by answering its customers."""
+    org, contact = scene["org"], scene["contact"]
+    conn = await asyncpg.connect(_dsn())
+    try:
+        conv = await _conversation(conn, org, contact)
+        for _ in range(5):
             await conn.execute(
                 "INSERT INTO messages (org_id, conversation_id, direction, sender) "
                 "VALUES ($1,$2,'outbound','agent')", org, conv)
     finally:
         await conn.close()
-    # 3 outbound in window: cap of 3 blocks (count < n is False), cap of 5 passes.
     assert await _eval(org, GuardRef("touch_cap", ("3", "30d")),
-                       _ctx(org, contact_id=contact)) is False
-    assert await _eval(org, GuardRef("touch_cap", ("5", "30d")),
+                       _ctx(org, contact_id=contact)) is True
+
+
+async def test_a_refused_recovery_does_not_consume_the_cap(
+    scene: dict[str, uuid.UUID]
+) -> None:
+    """A message that never left the building must not count against a customer who never got it."""
+    org, contact = scene["org"], scene["contact"]
+    conn = await asyncpg.connect(_dsn())
+    try:
+        conv = await _conversation(conn, org, contact)
+        for day in range(4):
+            lead = await _lead(conn, org, contact)
+            await conn.execute(
+                "INSERT INTO recovery_attempts (org_id, lead_id, contact_id, conversation_id, "
+                " silence_episode_anchor, status) "
+                "VALUES ($1,$2,$3,$4, now() - make_interval(days => $5), 'blocked')",
+                org, lead, contact, conv, day + 1)
+    finally:
+        await conn.close()
+    assert await _eval(org, GuardRef("touch_cap", ("3", "30d")),
                        _ctx(org, contact_id=contact)) is True
 
 

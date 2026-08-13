@@ -46,6 +46,8 @@ AgentRunner = Callable[[UUID, dict[str, Any]], Awaitable[dict[str, Any]]]
 # Canonical approval action for a `human_task` step; the workflow run is linked via the approval
 # payload (approvals.run_id FKs agent_runs, not workflow_runs).
 WORKFLOW_HUMAN_ACTION = "workflow.human_task"
+#: A mediated tool a workflow wants to run that the tier engine says needs a human.
+WORKFLOW_TOOL_ACTION = "workflow.tool_call"
 HUMAN_TASK_TIER = 2  # needs-approval by default; the policy engine can only tighten
 # An agent that RETURNS one of these is a business failure → compensate (a raised exception is a
 # crash → propagate + resume, a different thing).
@@ -139,6 +141,17 @@ async def _default_agent_runner(org_id: UUID, instr: dict[str, Any]) -> dict[str
     if instance_id is None:
         return {"status": "skipped", "reason": "no_active_instance",
                 "archetype": instr["archetype"]}
+
+    # A **classification** task returns structured output the next step branches on, so it runs the
+    # diagnosis path rather than the general agent loop: no tools, no channel, no external effect,
+    # and a result validated against the pack's declared answer set before anything reads it.
+    if instr.get("output_as") and instr.get("output"):
+        from core.workflows import diagnose_step
+
+        result = await diagnose_step.run(org_id, instance_id, instr)
+        if result is not None:
+            return result
+
     from core.runtime import executor as runtime_executor  # local import avoids a cycle
     outcome = await runtime_executor.start_run(
         org_id, instance_id, trigger="workflow",
@@ -235,6 +248,9 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
     while True:
         agent_ins: dict[str, Any] | None = None
         agent_pc = 0
+        tool_ins: dict[str, Any] | None = None
+        tool_pc = 0
+        tool_activation: dict[str, Any] = {}
         promote: tuple[UUID, str | None] | None = None
         async with org_scoped_session(org_id) as s:
             await set_org_context(s, org_id)
@@ -309,20 +325,39 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                             payload=hp)
                     await s.commit()
                     return
-                if op == "AGENT":
+                if op in ("AGENT", "TOOL"):
+                    # Both cause effects outside this transaction, so both are guarded by the same
+                    # `sid` idempotency check: a redelivered advance never repeats a completed step.
                     if await _step_done(s, run_id, sid):
                         await _set_cursor(s, org_id, run_id, pc + 1)
                         await s.commit()
                         continue
                     await _append(s, org_id, run_id, "step_started", step_id=sid,
-                                  data={"task": ins["task"]})
+                                  data={"task": ins["task"]} if op == "AGENT"
+                                  else {"tool": ins["name"]})
                     await s.commit()  # release the session before the runtime call (deadlock-safe)
-                    agent_ins, agent_pc = ins, pc
+                    if op == "TOOL":
+                        # Approved-tool narrowing survives the park as a run var, so a resumed
+                        # step skips only the tier gate it already cleared with a human.
+                        tool_ins = {**ins, "_approved": run["vars"].get("_approved_tools") or []}
+                        tool_pc = pc
+                        tool_activation = activation
+                    else:
+                        # The diagnosis path needs the run's facts; the general agent path ignores
+                        # the extra key. Passed explicitly rather than re-read, so what the model
+                        # sees is exactly what the step was evaluated against.
+                        agent_ins = {**ins, "_activation": activation}
+                        agent_pc = pc
 
         # --- outside the run session ---
         if promote is not None:
             await _promote_next(org_id, promote[0], promote[1], agent_runner)
             return
+        if tool_ins is not None:
+            await _run_tool_step(org_id, run_id, tool_ins, tool_pc, tool_activation, agent_runner)
+            if not await _still_running(org_id, run_id):
+                return
+            continue
         if agent_ins is not None:
             output = await agent_runner(org_id, agent_ins)
             if str(output.get("status")) in _FAILURE_STATUSES:
@@ -353,6 +388,71 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                 await s.commit()
             continue
         return
+
+
+async def _still_running(org_id: UUID, run_id: UUID) -> bool:
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        status = (await s.execute(
+            text("SELECT status FROM workflow_runs WHERE id = :r AND org_id = :o"),
+            {"r": str(run_id), "o": str(org_id)})).scalar_one_or_none()
+    return status == "running"
+
+
+async def _run_tool_step(
+    org_id: UUID, run_id: UUID, ins: dict[str, Any], pc: int,
+    activation: dict[str, Any], agent_runner: AgentRunner,
+) -> None:
+    """Execute a `tool_call` step and record what happened. Three outcomes, all deterministic.
+
+    `pending` **parks on this same step** rather than advancing past it: the approval decision is
+    about this exact effect, so resuming must re-enter the step and re-run the whole gate chain —
+    entitlement, worker authority and manifest are all re-verified after the human decides, because
+    a plan can change while an approval sits in the queue. `_approved` carries only the tool name
+    the human actually approved; it narrows the tier gate and nothing else.
+    """
+    from core.workflows import tool_step
+
+    result = await tool_step.run_tool(org_id, run_id, ins, activation)
+    status = str(result.get("status"))
+    sid = ins["sid"]
+
+    if status == "pending":
+        from core.approvals.service import create_approval
+        async with org_scoped_session(org_id) as s:
+            await set_org_context(s, org_id)
+            await _set_cursor(s, org_id, run_id, pc, status="waiting")
+            await _append(s, org_id, run_id, "step_parked", step_id=sid,
+                          data={"op": "tool_call", "tool": result.get("tool"),
+                                "tier": result.get("tier"), "reason": result.get("reason")})
+            await create_approval(
+                s, org_id, action_type=WORKFLOW_TOOL_ACTION, tier=int(result.get("tier") or 2),
+                payload={"workflow_run_id": str(run_id), "step_id": sid,
+                         "tool": result.get("tool"), "params": result.get("params"),
+                         "capability": result.get("capability")})
+            await s.commit()
+        return
+
+    if status == "failed":
+        async with org_scoped_session(org_id) as s:
+            await set_org_context(s, org_id)
+            await _append(s, org_id, run_id, "step_failed", step_id=sid, data=result)
+            await s.commit()
+        await _compensate(org_id, run_id, f"tool_call {result.get('tool')} failed", agent_runner)
+        return
+
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        await _append(s, org_id, run_id, "step_completed", step_id=sid, data=result)
+        output_as = ins.get("output_as")
+        if output_as:
+            run = await _load(s, org_id, run_id)
+            merged = {**(run["vars"] if run else {}), output_as: result.get("output")}
+            await s.execute(
+                text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb) WHERE id = :r"),
+                {"v": json.dumps(merged, default=str), "r": str(run_id)})
+        await _set_cursor(s, org_id, run_id, pc + 1)
+        await s.commit()
 
 
 async def _promote_next(
@@ -432,6 +532,49 @@ async def resume_human(
         await _advance(org_id, run_id, runner)
     else:
         await _compensate(org_id, run_id, "human_task rejected", runner)
+    return True
+
+
+async def resume_tool(
+    org_id: UUID, run_id: UUID, decision: str, tool: str | None = None, *,
+    agent_runner: AgentRunner | None = None,
+) -> bool:
+    """Resolve a parked `tool_call`.
+
+    Approval re-enters the **same** step (the cursor does not move) with the approved tool recorded
+    in `_approved_tools`, so the effect happens exactly once and only after a human said so. This is
+    deliberately different from `human_task`, which advances *past* its step: there, the human
+    decision **is** the outcome; here, the decision merely unblocks an effect that still has to be
+    re-authorised. Everything else — entitlement, internal-worker authority, manifest integrity,
+    rate limit, budget — is re-checked on re-entry, because a plan can be downgraded while an
+    approval sits in the queue.
+
+    Rejection compensates. It never advances past the step: a rejected send must not be followed by
+    a reply-wait for a message that was never sent."""
+    runner = agent_runner or _default_agent_runner
+    async with org_scoped_session(org_id) as s:
+        await set_org_context(s, org_id)
+        run = await _load(s, org_id, run_id)
+        if run is None or run["status"] != "waiting":
+            return False   # already resumed, or terminal — a duplicate decision is a no-op
+        approved = decision == "approved"
+        new_vars = dict(run["vars"])
+        if approved and tool:
+            allowed = set(new_vars.get("_approved_tools") or [])
+            allowed.add(tool)
+            new_vars["_approved_tools"] = sorted(allowed)
+        await s.execute(
+            text("UPDATE workflow_runs SET vars = CAST(:v AS jsonb), status = :st, "
+                 "updated_at = now() WHERE id = :r AND org_id = :o"),
+            {"v": json.dumps(new_vars), "st": "running" if approved else "waiting",
+             "r": str(run_id), "o": str(org_id)})
+        await _append(s, org_id, run_id, "tool_resolved",
+                      data={"decision": decision, "tool": tool})
+        await s.commit()
+    if approved:
+        await _advance(org_id, run_id, runner)
+    else:
+        await _compensate(org_id, run_id, "tool_call rejected", runner)
     return True
 
 

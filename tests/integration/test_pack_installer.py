@@ -117,7 +117,7 @@ async def test_install_seeds_paused_instances_and_candidate_layers(scene: dict) 
 
     c = await _counts(org, slug)
     assert c["instances"] == 4 and c["bindings"] == 4  # support archetype not seeded → skipped
-    assert c["schemas"] == 1 and c["layers"] == 9
+    assert c["schemas"] == 1 and c["layers"] == 10
     conn = await asyncpg.connect(_dsn())
     try:  # pack tier rules seeded into approval_policies (all archetypes' tier_defaults)
         # 8 base rules + the LP-2d campaigner `landing_publish` rule = 9

@@ -38,6 +38,11 @@ def compile_program(dsl: dict[str, Any]) -> list[dict[str, Any]]:
                                 "task": body["task"], "input_map": body.get("input_map", {}),
                                 "timeout": body.get("timeout"), "tier": body.get("tier"),
                                 "output": body.get("output"), "output_as": body.get("output_as")})
+            elif verb == "tool_call":
+                program.append({"op": "TOOL", "name": body["name"],
+                                "input_map": body.get("input_map", {}),
+                                "output_as": body.get("output_as"),
+                                "timeout": body.get("timeout")})
             elif verb == "wait":
                 program.append({"op": "WAIT", "for": body["for"], "timeout": body.get("timeout"),
                                 "event": body.get("event")})
