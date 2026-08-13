@@ -9,28 +9,31 @@ selects and approves the next ticket.
 
 ---
 
-## PLAN-3 · Recover/Grow/Scale structured presets — **Completed — awaiting founder review** (2026-08-13)
+## PLAN-4 · Operator Plan Builder — **Completed — awaiting founder review** (2026-08-13)
 
-Branch `feature/plan-3-plan-presets`. **No migration.**
+Branch `feature/plan-4-plan-builder`. **Migration 051** (SECURITY DEFINER only).
 
-- `core/billing/presets.py` (NEW) — canonical definitions (Recover ₹3,999 / Grow ₹6,999 *recommended*
-  / Scale ₹12,999), explicit vertical overlay composition, static validation, idempotent
-  materialisation. **Rule Zero verified** — no vertical noun in the module.
-- `verticals/jewelry/commercial/plan_presets.yaml` (NEW) — declares tier placement **explicitly**
-  (`scale: [jewelry.rate_operations]`). Placement is never inferred from public+grantable.
-- `core/billing/service.py` — `CanonicalPresetLocked`: the legacy CP-1 editor can no longer edit a
-  canonical preset (it rebuilds `config` from agents/channels/addons and would strip the structured
-  contract); `create_plan` refuses caller-supplied `preset_key`. API → **409**.
-- `scripts/seed_plans.py` (NEW) — asserts **effective** global visibility (`rolbypassrls OR
-  rolsuper`), never a role name, before deciding sold/unsold.
-- Canonical rows are **immutable once referenced by any subscription** (active *or* cancelled).
-  No override flag exists.
-- `billing_plans.features = []` on every preset; bullets live in `config.display`.
+- **STOP-and-flag resolved:** a sold *custom* plan could be rewritten in place — price, entitlements
+  and seats — for a store with an active subscriber. `SoldPlanImmutable` now locks everything except
+  `active` once **any** subscription of **any** status has referenced a plan.
+- `plan_has_subscription_history(uuid)` (migration 051) — SECURITY DEFINER, boolean-only, fixed
+  `search_path`, REVOKE FROM PUBLIC, EXECUTE to `app_rw`. Requests get the *fact* without the rows;
+  no BYPASSRLS credential enters the API.
+- **Serialization:** every plan mutation and `assign_subscription()` take `SELECT … FOR UPDATE` on
+  the plan row **before** deciding, so a subscriber can never be created and then have the terms
+  rewritten.
+- **`active=false` now actually blocks assignment**, and the target is validated *before* the
+  current subscription is cancelled — a rejected assignment never leaves a store plan-less.
+- `core/billing/plan_builder.py` — catalog-driven selection (registry **and** catalog must agree),
+  vertical scoping, dependency block-save with explicit hints, promotion validation, and a
+  deterministic preview.
+- `compose()` / `ResolutionContext` extracted from PLAN-2's `resolve()` — **behaviour-preserving**;
+  preview runs the resolver's own composition with a *declared* context, so no fake tenant or
+  throwaway subscription is created.
+- `config.vertical` now persisted; **`PRESET_VERSION` 1 → 2**; old canonical snapshots recover their
+  vertical by exact `preset_key` lookup, never string parsing.
 
-**Seeded (dev):** `recover` 3bfd21ee · `grow` 8251fa31 · `scale` 2151aa7b · `scale.jewelry` 06fb735a.
-25 legacy/custom rows untouched.
+**PLAN-5 still owns runtime enforcement** — `/v1/imports`, `/v1/rates`, `campaigns.analytics`, and
+the **P0** plan-reassignment agent reconciliation (#30).
 
-**PLAN-3 defines what tiers should grant; it does not enforce.** PLAN-5 still owns `/v1/imports`,
-`/v1/rates`, `campaigns.analytics` gating and the **P0** plan-reassignment agent reconciliation.
-
-**Do not start PLAN-4 automatically — the founder selects the next ticket.**
+**Do not start PLAN-5 automatically — the founder selects the next ticket.**

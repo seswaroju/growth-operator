@@ -48,7 +48,7 @@ from core.channels.registry import CHANNEL_TYPES
 from core.tenancy.capabilities import L0_CAPABILITIES, by_key, resolve_alias
 from core.tenancy.deps import CurrentAuth, get_current_auth
 from core.tenancy.middleware import get_db
-from core.tenancy.plan_config import parse_plan_config, parse_promotions
+from core.tenancy.plan_config import PlanConfig, parse_plan_config, parse_promotions
 from core.tenancy.repository import set_org_context
 
 # ---- Keys (canonical spellings live in capabilities.py) ---------------------------------------
@@ -260,31 +260,48 @@ def dependency_satisfied(
     return False, f"governed_elsewhere:{cap.enforced_by or 'unknown'}"
 
 
-async def resolve(
-    session: AsyncSession, org_id: UUID, *, now: datetime | None = None
-) -> EffectiveEntitlements:
-    """Resolve a tenant's structured commercial entitlements.
+@dataclass(frozen=True)
+class ResolutionContext:
+    """Everything about a *store* that entitlement composition needs, gathered once.
 
-    Deterministic precedence: active subscription → structured (`config.entitlements`) **or** legacy
-    compatibility → agents → channels → promotions → alias canonicalisation → catalog/grantable
-    filter → installed-pack filter → component-aware dependencies.
+    Separating this out is what lets the operator plan builder preview a plan that no tenant is on
+    without inventing a fake tenant or a throwaway subscription: it supplies a **declared** context
+    instead of a queried one, and runs the identical composition."""
+
+    installed_packs: frozenset[str] = frozenset()
+    bound_agents: frozenset[str] = frozenset()
+    known_archetypes: frozenset[str] = frozenset()
+
+
+async def load_context(session: AsyncSession, org_id: UUID) -> ResolutionContext:
+    """Read a real store's context. Assumes the caller already set the tenant context."""
+    packs = set((await session.execute(_INSTALLED_PACKS_SQL, {"o": str(org_id)})).scalars().all())
+    bound = set((await session.execute(_TENANT_AGENTS_SQL, {"o": str(org_id)})).scalars().all())
+    known = set((await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+    return ResolutionContext(frozenset(packs), frozenset(bound), frozenset(known))
+
+
+def compose(
+    *,
+    config: PlanConfig,
+    features: object,
+    limits: EffectiveLimits,
+    plan_id: UUID | None,
+    plan_name: str | None,
+    ctx: ResolutionContext,
+    now: datetime,
+    subscription_state: Literal["active", "cancelled", "none"] = "active",
+) -> EffectiveEntitlements:
+    """Compose effective entitlements from a plan and a store context. **Pure** — no I/O.
+
+    Deterministic precedence: structured (`config.entitlements`) **or** legacy compatibility →
+    agents → channels → promotions → alias canonicalisation → catalog/grantable filter →
+    installed-pack filter → component-aware dependencies.
 
     A promotion may *add* a capability but never bypasses catalog validity, `runtime_grantable`,
     pack requirements, dependency requirements, or any security/approval/runtime gate.
     """
-    now = now or datetime.now(UTC)
-    await set_org_context(session, org_id)
-    row = (await session.execute(_SUBSCRIPTION_SQL, {"o": str(org_id)})).mappings().first()
-
-    ever = bool(row and row["existed"])
-    if row is None or row["plan_id"] is None:
-        # No paid entitlements without an active subscription. This is not "free Recover":
-        # authentication and RBAC — not entitlements — govern account and data access.
-        return EffectiveEntitlements(subscription_state="cancelled" if ever else "none")
-
     excluded: list[Excluded] = []
-    config = parse_plan_config(row["config"])
-    limits = EffectiveLimits(int(row["max_managers"] or 0), int(row["max_staff"] or 0))
 
     # --- 1. Capability source: structured config, or the legacy compatibility path -------------
     legacy_mode = not config.is_structured
@@ -292,7 +309,7 @@ async def resolve(
     implied_channels: frozenset[str] = frozenset()
 
     if legacy_mode:
-        legacy_caps = _LEGACY_ENT1A_BASELINE | normalize(row["features"])
+        legacy_caps = _LEGACY_ENT1A_BASELINE | normalize(features)
         for key in legacy_caps:
             candidates[key] = Grant(key, "legacy_compat")
         implied_channels = implied_legacy_channels(legacy_caps)
@@ -314,9 +331,7 @@ async def resolve(
     # --- 2. Agents: selected AND a real archetype AND bound for this tenant --------------------
     agents: set[str] = set()
     if structured_ok and config.agents:
-        bound = set((await session.execute(_TENANT_AGENTS_SQL, {"o": str(org_id)})).scalars().all())
-        known = set(
-            (await session.execute(text("SELECT slug FROM agent_archetypes"))).scalars().all())
+        bound, known = set(ctx.bound_agents), set(ctx.known_archetypes)
         for slug in config.agents:
             if slug not in known:
                 excluded.append(Excluded(slug, "agent", "unknown_archetype"))
@@ -350,7 +365,7 @@ async def resolve(
                 key, Grant(key, "promotion", promo.label, promo.ends_at))
 
     # --- 5. Catalog validity + runtime_grantable ----------------------------------------------
-    installed: set[str] | None = None
+    installed = set(ctx.installed_packs)
     surviving: dict[str, Grant] = {}
     for key, grant in candidates.items():
         cap = by_key(key)
@@ -365,9 +380,6 @@ async def resolve(
             continue
         # --- 6. Installed-pack filter: global catalog knowledge is not tenant entitlement ------
         if cap.vertical is not None:
-            if installed is None:
-                rows = await session.execute(_INSTALLED_PACKS_SQL, {"o": str(org_id)})
-                installed = set(rows.scalars().all())
             if cap.vertical not in installed:
                 excluded.append(Excluded(key, "capability", f"pack_not_installed:{cap.vertical}"))
                 continue
@@ -397,9 +409,9 @@ async def resolve(
         limits=limits,
         grants=tuple(sorted(surviving.values(), key=lambda g: g.key)),
         excluded=tuple(excluded),
-        subscription_state="active",
-        plan_id=row["plan_id"],
-        plan_name=row["plan_name"],
+        subscription_state=subscription_state,
+        plan_id=plan_id,
+        plan_name=plan_name,
         addons=tuple(config.addons) if structured_ok else (),
     )
 
@@ -452,3 +464,31 @@ async def feature_not_in_plan_handler(request: object, exc: Exception) -> object
 
 def register_entitlement_handlers(app: object) -> None:
     app.add_exception_handler(FeatureNotInPlan, feature_not_in_plan_handler)  # type: ignore[attr-defined]
+
+
+async def resolve(
+    session: AsyncSession, org_id: UUID, *, now: datetime | None = None
+) -> EffectiveEntitlements:
+    """Resolve a real tenant's entitlements: load the subscription and store context, then compose.
+
+    All the decision logic lives in `compose()`; this function only supplies facts from the
+    database, so the operator preview and the runtime gate can never diverge."""
+    now = now or datetime.now(UTC)
+    await set_org_context(session, org_id)
+    row = (await session.execute(_SUBSCRIPTION_SQL, {"o": str(org_id)})).mappings().first()
+
+    ever = bool(row and row["existed"])
+    if row is None or row["plan_id"] is None:
+        # No paid entitlements without an active subscription. This is not "free Recover":
+        # authentication and RBAC — not entitlements — govern account and data access.
+        return EffectiveEntitlements(subscription_state="cancelled" if ever else "none")
+
+    return compose(
+        config=parse_plan_config(row["config"]),
+        features=row["features"],
+        limits=EffectiveLimits(int(row["max_managers"] or 0), int(row["max_staff"] or 0)),
+        plan_id=row["plan_id"],
+        plan_name=row["plan_name"],
+        ctx=await load_context(session, org_id),
+        now=now,
+    )

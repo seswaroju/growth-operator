@@ -371,3 +371,29 @@ count. Neither ticket's correctness is affected.
 impossible for the seeder — it aborts unless the connection holds `rolbypassrls` or superuser, so a
 sold/unsold decision can never be made behind row-level security. Any future operational audit of
 tenant-scoped tables must use a privileged connection.
+
+
+---
+
+## #32 — Sold plans could be rewritten in place (RESOLVED by PLAN-4)
+
+**Opened and resolved** 2026-08-13.
+
+PLAN-3 locked canonical preset rows, but every other plan stayed mutable. Demonstrated against a
+real custom structured plan with an **active** subscriber: a single `update_plan()` call moved price
+₹5,000 → ₹0.01, emptied `config.entitlements` and zeroed the seat limits. No new row, no version, no
+record of the prior terms — the subscriber's purchased terms and their runtime entitlements both
+changed silently.
+
+Operator-authenticated and platform-permission gated, so not a security hole, but a **commercial-
+history integrity defect**.
+
+**Resolved:** `SoldPlanImmutable` locks every commercial and presentational field once any
+subscription of any status has referenced a plan; only `active` remains editable. The check uses the
+SECURITY DEFINER primitive from migration 051 (an RLS-scoped session would have answered "never
+sold" for every plan), and runs **after** a `FOR UPDATE` lock on the plan row so it cannot race with
+`assign_subscription()`.
+
+**Related fix:** `assign_subscription()` did not validate `billing_plans.active`, so a retired plan
+could still be assigned — and it cancelled the store's current subscription *before* touching the
+target, meaning a failed assignment left the store with no plan. Both corrected.

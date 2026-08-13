@@ -505,6 +505,7 @@ export interface PlanConfig {
   promotions?: unknown[];
   preset_key?: string;
   preset_version?: number;
+  vertical?: string | null;
   display?: { bullets?: string[]; recommended?: boolean; team_seats?: number };
 }
 
@@ -596,6 +597,76 @@ export function adminUpdatePlan(
   return authed<BillingPlan>(`/v1/admin/billing/plans/${planId}`, token, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+// ---- Plan Builder (PLAN-4) ---------------------------------------------------------------
+// Canonical presets are code-managed and rejected by the server for edits; the supported path for
+// changing them is copy → edit the copy → assign.
+
+export interface CatalogCapability {
+  key: string; label: string; description: string; category: string; kind: string;
+  status: string; commercial_visibility: string; depends_on: string[]; vertical: string | null;
+}
+
+export interface PlanCatalog {
+  capabilities: CatalogCapability[];
+  restricted: CatalogCapability[];   // visible but never selectable
+  agents: string[];
+  channels: string[];
+  verticals: string[];
+}
+
+export interface PlanProblem { field: string; key: string; reason: string; fix_hint: string }
+
+export interface PlanPreview {
+  problems: PlanProblem[];
+  capabilities: string[];
+  agents: string[];
+  channels: string[];
+  limits: { max_managers: number; max_staff: number };
+  grants: { key: string; source: string; promotion_label: string | null }[];
+  excluded: { key: string; component: string; reason: string }[];
+  assumptions: string[];
+}
+
+export interface PlanDraft {
+  name: string; price_minor: number; description?: string | null;
+  max_managers: number; max_staff: number; config: PlanConfig;
+}
+
+export function adminPlanCatalog(token: string, vertical?: string | null): Promise<PlanCatalog> {
+  const q = vertical ? `?vertical=${encodeURIComponent(vertical)}` : "";
+  return authed<PlanCatalog>(`/v1/admin/billing/plans/capability-catalog${q}`, token);
+}
+
+export function adminPreviewPlan(token: string, draft: PlanDraft): Promise<PlanPreview> {
+  return authed<PlanPreview>("/v1/admin/billing/plans/preview", token, {
+    method: "POST", body: JSON.stringify(draft),
+  });
+}
+
+export function adminCopyPlan(
+  token: string, planId: string, name?: string | null,
+): Promise<BillingPlan> {
+  return authed<BillingPlan>(`/v1/admin/billing/plans/${planId}/copy`, token, {
+    method: "POST", body: JSON.stringify({ name: name ?? null }),
+  });
+}
+
+export function adminUpdatePlanStructured(
+  token: string, planId: string, draft: PlanDraft,
+): Promise<BillingPlan> {
+  return authed<BillingPlan>(`/v1/admin/billing/plans/${planId}/structured`, token, {
+    method: "PATCH", body: JSON.stringify(draft),
+  });
+}
+
+export function adminSetPlanActive(
+  token: string, planId: string, active: boolean,
+): Promise<BillingPlan> {
+  return authed<BillingPlan>(`/v1/admin/billing/plans/${planId}/active`, token, {
+    method: "PATCH", body: JSON.stringify({ active }),
   });
 }
 

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PlanBuilder } from "./PlanBuilder";
 
 import {
   adminAssignSubscription, adminBillingRollup, adminCreatePlan, adminGetSubscription,
-  adminListCharges, adminListPlans, adminListTenants, adminRecordCharge, adminUpdatePlan,
+  adminListCharges, adminListPlans, adminListTenants, adminRecordCharge, adminCopyPlan,
+  adminUpdatePlan,
   type BillingPlan, type BillingRollup, type ChargeType, type PlanInput,
 } from "../api";
 import { useAuth } from "../auth";
@@ -153,6 +155,14 @@ function PlanRow({ token, plan, canManage }:
   // Canonical Recover/Grow/Scale rows are code-managed (PLAN-3). Hiding Edit is convenience only —
   // the server is the boundary and returns 409 regardless of what this UI shows.
   const isCanonical = Boolean(plan.config?.preset_key);
+  // A row with no structured marker is a legacy plan: it is never reinterpreted in place, only
+  // converted by copying (which reconstructs the same entitlements the resolver would grant).
+  const isLegacy = !plan.config?.entitlement_schema_version;
+  const [building, setBuilding] = useState(false);
+  const copy = useMutation({
+    mutationFn: () => adminCopyPlan(token, plan.id, null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["billing-plans"] }),
+  });
   const update = useMutation({
     mutationFn: (f: FormState) => adminUpdatePlan(token, plan.id, toInput(f)),
     onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
@@ -190,6 +200,11 @@ function PlanRow({ token, plan, canManage }:
                 canonical
               </span>
             )}
+            {isLegacy && !isCanonical && (
+              <span className="rounded-lg bg-line-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2">
+                legacy
+              </span>
+            )}
             {!plan.active && (
               <span className="rounded-lg bg-line-2 px-2 py-0.5 text-[10px] font-semibold text-ink-2">
                 inactive
@@ -200,6 +215,16 @@ function PlanRow({ token, plan, canManage }:
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="font-serif text-sm tnum text-ink">{rupees(plan.price_minor)}/mo</span>
+          {canManage && (
+            <button onClick={() => copy.mutate()} disabled={copy.isPending}
+                    title={isLegacy ? "Convert to a structured copy" : "Copy into a new custom plan"}
+                    className={buttonClasses("ghost", "sm")}>
+              {isLegacy && !isCanonical ? "Convert" : "Copy"}
+            </button>
+          )}
+          {canManage && !isCanonical && !isLegacy && (
+            <button onClick={() => setBuilding(true)} className={buttonClasses("ghost", "sm")}>Build</button>
+          )}
           {canManage && !isCanonical && (
             <button onClick={() => setEditing(true)} className={buttonClasses("ghost", "sm")}>Edit</button>
           )}
@@ -210,6 +235,11 @@ function PlanRow({ token, plan, canManage }:
           )}
         </div>
       </div>
+      {building && (
+        <div className="mt-3">
+          <PlanBuilder token={token} plan={plan} onDone={() => setBuilding(false)} />
+        </div>
+      )}
       {plan.features.length > 0 && (
         <ul className="mt-2 space-y-1">
           {plan.features.map((ft, i) => (

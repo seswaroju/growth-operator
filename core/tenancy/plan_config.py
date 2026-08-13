@@ -88,6 +88,10 @@ class PlanConfig(BaseModel):
 
     entitlement_schema_version: int | None = None
     entitlements: list[str] | None = None
+    # PLAN-4: which vertical this plan is authored for (`None` = generic). Authoring metadata that
+    # constrains which capabilities may be *selected*; it is not a resolution input — the runtime
+    # pack filter keys off the capability's own `vertical` and remains the backstop.
+    vertical: str | None = None
     agents: list[str] = []
     channels: list[str] = []
     addons: list[str] = []
