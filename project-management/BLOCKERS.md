@@ -397,3 +397,49 @@ sold" for every plan), and runs **after** a `FOR UPDATE` lock on the plan row so
 **Related fix:** `assign_subscription()` did not validate `billing_plans.active`, so a retired plan
 could still be assigned — and it cancelled the store's current subscription *before* touching the
 target, meaning a failed assignment left the store with no plan. Both corrected.
+
+
+---
+
+## #30 — Plan reassignment did not reconcile agent instances (RESOLVED by PLAN-5)
+
+**Resolved** 2026-08-13, though not the way the blocker originally framed it.
+
+Reconciliation now runs inside `assign_subscription()`, but it is **cleanup, not the security
+boundary**. The boundary is `assert_agent_executable`, called from `_drive()` — where `start_run`,
+`resume_run` and `resume_after_approval` all converge — and again at the mediation proxy. Commercial
+authority is therefore evaluated at execution time, so a downgraded agent cannot act even while its
+`agent_instances` row still says `active`, and a delayed or failed reconciliation cannot widen
+authority.
+
+Crucially, reconciliation **does not rewrite operational status**: doing so would make an operator's
+manual pause indistinguishable from a commercial removal and silently reactivate it on re-upgrade.
+
+**The rollout caveat in this blocker is lifted:** live plan-switching no longer risks an agent
+outliving its plan.
+
+---
+
+## #33 — Mediation had no entitlement check (RESOLVED by PLAN-5)
+
+**Opened and resolved** 2026-08-13, found during the PLAN-5 audit and rated the ticket's
+highest-severity gap by the founder.
+
+The mediation chain ran manifest → params → rate limit → budget → tier → audit → execute with **no
+commercial check anywhere**. `landing_page.generate` and `landing_page.publish` are in `REGISTRY`, so
+an agent could generate and publish a landing page for a tenant whose plan excluded
+`landing_pages` — bypassing the HTTP gate entirely and making the route-level coverage misleading.
+
+**Resolved:** the proxy re-checks current agent authority *and* the tool's mapped capability
+immediately before execute, returning a structured refusal (never a crash) and auditing the denial.
+Every `REGISTRY` tool must now declare `capability_key` or `plan_exempt_reason`, enforced by a CI
+guard with a mutation test, so a future tool cannot re-open this path.
+
+---
+
+## #34 — recovery_sweep processed every organization (RESOLVED by PLAN-5)
+
+**Opened and resolved** 2026-08-13. The daily sweep iterated `SELECT id FROM organizations`, so
+unsubscribed and cancelled stores still received ghost-recovery business processing. It now skips
+orgs without `ghost_recovery`; their existing lead history stays readable per the data-continuity
+ruling.

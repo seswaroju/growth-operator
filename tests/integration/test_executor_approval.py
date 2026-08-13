@@ -23,6 +23,7 @@ from core.mediation import tools as tools_mod
 from core.runtime import resume as resume_mod
 from core.runtime.executor import SAFE_CLOSE_TEXT, resume_after_approval, start_run
 from core.runtime.model import ModelResult, ToolCall
+from tests.conftest import entitle_org
 
 TOOL = "test.action"
 
@@ -91,6 +92,9 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
             " permission_manifest, budget_caps) "
             "VALUES ($1,$2,'priya','active',$3::jsonb,'{}'::jsonb) RETURNING id",
             org, binding, json.dumps(manifest))
+        # PLAN-5: the store must be entitled for the archetype this fixture built —
+        # PLAN-2 reports an agent as entitled only when the tenant has its binding.
+        await entitle_org(conn, org, agents=[f"arch_{org.hex[:8]}"])
         # policy: TOOL is tier 2 (needs approval)
         await conn.execute(
             "INSERT INTO approval_policies (scope, pack_id, action_type, tier, description) "

@@ -26,6 +26,7 @@ from core.runtime import failure
 from core.runtime.executor import start_run
 from core.runtime.model import ModelResult, ToolCall
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 FAIL_TOOL = "test.flaky"
 
@@ -141,6 +142,9 @@ async def env(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Env]:
             " permission_manifest, budget_caps) "
             "VALUES ($1,$2,'priya','active',$3::jsonb,'{}'::jsonb) RETURNING id",
             org, binding, json.dumps(manifest))
+        # PLAN-5: the store must be entitled for the archetype this fixture built —
+        # PLAN-2 reports an agent as entitled only when the tenant has its binding.
+        await entitle_org(conn, org, agents=[f"arch_{org.hex[:8]}"])
     finally:
         await conn.close()
 

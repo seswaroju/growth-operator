@@ -22,6 +22,7 @@ from core.pricing import rates, service
 from core.pricing.functions import PricingError
 from core.pricing.rates import SimulatedRateFetcher
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 SOURCE = "ibja_gold"
 FETCH_SPEC = json.dumps({"bounds": {"max_step_pct": 10}})
@@ -90,6 +91,17 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'R')", org)
+        # PLAN-5: writing a rate is a paid vertical operation — entitle the store and install
+        # the pack that contributes the capability.
+        jw = await conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
+        if jw is None:
+            jw = await conn.fetchval(
+                "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
+                "status) VALUES ('jewelry','1','>=1','{}'::jsonb,'u','s','published') RETURNING id")
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active') "
+            "ON CONFLICT (org_id, pack_id) DO UPDATE SET status='active'", org, jw)
+        await entitle_org(conn, org)
         pack_id = await conn.fetchval(
             "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
             "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",

@@ -23,6 +23,8 @@ from core.approvals.service import create_approval
 from core.customers import origins
 from core.landing.service import clip as _clip
 from core.landing.service import clip_utm as _clip_utm
+from core.tenancy import entitlements
+from core.tenancy.entitlements import LANDING_PAGES
 from core.tenancy.repository import set_org_context
 
 # The concierge follow-up is a **deterministic** template — grounded in what the visitor actually
@@ -63,6 +65,11 @@ async def _published_page(session: AsyncSession, page_id: UUID) -> dict[str, Any
         await session.execute(
             text("SELECT landing_page_org(CAST(:p AS uuid))"), {"p": str(page_id)})
     ).scalar()
+    # PLAN-5: capturing a new lead is paid service work. An unentitled store stores **no PII and no
+    # lead**, and the caller answers exactly as it does for an unknown or unpublished page — the
+    # public form must never disclose a merchant's billing state.
+    if org is not None and not await entitlements.is_entitled(session, org, LANDING_PAGES):
+        return None
     if org is None:
         return None
     await set_org_context(session, org)

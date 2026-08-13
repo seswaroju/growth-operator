@@ -28,6 +28,7 @@ from core.tenancy.middleware import org_scoped_session
 from core.workflows import store as wf_store
 from core.workflows.parser import parse
 from core.workflows.triggers import match_and_start
+from tests.conftest import entitle_org
 
 _JEWELRY_WF = (
     Path(__file__).resolve().parents[2]
@@ -67,6 +68,8 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'GhostStore')", org)
+        # PLAN-5: paid execution follows the plan, so the fixture's store is subscribed.
+        await entitle_org(conn, org)
         # Empty quiet-hours window → `within_send_window` passes regardless of the clock,
         # so the trigger assertions are deterministic in CI (as in test_tool_action_bridge_tiers).
         await conn.execute(
@@ -390,6 +393,9 @@ async def test_recovery_is_tenant_isolated(scene: Scene) -> None:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'Other')", other)
+        # Entitle the stranger too: this test is about tenant isolation, so it must reach the
+        # handler and get a 404 rather than stopping at the entitlement gate with a 403.
+        await entitle_org(conn, other)
     finally:
         await conn.close()
     stranger = await _owner_user(other)

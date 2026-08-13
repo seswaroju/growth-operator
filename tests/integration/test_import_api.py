@@ -20,6 +20,7 @@ from core.common.config import get_settings
 from core.ingestion.service import MAX_ROWS
 from core.tenancy.auth import issue_access_token
 from core.tenancy.permissions import ROLE_OWNER
+from tests.conftest import entitle_org
 
 
 def _dsn() -> str:
@@ -53,6 +54,8 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'IM')", org)
+        # PLAN-5: paid execution follows the plan, so the fixture's store is subscribed.
+        await entitle_org(conn, org)
         await conn.execute(
             "INSERT INTO users (id, phone) VALUES ($1,$2)", user, f"+91{user.int % 10**10:010d}")
     finally:

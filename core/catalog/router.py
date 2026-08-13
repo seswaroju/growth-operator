@@ -27,6 +27,7 @@ from core.catalog.crud import (
 )
 from core.catalog.validate import ValidationProblems
 from core.tenancy.deps import CurrentAuth
+from core.tenancy.entitlements import CATALOG, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CATALOG_READ, CATALOG_WRITE
 from core.tenancy.rbac import requires
@@ -91,7 +92,8 @@ def _to_input(body: CatalogItemIn) -> ItemInput:
     )
 
 
-@router.post("/items", response_model=CatalogItemOut, summary="Create a catalog item")
+@router.post("/items", response_model=CatalogItemOut, summary="Create a catalog item",
+             dependencies=[Depends(requires_feature(CATALOG))])
 async def create_item(
     body: CatalogItemIn,
     response: Response,
@@ -154,7 +156,8 @@ def _parse_filters(raw: str | None) -> dict[str, str]:
     return out
 
 
-@router.get("/search", response_model=SearchResponse, summary="Hybrid catalog search")
+@router.get("/search", response_model=SearchResponse, summary="Hybrid catalog search",
+            dependencies=[Depends(requires_feature(CATALOG))])
 async def search_catalog(
     q: str = Query(..., min_length=1),
     k: int = Query(default=8, ge=1, le=50),
@@ -189,7 +192,8 @@ async def get_item(
     return CatalogItemOut(**item)
 
 
-@router.patch("/items/{item_id}", response_model=CatalogItemOut, summary="Update a catalog item")
+@router.patch("/items/{item_id}", response_model=CatalogItemOut, summary="Update a catalog item",
+              dependencies=[Depends(requires_feature(CATALOG))])
 async def update_item(
     item_id: UUID,
     body: CatalogItemPatch,
@@ -220,7 +224,9 @@ async def update_item(
 
 
 @router.delete(
-    "/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Archive a catalog item"
+    "/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT,
+    summary="Archive a catalog item",
+    dependencies=[Depends(requires_feature(CATALOG))],
 )
 async def delete_item(
     item_id: UUID,

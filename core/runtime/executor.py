@@ -348,6 +348,25 @@ async def _drive(
     """The step loop: kill/budget/timeout guards, run the node, durably checkpoint, advance. A
     tool that returns `pending` (tier ≥ 2) parks the run for approval (MVP-069); a tool that fails
     hard is retried once and trips the circuit breaker on a 2nd consecutive failure (MVP-063)."""
+    # PLAN-5: the authoritative agent authorization boundary. `start_run`, `resume_run` and
+    # `resume_after_approval` all converge here, so a run started while entitled cannot continue
+    # after a downgrade — commercial authority is evaluated now, never inherited from the run's
+    # existence. A denial ends the run `interrupted` (an existing status) before any further
+    # external effect, rather than crashing or silently proceeding.
+    if instance_id is not None:
+        from core.tenancy.entitlements import AgentNotExecutable, assert_agent_executable
+
+        async with org_scoped_session(org_id) as s:
+            try:
+                await assert_agent_executable(s, org_id, instance_id)
+            except AgentNotExecutable as exc:
+                logger.warning(
+                    "agent run %s denied: org=%s reason=%s", run_id, org_id, exc.reason)
+                await _finish(s, run_id, "interrupted",
+                              error={"code": "feature_not_in_plan", "reason": exc.reason})
+                await s.commit()
+                return RunOutcome(run_id, "interrupted", None, steps_taken)
+
     tool_retries = 0
     while True:
         node = next_node(cursor, state)

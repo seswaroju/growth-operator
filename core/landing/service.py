@@ -16,6 +16,8 @@ from core.landing.plan import CampaignContext, plan_page
 from core.landing.planner_llm import plan_variants_planned
 from core.landing.spec import BrandTokens, ExperienceStrategy, LandingPageSpec
 from core.landing.validate import validate_spec
+from core.tenancy import entitlements
+from core.tenancy.entitlements import LANDING_PAGES
 from core.tenancy.repository import set_org_context
 
 # Event types the public track beacon may record — the local funnel sink (NOT the event outbox;
@@ -276,6 +278,12 @@ async def published_spec(
         await session.execute(
             text("SELECT landing_page_org(CAST(:p AS uuid))"), {"p": str(page_id)})
     ).scalar()
+    # PLAN-5: serving a live page is an ongoing paid service, not a historical read. A store that
+    # no longer holds `landing_pages` stops being served — with the **same** neutral outcome as a
+    # draft or another tenant's page, so nothing about billing state is disclosed publicly. The
+    # lifecycle status is never rewritten, so re-entitlement restores serving automatically.
+    if org is not None and not await entitlements.is_entitled(session, org, LANDING_PAGES):
+        return None
     if org is None:
         return None
     await set_org_context(session, org)
@@ -308,6 +316,10 @@ async def record_public_event(
         await session.execute(
             text("SELECT landing_page_org(CAST(:p AS uuid))"), {"p": str(page_id)})
     ).scalar()
+    # PLAN-5: funnel collection is part of the hosted service — an unentitled store records nothing
+    # while the caller still answers 204, so the public beacon reveals no billing state.
+    if org is not None and not await entitlements.is_entitled(session, org, LANDING_PAGES):
+        return False
     if org is None:
         return False
     await set_org_context(session, org)

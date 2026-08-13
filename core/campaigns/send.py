@@ -29,6 +29,7 @@ from core.campaigns import audience as audience_mod
 from core.campaigns import service as campaign_service
 from core.channels.whatsapp.send import SEND_ACTION, SendRefused, send
 from core.events.outbox import emit
+from core.tenancy.entitlements import CAMPAIGNS_WHATSAPP, is_entitled
 from core.tenancy.middleware import org_scoped_session
 from core.tenancy.repository import set_org_context
 
@@ -129,7 +130,7 @@ async def process_campaign_batch(org_id: UUID, campaign_id: UUID) -> None:
     recipient is sent in its own org session (sequential, never nested).
     """
     async with org_scoped_session(org_id) as s:
-        halt = await _halt_reason(s, campaign_id)
+        halt = await _halt_reason(s, campaign_id, org_id)
         if halt is not None:
             await _halt(s, org_id, campaign_id, halt)
             await s.commit()
@@ -241,9 +242,19 @@ async def _hourly_budget(session: AsyncSession, campaign_id: UUID) -> int:
     return max(0, HOURLY_RATE - int(recent))
 
 
-async def _halt_reason(session: AsyncSession, campaign_id: UUID) -> str | None:
+async def _halt_reason(
+    session: AsyncSession, campaign_id: UUID, org_id: UUID | None = None
+) -> str | None:
     """Return a halt reason if the campaign should stop, else None. Opt-out spike (from our own
-    suppressions) or a red Meta quality rating on the channel."""
+    suppressions), a red Meta quality rating on the channel, or — since PLAN-5 — the store no
+    longer holding `campaigns.whatsapp`.
+
+    Routing the entitlement check through the existing halt path is deliberate: the campaign is
+    marked `halted` **once** with a reason the operator can see, so the hourly fanout stops
+    retrying instead of hot-looping on a denial. Re-entitlement is a manual resume, matching how
+    every other halt behaves."""
+    if org_id is not None and not await is_entitled(session, org_id, CAMPAIGNS_WHATSAPP):
+        return "entitlement_revoked"
     row = (await session.execute(
         text("SELECT count(*) FILTER (WHERE status = 'sent') AS sent, "
              "count(*) FILTER (WHERE status = 'sent' AND EXISTS ("

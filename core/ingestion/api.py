@@ -23,6 +23,7 @@ from core.common.config import get_settings
 from core.ingestion import service
 from core.ingestion.state import BatchState, is_terminal
 from core.tenancy.deps import CurrentAuth
+from core.tenancy.entitlements import CATALOG_INGESTION, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CATALOG_READ, CATALOG_WRITE
 from core.tenancy.rbac import requires
@@ -32,7 +33,8 @@ router = APIRouter(prefix="/v1/imports", tags=["imports"])
 _STREAM = "gop:events:import.batch_state.v1"
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create an import batch (upload)")
+@router.post("", status_code=status.HTTP_201_CREATED, summary="Create an import batch (upload)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def create_import(
     source_kind: str = Form(...),
     files: list[UploadFile] = File(...),
@@ -82,7 +84,8 @@ async def get_import(
     return batch
 
 
-@router.post("/{batch_id}/extract", summary="Run CSV/XLSX extraction + column mapping (MVP-078)")
+@router.post("/{batch_id}/extract", summary="Run CSV/XLSX extraction + column mapping (MVP-078)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def extract_import(
     batch_id: UUID,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -112,7 +115,8 @@ async def extract_import(
     return {"batch_id": str(batch_id), "state": "extracted", "rows": rows}
 
 
-@router.post("/{batch_id}/validate", summary="Validate + flag rows, move to review (MVP-079)")
+@router.post("/{batch_id}/validate", summary="Validate + flag rows, move to review (MVP-079)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def validate_import(
     batch_id: UUID,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -151,7 +155,8 @@ async def _row_action(action: str, org_id: UUID, batch_id: UUID, seq: int,
     return await review.review_summary(session, org_id, batch_id)
 
 
-@router.post("/{batch_id}/rows/{seq}/confirm", summary="Confirm a row")
+@router.post("/{batch_id}/rows/{seq}/confirm", summary="Confirm a row",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def confirm_row_ep(
     batch_id: UUID, seq: int,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -162,7 +167,8 @@ async def confirm_row_ep(
     return await _row_action("confirm", current.org_id, batch_id, seq, session)
 
 
-@router.post("/{batch_id}/rows/{seq}/reject", summary="Reject a row (won't load)")
+@router.post("/{batch_id}/rows/{seq}/reject", summary="Reject a row (won't load)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def reject_row_ep(
     batch_id: UUID, seq: int,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -173,7 +179,8 @@ async def reject_row_ep(
     return await _row_action("reject", current.org_id, batch_id, seq, session)
 
 
-@router.patch("/{batch_id}/rows/{seq}", summary="Edit a row's fields then confirm")
+@router.patch("/{batch_id}/rows/{seq}", summary="Edit a row's fields then confirm",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def edit_row_ep(
     batch_id: UUID, seq: int, body: RowEdit,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -184,7 +191,8 @@ async def edit_row_ep(
     return await _row_action("edit", current.org_id, batch_id, seq, session, body)
 
 
-@router.post("/{batch_id}/rows/confirm-all", summary="Bulk-confirm rows (auto = confidence gate)")
+@router.post("/{batch_id}/rows/confirm-all", summary="Bulk-confirm rows (auto = confidence gate)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def confirm_all_ep(
     batch_id: UUID, auto: bool = False,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -200,7 +208,8 @@ async def confirm_all_ep(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
 
-@router.post("/{batch_id}/load", summary="Load confirmed rows into the catalog (MVP-080)")
+@router.post("/{batch_id}/load", summary="Load confirmed rows into the catalog (MVP-080)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def load_import(
     batch_id: UUID,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),
@@ -220,7 +229,8 @@ async def load_import(
     return {"batch_id": str(batch_id), "state": "loaded", **result}
 
 
-@router.post("/{batch_id}/revert", summary="Revert a load within 30 days (MVP-080)")
+@router.post("/{batch_id}/revert", summary="Revert a load within 30 days (MVP-080)",
+             dependencies=[Depends(requires_feature(CATALOG_INGESTION))])
 async def revert_import(
     batch_id: UUID,
     current: CurrentAuth = Depends(requires(CATALOG_WRITE)),

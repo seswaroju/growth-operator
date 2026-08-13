@@ -30,6 +30,7 @@ from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
 from core.common.config import get_settings
 from core.pricing.functions import PricingError
+from core.tenancy.entitlements import assert_vertical_entitled
 
 MANUAL_RATE_ACTION = "rate.manual_entry"
 RateValue = dict[str, int]  # e.g. {"22K": 732000} — per-key minor units
@@ -220,7 +221,12 @@ async def record_manual_rate(
     the entry is audited and, being freshly captured, is valid for the source's staleness window.
 
     NOTE: a real tier-2 **approval** gate awaits the approvals engine (MVP-065); today the endpoint
-    enforces an owner-level permission and records the entry on the org's audit chain."""
+    enforces an owner-level permission and records the entry on the org's audit chain.
+
+    Writing a rate is a paid vertical operation, gated here rather than only on the route so an
+    internal caller cannot bypass it. Reading freshness (`rate_status`) is deliberately not gated:
+    it performs no rate operation and quote assistance below the top tier needs it diagnosable."""
+    await assert_vertical_entitled(session, org_id, "rate_operations")
     src = await _load_source(session, source_key)
     if src is None:
         raise PricingError("config_schema_violation", f"unknown rate source {source_key!r}")

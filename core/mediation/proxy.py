@@ -171,6 +171,36 @@ async def _manifest_denied(
     )
 
 
+async def _commercial_denial(session: Any, ctx: RunContext, tool_name: str) -> ToolResult | None:
+    """`None` when the run may proceed, else a structured refusal.
+
+    Returns a refusal rather than raising: a plan denial is an expected outcome that must close the
+    run cleanly, exactly as a send-gate refusal does — never a crash that trips the breaker."""
+    from core.mediation.tools import TOOL_CAPABILITY, TOOL_PLAN_EXEMPT
+    from core.tenancy.entitlements import AgentNotExecutable, assert_agent_executable, is_entitled
+
+    try:
+        await assert_agent_executable(session, ctx.org_id, ctx.instance_id)
+    except AgentNotExecutable as exc:
+        return ToolResult(ok=False, error=ToolError("permission_denied_manifest", str(exc)))
+
+    capability = TOOL_CAPABILITY.get(tool_name)
+    if capability is None:
+        if tool_name in TOOL_PLAN_EXEMPT:
+            return None
+        # Unclassified tool: fail closed. The CI guard prevents this reaching production.
+        return ToolResult(
+            ok=False,
+            error=ToolError("permission_denied_manifest",
+                            f"{tool_name} has no commercial classification"))
+    if not await is_entitled(session, ctx.org_id, capability):
+        return ToolResult(
+            ok=False,
+            error=ToolError("permission_denied_manifest",
+                            f"{capability} is not included in this plan"))
+    return None
+
+
 async def call(
     ctx: RunContext, tool_name: str, params: dict[str, Any], *,
     session: AsyncSession, redis: Redis,
@@ -245,6 +275,16 @@ async def call(
             return ToolResult(
                 ok=False, pending=ApprovalPending(tier, f"{tool_name} needs approval")
             )
+
+    # 7b. commercial authority (PLAN-5) — the last gate before an effect, and the reason the HTTP
+    # gates alone are not sufficient: an agent reaches these tools without touching a route. Both
+    # the *agent* and the *tool's capability* are re-checked against the plan as it stands **now**,
+    # so a run started while entitled cannot keep acting after a downgrade.
+    denial = await _commercial_denial(session, ctx, tool_name)
+    if denial is not None:
+        reason = denial.error.message if denial.error else "denied"
+        await _audit(session, ctx, f"tool.{tool_name}:denied", {"reason": reason})
+        return denial
 
     # 8. audit intent (log-then-act)
     audit_id = await _audit(session, ctx, f"tool.{tool_name}:intent",

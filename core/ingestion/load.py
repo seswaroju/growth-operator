@@ -25,6 +25,7 @@ from core.catalog.validate import ValidationProblems
 from core.ingestion.service import transition
 from core.ingestion.state import BatchState
 from core.ingestion.storage import default_store
+from core.tenancy.entitlements import CATALOG_INGESTION, assert_entitled
 from core.tenancy.repository import set_org_context
 
 REVERT_WINDOW_DAYS = 30
@@ -39,7 +40,11 @@ async def _mark(session: AsyncSession, batch_id: UUID, seq: int, state: str) -> 
 
 
 async def load_batch(session: AsyncSession, org_id: UUID, batch_id: UUID) -> dict[str, int]:
-    """Load the batch's confirmed rows into the catalog. Returns loaded/skipped/failed counts."""
+    """Load the batch's confirmed rows into the catalog. Returns loaded/skipped/failed counts.
+
+    Gated here as well as on the route: loading is the irreversible step, and the reaper and any
+    future caller reach this function without passing through HTTP."""
+    await assert_entitled(session, org_id, CATALOG_INGESTION)
     await set_org_context(session, org_id)
     batch = (await session.execute(
         text("SELECT created_by FROM import_batches WHERE id = :id AND org_id = :o"),
@@ -80,6 +85,7 @@ async def load_batch(session: AsyncSession, org_id: UUID, batch_id: UUID) -> dic
 
 async def revert_batch(session: AsyncSession, org_id: UUID, batch_id: UUID) -> dict[str, Any]:
     """Undo a load within 30 days: archive this batch's UNMUTATED items; list the mutated ones."""
+    await assert_entitled(session, org_id, CATALOG_INGESTION)
     await set_org_context(session, org_id)
     batch = (await session.execute(
         text("SELECT state, updated_at FROM import_batches WHERE id = :id AND org_id = :o"),

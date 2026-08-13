@@ -20,6 +20,7 @@ from core.audit.writer import write as audit_write
 from core.customers import annotations as crm_annotations
 from core.customers import dpdp, recovery, service
 from core.tenancy.deps import CurrentAuth
+from core.tenancy.entitlements import GHOST_RECOVERY, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE, ORG_MANAGE
 from core.tenancy.rbac import requires
@@ -277,7 +278,9 @@ class RecoveryState(BaseModel):
 
 
 @lead_router.post("/{lead_id}/recovery", response_model=RecoveryState,
-                  summary="Owner override on silent-lead recovery")
+                  summary="Owner override on silent-lead recovery",
+    dependencies=[Depends(requires_feature(GHOST_RECOVERY))],
+)
 async def set_lead_recovery(
     lead_id: UUID,
     body: RecoveryAction,

@@ -1,0 +1,27 @@
+# Execution surfaces for this pack's commercial capabilities (PLAN-5).
+#
+# Declared here rather than in `core/` for the same reason capability definitions are: the platform
+# must not name a vertical. Keys are namespaced to `jewelry.<key>` on load and validated against the
+# canonical catalog, so a surface cannot reference a capability this pack does not own.
+rate_operations:
+  surfaces:
+    - id: service.rates.manual_entry
+      kind: service
+      action: mutation
+      enforcement: assert_entitled inside the service
+      test: test_runtime_enforcement.py::test_manual_rate_gated
+      routes: ["POST /v1/rates/manual"]
+    - id: http.rates.status
+      kind: http
+      action: historical_data_read
+      routes: ["GET /v1/rates/status"]
+      exemption_reason: >-
+        reports rate freshness for the installed pack and performs no rate operation; pricing and
+        quote assistance exist below the top tier and need freshness diagnosable
+        (founder ruling 2026-08-13)
+    - id: job.rate_provider_ingest
+      kind: job
+      action: maintenance
+      exemption_reason: >-
+        platform infrastructure — rate_snapshots is global (no org_id, no RLS), so provider
+        ingestion is not a tenant-specific rate operation and must keep running

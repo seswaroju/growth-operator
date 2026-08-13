@@ -6227,3 +6227,80 @@ survives a rejected assignment unchanged. Seeding — canonical rows moved v1 �
 - Sold plans cannot be renamed — deliberate; copy to change any commercial or display field.
 
 **Commit:** `2ec9743`, merged to `main` as `7c9b998`. **CI:** run 31723212130 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract. **Next recommended action:** founder selects PLAN-5.
+
+
+---
+
+## 2026-08-13 · PLAN-5 — Runtime enforcement + agent reconciliation
+
+**Branch** `feature/plan-5-runtime-enforcement`. Approved architecture plus the founder's
+data-continuity ruling and the landing public-runtime correction.
+
+### Audit finding
+Before this ticket the **entire** enforcement surface was four `requires_feature` gates. Beyond the
+three known gaps, the audit found: **mediation had no entitlement check at all** (an agent could
+`landing_page.publish` for a store without `landing_pages`), `recovery_sweep` processed **every**
+organization, `campaign_fanout` kept sending after a downgrade, and coverage was partial —
+`landing_pages` gated 2 of 13 routes, `campaigns.whatsapp` 2 of 7.
+
+### Files changed
+
+| Path | Type | Reason |
+|---|---|---|
+| `core/tenancy/enforcement.py` | NEW | Per-surface inventory + `validate_inventory()` |
+| `core/tenancy/entitlements.py` | MOD | `assert_entitled`, `is_entitled`, `assert_vertical_entitled`, `assert_agent_executable` |
+| `core/mediation/proxy.py`, `tools.py` | MOD | `TOOL_CAPABILITY`/`TOOL_PLAN_EXEMPT`; agent + tool gate before execute |
+| `core/runtime/executor.py` | MOD | `_drive()` authoritative agent boundary |
+| `core/tenancy/provisioning.py` | MOD | `desired_plan_agents`, `reconcile_plan_agents` (status-preserving) |
+| `core/billing/service.py` | MOD | Reconciliation in `assign_subscription` |
+| `core/landing/{service,leads,api}.py` | MOD | Public-runtime service gates + lifecycle route gates |
+| `core/campaigns/{api,send}.py` | MOD | Analytics/preview gates; fanout halts once |
+| `core/catalog/router.py`, `core/ingestion/{api,load}.py`, `core/pricing/rates.py`, `core/customers/{api,recovery}.py` | MOD | A-matrix gates |
+| `verticals/jewelry/commercial/enforcement.yaml` | NEW | Pack-contributed surfaces (Rule Zero) |
+| `tests/unit/test_enforcement_inventory.py` | NEW | CI guard, 78 tests |
+| `tests/integration/test_runtime_enforcement.py` (35), `test_agent_enforcement.py` (12), `test_landing_public_enforcement.py` (9), `test_job_enforcement.py` (7) | NEW | |
+| `tests/conftest.py` + 12 existing suites | MOD | `entitle_org` helper; fixtures now subscribe their stores |
+| `project-management/*` | MOD | Decisions, blockers #30/#33/#34, backlog, task |
+
+### Database
+**No new migration.** Migration 051 (PLAN-4) is the head; upgrade/downgrade re-verified.
+
+### Commands run
+
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS |
+| `bash scripts/lint.sh` | PASS — 6 guards (industry-nouns fired once on `enforcement.py`; vertical surfaces moved into the pack) |
+| `uv run mypy core` | PASS — 219 files |
+| `uv run pytest tests/unit` | PASS — **813** |
+| `uv run pytest tests/e2e` | PASS — 5 |
+| fresh DB: `isolation + integration + contract` | PASS — **852 passed, 4 skipped, 0 failed** |
+| `alembic downgrade -1` / `upgrade head` / `heads` | PASS |
+| web-ops | **untouched** — backend-only ticket |
+
+### Issues found and fixed during implementation
+- **RLS bug in my own reconciliation:** `desired_plan_agents` returns early when a plan selects no
+  agents, so the org context was never set and the FORCE-RLS "present agents" read came back empty —
+  a downgrade would have looked like a no-op. Caught by its own test; context now set
+  unconditionally.
+- **29 pre-existing tests failed closed** because their fixtures created orgs with no subscription.
+  That is the correct new behaviour; fixtures now entitle their stores via a shared `entitle_org`
+  helper, which also installs the pack (PLAN-2 reports an agent as entitled only with a binding).
+- Two fixtures bound agents to `packs LIMIT 1`, which became order-dependent once more suites
+  created packs; both now bind to a named pack and reuse the UNIQUE `(pack_id, archetype_id)` row.
+- My first inventory guard compared *counts* per prefix and was both fragile and weak; replaced with
+  exact `METHOD /path` binding plus a stale-route check.
+
+### Known issues / disclosed limitations
+- **`insights.business`, `pricing`, `agent.concierge`, `channel.whatsapp`, `seats` are not
+  entitlement-gated** — they are not `runtime_grantable`; RBAC, CP-2b and CP-3 govern them, and a
+  second gate would be a duplicate enforcement system.
+- Fixture tools live under a `test.` namespace exemption registered by the test session; a new
+  fixture tool fails until classified (intended).
+- Frontend is unchanged: an owner UI may still show a control that now returns 403. A capability-
+  aware disable/upgrade hint was scoped out and remains available as a small follow-up.
+- Denial observability is a structured log + audit record per denial; successful checks are not
+  logged (no cheap sink at that volume).
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects the next
+ticket.

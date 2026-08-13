@@ -22,6 +22,7 @@ from core.runtime.executor import resume_run, start_run
 from core.runtime.graph import Deps
 from core.runtime.model import SimulatedModel
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 
 class Boom(Exception):
@@ -111,6 +112,9 @@ async def scene() -> AsyncIterator[Scene]:
             " kpi_defs, tier_defaults) VALUES ($1,$2,'priya','{}'::jsonb,'{}'::jsonb,'{}'::jsonb) "
             "RETURNING id", pack_id, archetype_id,
         )
+        # PLAN-5: entitle the store for the archetype this fixture actually built —
+        # PLAN-2 only reports an agent as entitled when the tenant has its binding.
+        await entitle_org(conn, org, agents=[f"arch_{org.hex[:8]}"])
     finally:
         await conn.close()
     yield Scene(org, binding_id)
@@ -326,6 +330,8 @@ async def test_run_is_tenant_isolated(scene: Scene) -> None:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'B')", other)
+        # PLAN-5: paid execution follows the plan, so the fixture's store is subscribed.
+        await entitle_org(conn, other)
     finally:
         await conn.close()
     try:
