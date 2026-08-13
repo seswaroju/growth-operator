@@ -36,6 +36,7 @@ from core.runtime import planner
 from core.runtime.executor import resume_after_approval, start_run
 from core.runtime.model import ModelResult, ToolCall
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 JEWELRY = Path(__file__).resolve().parents[2] / "verticals" / "jewelry"
 
@@ -115,6 +116,9 @@ async def journey() -> AsyncIterator[Journey]:
             "FROM agent_bindings ab JOIN agent_archetypes ar ON ar.id = ab.archetype_id "
             "WHERE ai.binding_id = ab.id AND ai.org_id = $1 AND ar.slug = 'concierge' "
             "RETURNING ai.id", org)
+        # PLAN-5: a real store is subscribed, and the agent may only act while its plan includes
+        # it — the journey now exercises that boundary end to end.
+        await entitle_org(conn, org)
         # A contact + conversation for the inbound thread.
         channel = await conn.fetchval(
             "INSERT INTO channels (org_id, type, external_id, credentials_ref, status) "

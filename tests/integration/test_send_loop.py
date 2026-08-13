@@ -26,6 +26,7 @@ from core.mediation.tools import _messages_send
 from core.runtime.executor import resume_after_approval, start_run
 from core.runtime.model import ModelResult
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 
 def _dsn() -> str:
@@ -114,6 +115,9 @@ async def scene() -> AsyncIterator[Scene]:
             " permission_manifest, budget_caps) "
             "VALUES ($1,$2,'Priya','active',$3::jsonb,'{}'::jsonb) RETURNING id",
             org, binding, json.dumps(manifest))
+        # PLAN-5: the store must be entitled for the archetype this fixture built —
+        # PLAN-2 reports an agent as entitled only when the tenant has its binding.
+        await entitle_org(conn, org)
         # pack policy: a plain reply is tier 1 (auto-send)
         await conn.execute(
             "INSERT INTO approval_policies (scope, pack_id, action_type, tier, cel_expr, "

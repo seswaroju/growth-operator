@@ -58,6 +58,8 @@ CUSTOMERS = "customers"                # CRM: contacts, leads, timeline
 GHOST_RECOVERY = "ghost_recovery"      # silent-lead diagnosis + recovery (the wedge)
 CAMPAIGNS_WHATSAPP = "campaigns.whatsapp"   # bulk WhatsApp campaigns
 LANDING_PAGES = "landing_pages"             # generated landing pages for paid traffic
+CAMPAIGNS_ANALYTICS = "campaigns.analytics"  # campaign funnel/attribution/ROI computation
+CATALOG_INGESTION = "catalog.ingestion"      # bulk catalog import/load/revert
 
 # Retained so historical imports and stored plan rows keep resolving. None of these grant anything:
 # `resolve_alias` maps them onto their canonical capability, which is then refused below.
@@ -492,3 +494,101 @@ async def resolve(
         ctx=await load_context(session, org_id),
         now=now,
     )
+
+
+# ---- Runtime enforcement primitives (PLAN-5) ---------------------------------------------------
+
+
+async def assert_entitled(session: AsyncSession, org_id: UUID | None, capability: str) -> None:
+    """Raise `FeatureNotInPlan` unless the store currently holds `capability`.
+
+    The service-level counterpart to `requires_feature`. An HTTP dependency is necessary but not
+    sufficient wherever a second caller exists — a worker, a scheduled job, an agent tool or a
+    direct service call — so the authoritative check belongs at the execution boundary those
+    callers share. Both read the same `resolve()`, so there is exactly one entitlement model.
+
+    No caching: promotions expire and downgrades take effect on the very next check.
+    """
+    if org_id is None:
+        raise FeatureNotInPlan(capability)
+    if capability not in (await resolve(session, org_id)).capabilities:
+        raise FeatureNotInPlan(capability)
+
+
+async def is_entitled(session: AsyncSession, org_id: UUID | None, capability: str) -> bool:
+    """Non-raising form, for surfaces that must answer neutrally rather than refuse loudly."""
+    if org_id is None:
+        return False
+    return capability in (await resolve(session, org_id)).capabilities
+
+
+class AgentNotExecutable(Exception):
+    """An agent run may not proceed: the instance is not this store's, its archetype is not in the
+    current plan, or its operational state forbids execution.
+
+    Commercial authority is evaluated **at execution time**, never inherited from the fact that a
+    run already exists. A run may be started while entitled and resumed after a downgrade, so a
+    stale `agent_instances` row must never widen what the plan allows."""
+
+    def __init__(self, reason: str, *, archetype: str | None = None):
+        self.reason = reason
+        self.archetype = archetype
+        super().__init__(f"agent not executable: {reason}")
+
+
+#: Operational states an agent may execute from. `paused` and `circuit_open` are operator/runtime
+#: intent and are honoured independently of commercial entitlement.
+EXECUTABLE_AGENT_STATUS: frozenset[str] = frozenset({"active", "shadow"})
+
+_INSTANCE_SQL = text(
+    "SELECT ai.org_id, ai.status, ar.slug FROM agent_instances ai "
+    "JOIN agent_bindings ab ON ab.id = ai.binding_id "
+    "JOIN agent_archetypes ar ON ar.id = ab.archetype_id WHERE ai.id = :i"
+)
+
+
+async def assert_agent_executable(
+    session: AsyncSession, org_id: UUID, instance_id: UUID
+) -> str:
+    """Authorise one agent execution step. Returns the archetype slug.
+
+    Three independent conditions, in order of what they protect: the instance belongs to this
+    store (isolation), its archetype is in the store's **current** entitlements (commercial
+    authority), and its operational status permits running (operator intent). A commercially
+    removed agent cannot execute even while its row still says `active`.
+    """
+    await set_org_context(session, org_id)
+    row = (await session.execute(_INSTANCE_SQL, {"i": str(instance_id)})).mappings().first()
+    if row is None or row["org_id"] != org_id:
+        raise AgentNotExecutable("unknown or foreign agent instance")
+    slug = str(row["slug"])
+    if slug not in (await resolve(session, org_id)).agents:
+        raise AgentNotExecutable("archetype is not included in the current plan", archetype=slug)
+    if row["status"] not in EXECUTABLE_AGENT_STATUS:
+        raise AgentNotExecutable(f"operational status is {row['status']}", archetype=slug)
+    return slug
+
+
+async def assert_vertical_entitled(
+    session: AsyncSession, org_id: UUID | None, suffix: str
+) -> None:
+    """Require a **pack-contributed** capability named `<pack>.<suffix>`.
+
+    Some platform services are generic in code but sold as a vertical capability — the rate tables
+    are platform-wide, yet the commercial capability that governs writing to them is contributed by
+    a pack. Resolving by suffix lets `core/` gate the action without ever naming a vertical
+    (Rule Zero), and works unchanged for a future pack that contributes the same kind of surface.
+
+    Fails closed: if no installed pack contributes a matching capability, the action is refused.
+    """
+    from core.tenancy.capabilities import catalog
+
+    if org_id is None:
+        raise FeatureNotInPlan(suffix)
+    granted = (await resolve(session, org_id)).capabilities
+    matches = [
+        c.key for c in catalog()
+        if c.vertical is not None and c.key.endswith(f".{suffix}") and c.runtime_grantable
+    ]
+    if not any(key in granted for key in matches):
+        raise FeatureNotInPlan(matches[0] if matches else suffix)

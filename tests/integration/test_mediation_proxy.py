@@ -94,16 +94,58 @@ def _manifest(tools: list[dict], *, budgets: dict | None = None) -> tuple[dict, 
     return m, manifest_mod.manifest_hash(m)
 
 
+#: PLAN-5 gates every tool call on the run's agent being commercially entitled, so the fixture
+#: provisions a real entitled store rather than a bare org — the realistic path these tests mean
+#: to exercise. A fake instance id now (correctly) fails closed.
+ENTITLED = ["conversations", "catalog", "customers", "landing_pages", "campaigns.whatsapp"]
+
+_INSTANCE: dict[str, uuid.UUID] = {}
+
+
 @pytest.fixture()
 async def org() -> AsyncIterator[uuid.UUID]:
     if not await _db_ready():
         pytest.skip("Postgres/audit not ready")
     dbmod.get_engine.cache_clear()
     dbmod.get_sessionmaker.cache_clear()
-    org_id = uuid.uuid4()
+    org_id, plan_id = uuid.uuid4(), uuid.uuid4()
     conn = await asyncpg.connect(_dsn())
+    binding = None
     try:
-        await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'M')", org_id)
+        await conn.execute(
+            "INSERT INTO organizations (id, name, vertical) VALUES ($1,'M','jewelry')", org_id)
+        import json as _json
+        await conn.execute(
+            "INSERT INTO billing_plans (id, name, price_minor, features, config) "
+            "VALUES ($1,$2,1,'[]'::jsonb,$3::jsonb)",
+            plan_id, f"med-{org_id.hex[:8]}",
+            _json.dumps({"entitlement_schema_version": 1, "entitlements": ENTITLED,
+                         "agents": ["concierge"], "channels": ["whatsapp"]}))
+        await conn.execute(
+            "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active')",
+            org_id, plan_id)
+        pack = await conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
+        if pack is None:
+            pack = uuid.uuid4()
+            await conn.execute(
+                "INSERT INTO packs (id, slug, version, platform_api, manifest, bundle_uri, "
+                "signature, status) VALUES ($1,'jewelry','1','1','{}'::jsonb,'x','x','published')",
+                pack)
+        await conn.execute(
+            "INSERT INTO pack_installations (org_id, pack_id, status) VALUES ($1,$2,'active')",
+            org_id, pack)
+        arch = await conn.fetchval("SELECT id FROM agent_archetypes WHERE slug='concierge'")
+        binding = await conn.fetchval(
+            "SELECT id FROM agent_bindings WHERE pack_id=$1 AND archetype_id=$2", pack, arch)
+        if binding is None:
+            binding = await conn.fetchval(
+                "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "
+                "kpi_defs, tier_defaults) VALUES ($1,$2,'P','[]'::jsonb,'[]'::jsonb,'[]'::jsonb) "
+                "RETURNING id", pack, arch)
+        _INSTANCE[str(org_id)] = await conn.fetchval(
+            "INSERT INTO agent_instances (org_id, binding_id, persona_name, status, "
+            "permission_manifest) VALUES ($1,$2,'P','active','{}'::jsonb) RETURNING id",
+            org_id, binding)
     finally:
         await conn.close()
     yield org_id
@@ -112,7 +154,12 @@ async def org() -> AsyncIterator[uuid.UUID]:
         await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM audit_log WHERE org_id=$1", org_id)
         await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
+        await conn.execute("DELETE FROM agent_instances WHERE org_id=$1", org_id)
+        await conn.execute("DELETE FROM pack_installations WHERE org_id=$1", org_id)
+        await conn.execute("DELETE FROM billing_subscriptions WHERE org_id=$1", org_id)
         await conn.execute("DELETE FROM organizations WHERE id=$1", org_id)
+        await conn.execute("DELETE FROM billing_plans WHERE id=$1", plan_id)
+        _INSTANCE.pop(str(org_id), None)
     finally:
         await conn.close()
     await dbmod.get_engine().dispose()
@@ -122,7 +169,7 @@ async def org() -> AsyncIterator[uuid.UUID]:
 
 def _ctx(org_id: uuid.UUID, manifest: dict, digest: str, *, untrusted: bool = False) -> RunContext:
     return RunContext(
-        org_id=org_id, run_id=uuid.uuid4(), instance_id=uuid.uuid4(),
+        org_id=org_id, run_id=uuid.uuid4(), instance_id=_INSTANCE[str(org_id)],
         manifest=manifest, manifest_hash=digest, untrusted=untrusted,
     )
 
@@ -165,11 +212,22 @@ async def test_untrusted_content_narrows_subsequent_tools(org: uuid.UUID) -> Non
         return {"results": []}
 
     reg = {"web_fetch": web, "catalog.search": search}
-    async with org_scoped_session(org) as s:
-        fetched = await proxy.call(ctx, "web_fetch", {}, session=s, redis=redis, registry=reg)
-        narrowed = await proxy.call(ctx, "messages.send", {}, session=s, redis=redis, registry=reg)
-        allowed = await proxy.call(ctx, "catalog.search", {}, session=s, redis=redis, registry=reg)
-        await s.commit()
+    # PLAN-5 fails closed on an unclassified tool, so this fictional one declares itself exactly
+    # as a real tool must. Removing this line makes the proxy refuse it — which is the point.
+    from core.mediation.tools import TOOL_PLAN_EXEMPT
+
+    TOOL_PLAN_EXEMPT["web_fetch"] = "test-only fixture tool; reads external content, no plan grant"
+    try:
+        async with org_scoped_session(org) as s:
+            fetched = await proxy.call(
+                ctx, "web_fetch", {}, session=s, redis=redis, registry=reg)
+            narrowed = await proxy.call(
+                ctx, "messages.send", {}, session=s, redis=redis, registry=reg)
+            allowed = await proxy.call(
+                ctx, "catalog.search", {}, session=s, redis=redis, registry=reg)
+            await s.commit()
+    finally:
+        TOOL_PLAN_EXEMPT.pop("web_fetch", None)
     assert fetched.ok  # the fetch itself is allowed and flags the run untrusted
     assert narrowed.error is not None and narrowed.error.code == "permission_denied_manifest"
     assert allowed.ok  # catalog.search is on the narrowing allow-list
@@ -311,7 +369,7 @@ async def test_landing_publish_parks_until_owner_approval(org: uuid.UUID) -> Non
             _ctx(org, m, h), "landing_page.publish", {"page_id": "x"},
             session=s, redis=redis, registry=reg, tier_eval=lambda c, t, p: 2)
         approved_ctx = RunContext(
-            org_id=org, run_id=uuid.uuid4(), instance_id=uuid.uuid4(),
+            org_id=org, run_id=uuid.uuid4(), instance_id=_INSTANCE[str(org)],
             manifest=m, manifest_hash=h, approved=frozenset({"landing_page.publish"}))
         ran = await proxy.call(
             approved_ctx, "landing_page.publish", {"page_id": "x"},

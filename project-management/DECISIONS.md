@@ -1558,3 +1558,58 @@ lacks it is never mutated; for copy only, the vertical is recovered by **exact `
 lookup** — never by parsing a name or splitting a key.
 
 **Decided by:** Founder (2026-08-13), across two PLAN-4 design-review rounds.
+
+
+---
+
+## 2026-08-13 — Runtime enforcement: entitlement governs execution, not visibility (PLAN-5)
+
+**Decision.** A capability absent from `EffectiveEntitlements` may not be *used* through any
+externally reachable path it governs. It does **not** remove ordinary read access to tenant-owned
+history. Every route was classified by business action — `historical_data_read`, `paid_compute`,
+`mutation`, `external_effect`, `automation`, `maintenance`, `account_privacy` — never by HTTP verb.
+A cancelled store keeps its inbox, customers, catalog, leads, campaigns, landing pages, imports,
+exports and DPDP rights; it simply cannot make the product do more work.
+
+**RBAC and entitlement stay independent.** Both are required; neither substitutes for the other.
+
+**The gate belongs at the execution boundary, not only on the route.** `requires_feature` gives
+early HTTP denial; `assert_entitled` guards services with a second caller (ingestion load/revert,
+manual rate entry), and the **mediation proxy** — the single choke point every agent tool passes
+through — re-checks agent authority *and* the tool's mapped capability before execute. Every
+`REGISTRY` tool must declare `capability_key` or `plan_exempt_reason`, so a new tool cannot become a
+silent ungated path.
+
+**`_drive()` is the authoritative agent boundary.** `start_run`, `resume_run` and
+`resume_after_approval` all converge there, so a run started while entitled cannot continue after a
+downgrade; it ends `interrupted` before any further external effect.
+
+**Operational status is never rewritten because entitlement changed.** `paused`, `shadow`,
+`circuit_open` and `active` record operator/runtime intent. Using `paused` as a commercial-disable
+state would make a manual pause indistinguishable from a commercial removal and silently reactivate
+it on re-upgrade. Commercial authority is derived at execution time instead, which also means a
+delayed or failed reconciliation can never widen authority.
+
+**Desired agents are computed without circularity:** plan selection ∩ known archetypes ∩
+installed-pack binding support. `EffectiveEntitlements.agents` already requires a binding, so it
+cannot discover an agent that needs provisioning.
+
+**Jobs are gated on what they do, not what they touch.** Business processing follows the plan
+(`recovery_sweep`, `campaign_fanout`); cleanup, integrity and platform infrastructure keep running
+after cancellation (import reaper, rate-provider ingestion — `rate_snapshots` is global). A revoked
+campaign is halted **once** through the existing `halted`/`halt_reason` mechanism so the hourly job
+cannot hot-loop; re-entitlement requires a manual resume.
+
+**The public landing runtime is an ongoing paid service.** Serving a page, recording funnel events
+and capturing leads require a current grant, enforced inside the services and denied **neutrally** —
+the same 404/204/no-capture a draft or unknown page produces. Lifecycle status is never rewritten, so
+re-entitlement restores serving automatically.
+
+**No entitlement cache** — promotions expire and downgrades apply on the next check.
+
+**Enforcement completeness is CI-verified.** The inventory models individual surfaces; a capability
+having "at least one gate" is not sufficient (before PLAN-5 `campaigns.whatsapp` had two gated
+routes and five open ones). Every mapped OpenAPI operation must be bound to a surface, and mutation
+tests prove the guard fails when a route or tool appears unclassified.
+
+**Decided by:** Founder (2026-08-13), across two PLAN-5 design-review rounds.

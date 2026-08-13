@@ -9,6 +9,7 @@ dashboard comes from the ``platform_billing_rollup()`` SECURITY DEFINER function
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -18,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.billing import budgets
 from core.tenancy.repository import set_org_context
+
+log = logging.getLogger("core.billing.service")
 
 _PLAN_COLS = ("id, name, price_minor, active, description, features, "
               "max_managers, max_staff, config, created_at")
@@ -129,6 +132,18 @@ async def assign_subscription(
     await session.execute(
         text("INSERT INTO billing_subscriptions (org_id, plan_id) VALUES (:o, :p)"),
         {"o": str(org_id), "p": str(plan_id)})
+
+    # PLAN-5 / BLOCKER #30: align agent instances with the new plan in the **same transaction**,
+    # under the plan-row lock already held above. This is tidy-up, not the security boundary —
+    # `assert_agent_executable` re-checks commercial authority at execution time, so a failure
+    # here cannot leave a downgraded store able to run an agent it no longer owns.
+    from core.tenancy.provisioning import reconcile_plan_agents
+
+    delta = await reconcile_plan_agents(session, org_id, plan_id)
+    if delta["instances_created"] or delta["no_longer_entitled"]:
+        log.info(
+            "plan agent reconciliation org=%s created=%s revoked=%s",
+            org_id, delta["instances_created"], delta["no_longer_entitled"])
 
 
 async def cancel_subscription(session: AsyncSession, org_id: UUID) -> None:

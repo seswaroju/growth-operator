@@ -106,7 +106,9 @@ class Bench:
 
     async def bind_agent(self, org: uuid.UUID, slug: str) -> None:
         arch = await self.conn.fetchval("SELECT id FROM agent_archetypes WHERE slug=$1", slug)
-        pack = await self.conn.fetchval("SELECT id FROM packs LIMIT 1")
+        # Bind to a named pack, never `LIMIT 1`: other suites create packs too, and an
+        # arbitrary pick made this fixture order-dependent.
+        pack = await self.conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
         # (pack_id, archetype_id) is UNIQUE — reuse an existing binding rather than minting one,
         # and only clean up bindings this test actually created.
         binding = await self.conn.fetchval(

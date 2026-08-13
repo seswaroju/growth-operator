@@ -9,31 +9,33 @@ selects and approves the next ticket.
 
 ---
 
-## PLAN-4 · Operator Plan Builder — **Completed — awaiting founder review** (2026-08-13)
+## PLAN-5 · Runtime enforcement + agent reconciliation — **Completed — awaiting founder review** (2026-08-13)
 
-Branch `feature/plan-4-plan-builder`. **Migration 051** (SECURITY DEFINER only).
+Branch `feature/plan-5-runtime-enforcement`. **Migration 051 only** (the PLAN-4 SECDEF; PLAN-5 adds
+no schema).
 
-- **STOP-and-flag resolved:** a sold *custom* plan could be rewritten in place — price, entitlements
-  and seats — for a store with an active subscriber. `SoldPlanImmutable` now locks everything except
-  `active` once **any** subscription of **any** status has referenced a plan.
-- `plan_has_subscription_history(uuid)` (migration 051) — SECURITY DEFINER, boolean-only, fixed
-  `search_path`, REVOKE FROM PUBLIC, EXECUTE to `app_rw`. Requests get the *fact* without the rows;
-  no BYPASSRLS credential enters the API.
-- **Serialization:** every plan mutation and `assign_subscription()` take `SELECT … FOR UPDATE` on
-  the plan row **before** deciding, so a subscriber can never be created and then have the terms
-  rewritten.
-- **`active=false` now actually blocks assignment**, and the target is validated *before* the
-  current subscription is cancelled — a rejected assignment never leaves a store plan-less.
-- `core/billing/plan_builder.py` — catalog-driven selection (registry **and** catalog must agree),
-  vertical scoping, dependency block-save with explicit hints, promotion validation, and a
-  deterministic preview.
-- `compose()` / `ResolutionContext` extracted from PLAN-2's `resolve()` — **behaviour-preserving**;
-  preview runs the resolver's own composition with a *declared* context, so no fake tenant or
-  throwaway subscription is created.
-- `config.vertical` now persisted; **`PRESET_VERSION` 1 → 2**; old canonical snapshots recover their
-  vertical by exact `preset_key` lookup, never string parsing.
+**Before this ticket the entire enforcement surface was four `requires_feature` gates.** The audit
+found three gaps beyond the three known ones: **mediation had no entitlement check at all** (an agent
+could `landing_page.publish` for a store that never bought landing pages), `recovery_sweep` processed
+**every** organization, and `campaign_fanout` kept sending after a downgrade.
 
-**PLAN-5 still owns runtime enforcement** — `/v1/imports`, `/v1/rates`, `campaigns.analytics`, and
-the **P0** plan-reassignment agent reconciliation (#30).
+- `core/tenancy/entitlements.py` — `assert_entitled`, `is_entitled`, `assert_vertical_entitled`,
+  `assert_agent_executable`.
+- `core/tenancy/enforcement.py` (NEW) — per-surface inventory; every sellable capability's surfaces
+  are enforced-with-a-named-test or explicitly exempt. `missing`/`unknown` are not expressible.
+- `core/mediation/{proxy,tools}.py` — every tool declares `TOOL_CAPABILITY` or
+  `TOOL_PLAN_EXEMPT`; the proxy re-checks **agent authority and tool capability** before execute.
+- `core/runtime/executor.py` — `_drive()` is the authoritative boundary, so `start_run`,
+  `resume_run` and `resume_after_approval` all converge on it; a downgraded run ends `interrupted`.
+- Landing public runtime (`published_spec`, `record_public_event`, `capture_lead`) gated **inside
+  the services**, denying neutrally — 404/204/no-capture, never disclosing billing state.
+- `reconcile_plan_agents` **never rewrites operational status**; a manual pause survives a
+  downgrade→upgrade cycle. Commercial authority is evaluated at execution time instead.
+- Jobs classified: `recovery_sweep` and `campaign_fanout` gated (the latter halts once with
+  `halt_reason="entitlement_revoked"`); the import reaper and rate-provider ingestion stay exempt as
+  cleanup/platform infrastructure.
 
-**Do not start PLAN-5 automatically — the founder selects the next ticket.**
+**Historical data continuity:** a cancelled store still reads conversations, customers, catalog,
+leads, campaigns, landing pages, imports, approvals and rate freshness — and can execute nothing.
+
+**Do not start the next ticket automatically — the founder selects it.**

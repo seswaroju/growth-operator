@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.events.outbox import emit
+from core.tenancy.entitlements import GHOST_RECOVERY, is_entitled
 from core.tenancy.middleware import org_scoped_session
 from core.tenancy.settings import resolve
 
@@ -163,6 +164,11 @@ async def run_recovery_sweep() -> None:
     for org_id in org_ids:
         try:
             async with org_scoped_session(org_id) as s:
+                # PLAN-5: ghost recovery is business processing, so it follows the plan. A store
+                # without the capability is skipped silently — its existing lead history stays
+                # readable, it simply stops being processed.
+                if not await is_entitled(s, org_id, GHOST_RECOVERY):
+                    continue
                 counts = await sweep_org(s, org_id)
                 await s.commit()
             if counts.get(GHOST) or counts.get(SHOP_STOPPED_REPLYING):

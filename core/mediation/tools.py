@@ -154,6 +154,29 @@ def _not_wired(name: str) -> ToolImpl:
     return _impl
 
 
+#: Commercial classification for every tool (PLAN-5). A tool either names the capability that must
+#: be in the store's current plan, or records why it needs none. The CI guard refuses a REGISTRY
+#: entry missing from this map, so a new tool cannot quietly become an ungated execution path —
+#: "hidden tool" has never meant "inaccessible capability".
+TOOL_CAPABILITY: dict[str, str] = {
+    "catalog.search": "catalog",
+    # quoting is catalog-grounded; `pricing` itself is RBAC-governed, never a second gate
+    "pricing.compute": "catalog",
+    "messages.send": "conversations",
+    "landing_page.generate": "landing_pages",
+    "landing_page.publish": "landing_pages",
+}
+
+#: Tools that legitimately need no plan grant, with the reason recorded for review.
+TOOL_PLAN_EXEMPT: dict[str, str] = {
+    "ledger.read": "reads the quote ledger backing a figure already shown — diagnostic, not paid "
+                   "computation, and needed to explain past activity after cancellation",
+    "calendar.book": "not wired — raises provider_unavailable before any effect",
+    "crm.read": "not wired — raises provider_unavailable before any effect",
+    "crm.write": "not wired — raises provider_unavailable before any effect",
+}
+
+
 REGISTRY: dict[str, ToolImpl] = {
     "catalog.search": _catalog_search,
     "pricing.compute": _pricing_compute,

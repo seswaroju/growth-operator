@@ -19,6 +19,7 @@ from core.common import db as dbmod
 from core.common.config import get_settings
 from core.ingestion import extract_csv, load, review, service
 from core.tenancy.middleware import org_scoped_session
+from tests.conftest import entitle_org
 
 
 def _dsn() -> str:
@@ -52,6 +53,8 @@ async def scene() -> AsyncIterator[Scene]:
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'Loader')", org)
+        # PLAN-5: paid execution follows the plan, so the fixture's store is subscribed.
+        await entitle_org(conn, org)
         pack_id = await conn.fetchval(
             "INSERT INTO packs (slug, version, platform_api, manifest, bundle_uri, signature, "
             "status) VALUES ($1,'1','>=1','{}'::jsonb,'u','s','published') RETURNING id",

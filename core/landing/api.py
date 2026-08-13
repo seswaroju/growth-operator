@@ -253,6 +253,7 @@ async def preview_version(
 
 
 @router.get("/pages/{page_id}/insights", response_model=PageInsights,
+            dependencies=[Depends(requires_feature(LANDING_PAGES))],
             summary="Which items are most wanted + funnel counts for a page (owner)")
 async def get_insights(
     page_id: UUID,
@@ -367,6 +368,7 @@ def _status_or_404(page_id: UUID, new_status: str | None) -> LandingStatus:
 
 
 @router.post("/pages/{page_id}/select", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Owner approves + selects one candidate variant — HITL gate #1 (owner)")
 async def select_page_variant(
     page_id: UUID,
@@ -385,6 +387,7 @@ async def select_page_variant(
 
 
 @router.post("/pages/{page_id}/submit", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Submit a page for approval (owner)")
 async def submit_page(
     page_id: UUID,
@@ -402,6 +405,7 @@ async def submit_page(
 
 
 @router.post("/pages/{page_id}/publish", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Publish an approved page — mark + record (live serving is LP-3a) (owner)")
 async def publish_page(
     page_id: UUID,
@@ -418,6 +422,7 @@ async def publish_page(
 
 
 @router.post("/pages/{page_id}/pause", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Pause a published page (owner)")
 async def pause_page(
     page_id: UUID,
@@ -434,6 +439,7 @@ async def pause_page(
 
 
 @router.post("/pages/{page_id}/rollback", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Roll the current version back to an earlier candidate → approved (owner)")
 async def rollback_page(
     page_id: UUID,
@@ -452,6 +458,7 @@ async def rollback_page(
 
 
 @router.post("/pages/{page_id}/archive", response_model=LandingStatus,
+             dependencies=[Depends(requires_feature(LANDING_PAGES))],
              summary="Archive a page (owner)")
 async def archive_page(
     page_id: UUID,

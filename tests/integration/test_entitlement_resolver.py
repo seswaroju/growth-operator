@@ -84,17 +84,25 @@ class World:
     async def bind_agent(self, org: uuid.UUID, slug: str, status: str = "active") -> None:
         """Give the org an agent instance for `slug` — the tenant/pack support signal."""
         arch = await self.conn.fetchval("SELECT id FROM agent_archetypes WHERE slug=$1", slug)
-        pack = await self.conn.fetchval("SELECT id FROM packs LIMIT 1")
+        # Bind to a named pack, never `LIMIT 1`: other suites create packs too, and an
+        # arbitrary pick made this fixture order-dependent.
+        pack = await self.conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
         if pack is None:
             pack = uuid.uuid4()
             await self.conn.execute(
                 "INSERT INTO packs (id, slug, version, platform_api, manifest, bundle_uri, "
-                "signature, status) VALUES ($1,'t','1','1','{}'::jsonb,'x','x','published')", pack)
+                "signature, status) VALUES ($1,'jewelry','1','1','{}'::jsonb,'x','x',"
+                "'published')", pack)
+        # (pack_id, archetype_id) is UNIQUE — reuse rather than mint, and only clean up what this
+        # test actually created.
         binding = await self.conn.fetchval(
-            "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "
-            "kpi_defs, tier_defaults) VALUES ($1,$2,'P','[]'::jsonb,'[]'::jsonb,'[]'::jsonb) "
-            "RETURNING id", pack, arch)
-        self.bindings.append(binding)
+            "SELECT id FROM agent_bindings WHERE pack_id=$1 AND archetype_id=$2", pack, arch)
+        if binding is None:
+            binding = await self.conn.fetchval(
+                "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "
+                "kpi_defs, tier_defaults) VALUES ($1,$2,'P','[]'::jsonb,'[]'::jsonb,'[]'::jsonb) "
+                "RETURNING id", pack, arch)
+            self.bindings.append(binding)
         await self.conn.execute(
             "INSERT INTO agent_instances (org_id, binding_id, persona_name, status, "
             "permission_manifest) VALUES ($1,$2,'P',$3,'{}'::jsonb)", org, binding, status)

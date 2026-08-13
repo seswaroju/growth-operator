@@ -81,7 +81,7 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   the existing channel registry; "all channels" saves an explicit snapshot, never `"*"`.
 
 - **PLAN-5 — Runtime enforcement extension + explicit inventory of remaining ungated capabilities**
-  · **NEXT (founder selects)**
+  · **DONE (2026-08-13)**
   **P0 — plan-change agent drift.** `assign_subscription()` swaps the subscription but never
   reconciles `agent_instances`; `activate_plan_agents()` runs only on the provisioning path. A
   downgrade therefore leaves a previously-activated agent running. **Plan reassignment must

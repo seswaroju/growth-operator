@@ -17,7 +17,11 @@ from core.campaigns import attribution, audience, producer, service
 from core.campaigns import send as campaign_send
 from core.insights import reports
 from core.tenancy.deps import CurrentAuth
-from core.tenancy.entitlements import CAMPAIGNS_WHATSAPP, requires_feature
+from core.tenancy.entitlements import (
+    CAMPAIGNS_ANALYTICS,
+    CAMPAIGNS_WHATSAPP,
+    requires_feature,
+)
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
 from core.tenancy.rbac import requires
@@ -126,6 +130,7 @@ class AudiencePreviewOut(BaseModel):
 
 # Declared BEFORE `/{campaign_id}` so the literal path isn't captured as a campaign id.
 @router.get("/audience-preview", response_model=AudiencePreviewOut,
+            dependencies=[Depends(requires_feature(CAMPAIGNS_WHATSAPP))],
             summary="How many contacts a broadcast would reach right now (typed-count preview)")
 async def audience_preview(
     current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
@@ -191,6 +196,7 @@ class CampaignAnalyticsOut(BaseModel):
 
 
 @router.get("/{campaign_id}/analytics", response_model=CampaignAnalyticsOut,
+            dependencies=[Depends(requires_feature(CAMPAIGNS_ANALYTICS))],
             summary="Campaign funnel + attribution + why (did it work?)")
 async def campaign_analytics(
     campaign_id: UUID,
@@ -226,6 +232,7 @@ class GeneratedReportOut(BaseModel):
 
 
 @router.post("/{campaign_id}/report", response_model=GeneratedReportOut,
+             dependencies=[Depends(requires_feature(CAMPAIGNS_ANALYTICS))],
              status_code=status.HTTP_201_CREATED,
              summary="Analyse a campaign and store a layered insight record")
 async def generate_report(
