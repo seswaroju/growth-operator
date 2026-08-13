@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit.taxonomy import ACTOR_USER, LEAD_RECOVERY_SET
@@ -24,6 +25,7 @@ from core.tenancy.entitlements import GHOST_RECOVERY, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CUSTOMERS_READ, CUSTOMERS_WRITE, ORG_MANAGE
 from core.tenancy.rbac import requires
+from core.tenancy.repository import set_org_context
 
 router = APIRouter(prefix="/v1/customers", tags=["customers"])
 # GHOST-1c: lead-level owner controls live under /v1/leads (the pipeline's own namespace).
@@ -303,3 +305,71 @@ async def set_lead_recovery(
         action=LEAD_RECOVERY_SET, resource=str(lead_id),
         payload={"action": body.action, "state": result["recovery_state"]}))
     return RecoveryState(lead_id=lead_id, **result)
+
+
+# ---- PILOT-1C: what recovery actually did ---------------------------------------------------
+
+class RecoveryAttemptOut(BaseModel):
+    """One recovery of one silence episode, as the owner sees it.
+
+    `sent`, `delivered` and `replied` are three separate timestamps rather than one status, because
+    they are three different claims and only some of them are ours to make. A message we handed to
+    the provider is `sent`; it becomes `delivered` only when the provider says so."""
+
+    id: UUID
+    lead_id: UUID
+    status: str
+    selected_reason: str | None = None
+    owner_handled: bool = False
+    failure_reason: str | None = None
+    started_at: datetime
+    sent_at: datetime | None = None
+    delivered_at: datetime | None = None
+    replied_at: datetime | None = None
+
+
+class RecoverySummary(BaseModel):
+    """Counts, stated exactly as far as the evidence goes.
+
+    `blocked` and `failed` are reported alongside the successes on purpose: a store that sees only
+    wins cannot tell the difference between "nothing needed doing" and "we refused 40 sends and
+    never mentioned it"."""
+
+    sent: int = 0
+    delivered: int = 0
+    replied: int = 0
+    blocked: int = 0
+    failed: int = 0
+    delivery_unknown: int = 0
+    owner_handled: int = 0
+
+
+@lead_router.get("/recovery/summary", response_model=RecoverySummary,
+                 summary="Recovery outcome counts",
+                 dependencies=[Depends(requires_feature(GHOST_RECOVERY))])
+async def recovery_summary(
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> RecoverySummary:
+    from core.customers import recovery_attempts
+
+    return RecoverySummary(**await recovery_attempts.summary(session, _require_org(current)))
+
+
+@lead_router.get("/recovery/attempts", response_model=list[RecoveryAttemptOut],
+                 summary="Recent recovery attempts",
+                 dependencies=[Depends(requires_feature(GHOST_RECOVERY))])
+async def recovery_attempt_list(
+    limit: int = 50,
+    current: CurrentAuth = Depends(requires(CUSTOMERS_READ)),
+    session: AsyncSession = Depends(get_db),
+) -> list[RecoveryAttemptOut]:
+    org_id = _require_org(current)
+    await set_org_context(session, org_id)
+    rows = (await session.execute(
+        text("SELECT id, lead_id, status, selected_reason, owner_handled, failure_reason, "
+             "       started_at, sent_at, delivered_at, replied_at "
+             "FROM recovery_attempts WHERE org_id = :o "
+             "ORDER BY started_at DESC LIMIT :n"),
+        {"o": str(org_id), "n": max(1, min(limit, 200))})).mappings().all()
+    return [RecoveryAttemptOut(**dict(r)) for r in rows]

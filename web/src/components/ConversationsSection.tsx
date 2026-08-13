@@ -13,6 +13,7 @@ import {
 import { useAuth } from "../auth";
 import { isFromStore, preview, senderLabel } from "../lib/conversations";
 import { groupByStage, LEAD_STAGES, STAGE_LABEL, STAGE_STYLE } from "../lib/leads";
+import { RecoveryPanel } from "./RecoveryPanel";
 import { tagClasses } from "../lib/ui";
 import { Grid, MessageCircle } from "./icons";
 import { Card, EmptyState, PageHeader } from "./ui";
@@ -254,7 +255,14 @@ function PipelineView({ token }: { token: string }) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="flex flex-col gap-6">
+      {/* PILOT-1C: the pipeline shows who is where; this shows what we did about the ones who
+          went quiet, and what came of it. */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-ink">Silent-lead recovery</h3>
+        <RecoveryPanel token={token} />
+      </section>
+      <div className="overflow-x-auto">
       <div className="flex gap-3" style={{ minWidth: "min-content" }}>
         {LEAD_STAGES.map((stage) => (
           <div key={stage} className="w-56 shrink-0 rounded-2xl bg-line-2/60 p-3">
@@ -272,6 +280,7 @@ function PipelineView({ token }: { token: string }) {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

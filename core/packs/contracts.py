@@ -126,6 +126,32 @@ class BindingsPack(_Strict):
     planner: dict[str, Any] | None = None  # planner config is freeform (frequency cap, digest)
 
 
+# --- Classification taxonomy (agents/<name>_reasons.yaml) ------------------------------
+
+
+class TaxonomyReason(_Strict):
+    """One permitted answer a classification task may return."""
+
+    id: str
+    action_id: str
+    label: str
+    description: str = ""
+
+
+class ReasonTaxonomy(_Strict):
+    """The **closed** answer set for a pack classification task (PILOT-1C).
+
+    A contract rather than a free-form file because this set is a security boundary, not
+    configuration: the platform accepts a model's classification only if it appears here. A typo
+    that silently produced an empty set would turn every diagnosis into an abstention, and a
+    duplicate id would make the owner's label ambiguous — both are caught at parse time.
+    """
+
+    version: int = 1
+    reasons: list[TaxonomyReason]
+    abstain: TaxonomyReason
+
+
 # --- Catalog schema (catalog/schema.json) ----------------------------------------------
 
 

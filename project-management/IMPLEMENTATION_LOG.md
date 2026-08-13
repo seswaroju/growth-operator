@@ -6366,3 +6366,80 @@ integration/test_models_admin}.py`.
 - Qwen, Gemini, Mistral, xAI not integrated; adding a compatible vendor is a registry change.
 
 **Commit:** `b26d9d9`, merged to `main` as `c6f5063`; docstring fix `0783315`; gitleaks allowlist `cbde70c`. **CI:** run 31737504511 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract, secret-scan. **Next recommended action:** founder selects the next ticket (PILOT-1A/1C are unblocked and parallel).
+
+---
+
+## 2026-08-13 · PILOT-1C — Complete ghost-recovery vertical slice
+
+**Branch** `feature/pilot-1c-ghost-recovery` · **Migration** 053 (`05ee829beb92`)
+
+### Approved plan
+33-section founder authorization: generic `tool_call` primitive, tool approval park/resume, static
+`lead.went_silent.v1` consumer, grounded recovery context, stage correction, `nurture/ghost_diagnosis`
+prompt binding, structured diagnosis validated against a pack taxonomy, deterministic approved
+template, `recovery_attempts` lifecycle with honest touch/delivery semantics, reply correlation,
+owner UI, enforcement inventory, 44 load-bearing tests. §1-5 carried a critical correction: send
+idempotency must be a durable pre-dispatch claim, not a post-hoc uniqueness check.
+
+### What was actually broken (found during implementation)
+1. **No workflow step could send.** v4 of the playbook diagnosed, gated on the owner, composed copy,
+   then waited 96h for a reply to a message that was never sent. It could report success having done
+   nothing.
+2. **Four conflicting definitions of marketing consent.** Guard accepted only `explicit`; send gate
+   only `{opted_in, granted}`; campaign audience the same pair in raw SQL; landing capture wrote
+   `explicit`. Broken in both directions and invisible until a send failed.
+3. **The nurture agent's only send constraint enforced nothing.** Written as a bare list, silently
+   dropped by the validator, and naming a parameter `messages.send` never receives.
+4. **Delivery statuses were discarded** ("nothing to route"), making `delivered` unreachable.
+5. **`touch_cap` counted the shop's own replies**, so an attentive store exhausted its recovery
+   allowance by being attentive.
+6. **`ENGAGED_STAGES` named two stages the database does not permit**, so two thirds selected nothing.
+7. **The recovery template claimed "fresh designs just arrived"** — a fabricated stock claim made in
+   the merchant's name to their own customer.
+
+### Files
+Created: `core/customers/consent.py`, `recovery_attempts.py`, `recovery_context.py`,
+`recovery_consumer.py` · `core/runtime/internal_workers.py`, `diagnosis.py` ·
+`core/workflows/tool_step.py`, `diagnose_step.py` · `web/src/lib/recovery.ts`,
+`web/src/components/RecoveryPanel.tsx` · `verticals/jewelry/agents/ghost_reasons.yaml` ·
+migration `05ee829beb92`.
+Modified: workflow `schema/parser/program/executor/consumer/guards`, `core/mediation/proxy.py` +
+`tools.py`, `core/channels/whatsapp/{send,meta_client,normalizer,templates}`, `core/customers/api.py`
++ `recovery.py`, `core/tenancy/{entitlements,enforcement}.py`, `core/packs/contracts.py`,
+`core/worker.py`, `core/campaigns/audience.py`, `core/landing/leads.py`, jewelry pack bindings /
+templates / prompts / workflow / install.yaml, kirana bindings, `web/src/api.ts`,
+`ConversationsSection.tsx`.
+
+### Database
+`recovery_attempts` (FORCE RLS verified `(True, True)`), partial unique index
+`uq_recovery_attempts_episode_sent` (one provider-accepted send per silence episode),
+`messages.idempotency_key` + `uq_messages_idempotency` (durable pre-dispatch claim),
+`messages.recovery_attempt_id`, `agent_runs.worker_*` provenance. Downgrade and re-upgrade verified;
+single head `05ee829beb92`.
+
+### APIs
+`GET /v1/leads/recovery/summary`, `GET /v1/leads/recovery/attempts` — both `requires_feature
+(ghost_recovery)` + `CUSTOMERS_READ`, both bound in the PLAN-5 enforcement inventory. New executor
+surface `executor.workflow.tool_call`.
+
+### Events
+New consumer groups: `recovery-silent-lead` (`lead.went_silent.v1`), `recovery-outcome`
+(`msg.received.v1`), `workflow-tool-call` (`approval.resolved.v1`). No event contract changed; the
+silent-lead payload is enriched at consumption, not in the event.
+
+### Commands run
+`uv run ruff check .` PASS · `uv run mypy core` PASS (234 files) · `uv run mypy migrations` PASS ·
+`uv run python scripts/guards.py` PASS · `uv run pytest` **1838 passed, 4 skipped, 3 failed** ·
+`uv run alembic downgrade -1 && upgrade head` PASS · `npm run lint` PASS (2 pre-existing warnings) ·
+`npx tsc -b --noEmit` PASS · `npm run build` PASS · `npx vitest run src/lib/recovery.test.ts` PASS.
+
+### Known issues
+* 3 `tests/integration/test_rate_ingestion.py` failures are **pre-existing on `main`** (verified by
+  checking out main and re-running); unrelated to this ticket.
+* `negotiating` cannot be a recovery stage until the CRM allows it — founder decision required.
+* Not physically proven: a real message reaching a real phone. Requires Meta credentials and
+  founder-approved external send (CLAUDE.md §10.4).
+
+### Next recommended action
+Founder review. If accepted, the remaining pilot gap is a controlled live send against a
+founder-owned test number, which is an explicit approval, not a ticket.

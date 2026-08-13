@@ -27,6 +27,7 @@ from core.packs.contracts import (
     OnboardingPack,
     PackManifest,
     PricingStrategyDef,
+    ReasonTaxonomy,
     UiPack,
     WorkflowDef,
 )
@@ -50,6 +51,10 @@ def _validator_for(path: Path) -> Callable[[dict], BaseModel] | None:
     if rel == "pack.yaml":
         return PackManifest.model_validate
     if parent == "agents":
+        # A pack may declare classification taxonomies alongside its bindings; they are a different
+        # contract, and validating them as bindings would reject a perfectly valid pack.
+        if rel.endswith("_reasons.yaml"):
+            return ReasonTaxonomy.model_validate
         return BindingsPack.model_validate
     if parent == "catalog":
         return CatalogSchema.from_document

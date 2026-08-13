@@ -443,3 +443,34 @@ guard with a mutation test, so a future tool cannot re-open this path.
 unsubscribed and cancelled stores still received ghost-recovery business processing. It now skips
 orgs without `ghost_recovery`; their existing lead history stays readable per the data-continuity
 ruling.
+
+## #35 — `negotiating` is not a lead stage the CRM can store (OPEN — founder decision)
+
+**Opened** 2026-08-13 (PILOT-1C). Recovery was to trigger on `quoted` **and** `negotiating`, but
+`leads.stage` permits only `new / qualified / quoted / visit_booked / won / lost`. `ENGAGED_STAGES`
+had named `negotiating` and `contacted` since GHOST-1b; neither exists, so two of the three entries
+selected nothing and the sweep only ever matched `quoted`. It now names only `quoted` — the truth of
+what ran — with a unit test asserting every entry against the migration's CHECK constraint.
+
+Adding `negotiating` means a CRM stage change (migration + pipeline UI + stage-transition rules),
+which is outside this ticket. **Decision needed:** add the stage, or leave recovery on `quoted`.
+
+## #36 — Three `test_rate_ingestion` failures pre-date PILOT-1C (OPEN — unowned)
+
+**Opened** 2026-08-13. `test_fetch_writes_snapshot_and_publishes_updated`,
+`test_out_of_bounds_quarantined_no_snapshot_and_alert` and `test_manual_entry_writes_snapshot_and_audits`
+fail with `snapshot_count() == 0`. Verified pre-existing by checking out `main` and re-running: they
+fail there identically, so they are not caused by this ticket. Not investigated — doing so would
+have been unrelated work inside an authorized ticket. Needs its own ticket.
+
+## #37 — A real message has never physically reached a phone (OPEN — needs founder approval)
+
+**Opened** 2026-08-13 (PILOT-1C). The recovery slice is proven end to end against real Postgres up
+to the provider boundary: gates, guards, RLS, the durable dispatch claim, the lifecycle and the
+reply correlation all run against the database. What has **not** happened is an actual WhatsApp
+message being delivered to a real handset, because that requires Meta credentials and a real
+external side effect, which CLAUDE.md §10.4 reserves to the founder.
+
+This is the difference between **code-complete** and **live-proven**, and it should not be described
+either way by accident. Closing it needs an explicit, founder-approved send to a founder-owned test
+number — not a code change.

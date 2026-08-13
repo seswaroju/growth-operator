@@ -342,7 +342,11 @@ def test_jewelry_pack_seed_manifest_is_valid() -> None:
     )
     assert data["namespace"] == "jewelry_v2"
     keys = {t["template_key"] for t in data["templates"]}
-    assert keys == {"approval", "reactivation", "festival", "visit_reminder", "holding"}
+    # PILOT-1C adds `pilot_recovery_check_in`, the template the recovery playbook actually sends.
+    # `reactivation` stays declared (existing installs resolve it) but is no longer used for
+    # recovery: it claims new stock arrived, which no store can guarantee on any given day.
+    assert keys == {"approval", "pilot_recovery_check_in", "reactivation", "festival",
+                    "visit_reminder", "holding"}
     for t in data["templates"]:
         assert t["language"] and t["category"] in {"MARKETING", "UTILITY", "AUTHENTICATION"}
         assert t["body"].strip()

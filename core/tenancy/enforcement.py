@@ -143,9 +143,26 @@ INVENTORY: tuple[CapabilityEnforcement, ...] = (
         _gate("http.leads.recovery", "http", "automation",
               "requires_feature", "test_runtime_enforcement.py::test_recovery_override_gated",
               "POST /v1/leads/{lead_id}/recovery"),
+        # PILOT-1C outcome reads. Gated rather than exempted as "own records": these are not the
+        # store's own historical facts, they are the *result of paid automation*. A cancelled store
+        # keeps its leads and conversations; it does not keep a live report on work we are no
+        # longer doing for it.
+        _gate("http.leads.recovery_summary", "http", "automation",
+              "requires_feature", "test_recovery_api.py::test_recovery_reads_require_the_plan",
+              "GET /v1/leads/recovery/summary"),
+        _gate("http.leads.recovery_attempts", "http", "automation",
+              "requires_feature", "test_recovery_api.py::test_recovery_reads_require_the_plan",
+              "GET /v1/leads/recovery/attempts"),
         _gate("job.recovery_sweep", "job", "automation",
               "assert_entitled per org",
               "test_job_enforcement.py::test_recovery_sweep_skips_unentitled_org"),
+        # PILOT-1C. The workflow step that causes the external effect. Its principal is resolved
+        # from the run's persisted pack-workflow identity, then re-verified at the moment of
+        # effect — an approval that sits in the queue across a downgrade resumes into a refusal,
+        # not a send.
+        _gate("executor.workflow.tool_call", "executor", "automation",
+              "tool_step.resolve_principal → assert_entitled + assert_agent_executable(worker=)",
+              "test_tool_call_authority.py::test_tool_call_refused_when_capability_removed"),
     )),
     CapabilityEnforcement("campaigns.whatsapp", (
         _exempt("http.campaigns.list", "http", "historical_data_read", _OWN_RECORDS,
