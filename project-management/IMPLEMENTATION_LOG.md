@@ -5791,7 +5791,8 @@ the preview frame is fully sandboxed; guards (incl. industry-nouns over `web/src
 `mypy core` (**212**) · `guards.py` (**0**) · `pytest tests/unit` (**578**) · fresh-DB
 integration+isolation (**676**).
 
-**Commit hash:** _pending — awaiting commit._
+**Commit hash:** `1bba129` (merge `641e997`). Pushed to `main`; **GitHub CI green** (all 6 jobs:
+lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** GHOST-1d (owner recovery controls + the "N customers are waiting on your reply"
 notification), then LP-4b (asset upload → auto-generate variants → notify).

@@ -9,7 +9,7 @@ selects and approves the next ticket.
 
 ---
 
-## LP-4a · Owner console: landing pages + "captured from" — **COMPLETE — awaiting founder review** (2026-08-12)
+## LP-4a · Owner console: landing pages + "captured from" — **COMPLETE — merged `641e997`, CI green** (2026-08-12)
 
 Branch `feature/lp-4a-owner-landing-ui`. The first ticket that makes today's landing/lead backend
 **visible on screen** for the store owner. Frontend-only (no migration, no API change).
