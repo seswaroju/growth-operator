@@ -5757,3 +5757,41 @@ lint · secret-scan · test · migrate · isolation+integration · evals).
 
 **Next action:** LP-4a (owner web console: landing pages + variants + "captured from" column + the
 recovery controls and the "N customers are waiting on your reply" notification).
+
+---
+
+## 2026-08-12 — LP-4a · Owner console: landing pages + "captured from"
+
+**Ticket:** LP-4a (founder: "Yeah let's do LP-4a"). Makes the landing-page capability and LEAD-1
+attribution visible to the store owner. **Frontend-only** — no migration, no API change; every
+endpoint it calls already shipped in LP-1…LP-3b / LEAD-1.
+
+**Files created:** `web/src/components/LandingPagesSection.tsx`, `web/src/lib/landing.ts`,
+`web/src/lib/landing.test.ts` (7).
+**Files modified:** `web/src/api.ts` (`Lead` gains the LEAD-1 attribution fields, `source` nullable;
+landing client: list/detail/variants/insights/preview/select/publish/pause),
+`web/src/components/ConversationsSection.tsx` (lead card renders `captured_from`),
+`web/src/router.tsx` + `web/src/lib/roles.ts` (`/landing` route + nav, `campaigns:read`),
+`web/src/lib/roles.test.ts` + `web/src/lib/leads.test.ts` (drift-guard fixtures), tracking docs.
+
+**Behaviour:** pages list → detail → three variant cards with **live previews** → **"Use this one"**
+(the HITL #1 selection) → Publish/Pause/Archive offered per the server's transition map → a
+"What visitors did" panel showing the **Most wanted** items from the LP-1b per-item ranking. The
+pipeline's lead card now shows the uniform **"captured from"** string for every origin.
+
+**Design note:** the preview endpoint is auth-gated, and an `<iframe src>` cannot send a Bearer
+header — so the HTML is fetched authed and rendered with **`<iframe srcDoc sandbox="">`**. That keeps
+authentication intact and sandboxes the candidate page away from the console.
+
+**Migration/APIs/Events:** none. **Security:** no new surface; nav + route gated on `campaigns:read`;
+the preview frame is fully sandboxed; guards (incl. industry-nouns over `web/src`) pass.
+
+**Commands / gate (all green):** web `tsc -b --noEmit` · `npm run lint` (2 pre-existing warnings) ·
+`vitest` (**76**, +7) · `npm run build` · backend unchanged and re-verified: `ruff check .` ·
+`mypy core` (**212**) · `guards.py` (**0**) · `pytest tests/unit` (**578**) · fresh-DB
+integration+isolation (**676**).
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** GHOST-1d (owner recovery controls + the "N customers are waiting on your reply"
+notification), then LP-4b (asset upload → auto-generate variants → notify).

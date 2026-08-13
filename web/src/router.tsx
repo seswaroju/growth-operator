@@ -6,6 +6,7 @@ import ApprovalsSection from "./components/ApprovalsSection";
 import ConversationsSection from "./components/ConversationsSection";
 import CatalogSection from "./components/CatalogSection";
 import CampaignsSection from "./components/CampaignsSection";
+import LandingPagesSection from "./components/LandingPagesSection";
 import CustomersSection from "./components/CustomersSection";
 import WorkflowsSection from "./components/WorkflowsSection";
 import InsightsSection from "./components/InsightsSection";
@@ -22,6 +23,8 @@ const approvalsRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/approvals", component: ApprovalsSection });
 const conversationsRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/conversations", component: ConversationsSection });
+const landingRoute = createRoute({
+  getParentRoute: () => rootRoute, path: "/landing", component: LandingPagesSection });
 const catalogRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/catalog", component: CatalogSection });
 const customersRoute = createRoute({
@@ -40,6 +43,7 @@ const settingsRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/settings", component: SettingsSection });
 
 const routeTree = rootRoute.addChildren([
+  landingRoute,
   homeRoute, approvalsRoute, conversationsRoute, catalogRoute,
   customersRoute, campaignsRoute, workflowsRoute, insightsRoute, supportRoute, teamRoute,
   settingsRoute,

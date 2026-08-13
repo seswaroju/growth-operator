@@ -9,6 +9,32 @@ selects and approves the next ticket.
 
 ---
 
+## LP-4a · Owner console: landing pages + "captured from" — **COMPLETE — awaiting founder review** (2026-08-12)
+
+Branch `feature/lp-4a-owner-landing-ui`. The first ticket that makes today's landing/lead backend
+**visible on screen** for the store owner. Frontend-only (no migration, no API change).
+
+- `web/src/components/LandingPagesSection.tsx` (NEW) — pages list with status chips → open a page →
+  **three variant cards, each with a live preview**, **"Use this one"** (HITL #1 → `POST /select`),
+  lifecycle buttons (Publish / Pause / Archive, offered per the server's transition map), and a
+  **"What visitors did"** panel with **Most wanted** items (the LP-1b per-item ranking).
+- **Preview mechanism:** the preview endpoint requires a Bearer token, which an `<iframe src>` cannot
+  send — so the HTML is fetched authed and rendered via **`<iframe srcDoc sandbox="">`**, which keeps
+  auth intact *and* isolates the candidate page from the console.
+- `web/src/lib/landing.ts` (NEW, unit-tested) — status labels/tones ("Live", "Ready to review"),
+  `availableActions()` mirroring the server transition map, variant blurbs.
+- **Pipeline now shows "captured from"** — the lead card renders the uniform LEAD-1 string
+  (`Landing page · diwali-diamond (story)`, `WhatsApp`, `Campaign · diwali-push`, `Walk-in`) instead
+  of the raw `source` enum. `Lead` in `api.ts` carries the attribution fields.
+- Nav/route `/landing` ("Landing pages") gated `campaigns:read`.
+
+**Gate (all green):** web **tsc** · **oxlint** (2 pre-existing warnings) · **vitest 76** (+7 landing
+lib; nav + leads fixtures updated for the new entries — both are deliberate drift guards) · **build** ·
+backend untouched: ruff · mypy **212** · guards **0** (industry-nouns scans `web/src` too) · unit
+**578** · fresh-DB **676**. **Next:** GHOST-1d (recovery controls + "customers waiting on you"), then
+LP-4b (upload → auto-generate → notify).
+
+
 ## GHOST-1c · Owner intervention over recovery — **COMPLETE — merged `b718a27`, CI green** (2026-08-12)
 
 Branch `feature/ghost-1c-owner-intervention`. The founder's ask: *"maybe owner's intervention if the
