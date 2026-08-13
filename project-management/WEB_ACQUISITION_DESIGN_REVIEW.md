@@ -103,7 +103,13 @@ allows this) — fewer pages, better MVP.
 2. **Problem** — the revenue-loss journey (quote → silence → busy staff → nobody follows up → lost)
 3. **The fix** — the same journey with GO, owner keeping control
 4. **Recover / Grow / Scale** with prices, **Grow visually emphasised** (§95, no dark patterns)
-5. **The AI team** — Priya/Nisha/Zara/Mira/Asha as *capabilities of one operator* (§19/§20)
+5. **The AI team — STATUS-AWARE (founder correction 2026-08-12).** The site must **not** present
+   five equally production-ready agents. Per the strict audit, only **Priya (Concierge)** has a fully
+   executable tool path; **Nisha, Zara, Mira** are PARTIAL/INTERNAL (their granted tools are stubs or
+   absent from the mediation registry) and **Asha** is PLANNED (archetype not seeded). MVP copy should
+   present **Growth Operator's capabilities**, naming Priya where truthful, and either label the
+   others *coming later* or **omit them entirely**. **No website claim may outrun the canonical
+   catalog** (§93 + founder correction)
 6. **Closed loop** — channels → customer → CRM → follow-up → campaign → sale → attribution → insight
 7. **Trust** — in owner language ("AI doesn't invent your prices"), not RLS/CEL/ed25519 (§23)
 8. **Pricing summary** → full table · 9. **Growth Review form** · 10. **Footer** (§64)
@@ -260,6 +266,10 @@ Every step uses real code paths; **nothing bypasses security for the demo** (§1
 
 ## OPEN QUESTIONS
 
+0. **⚠️ The public pricing table is now the reconciled, shorter one** (founder 2026-08-12): the site
+   may show only AVAILABLE capabilities. Appointment booking, segmentation, nurture, support,
+   competitor, Instagram, Google Ads, SEO and all agent personas except Priya are **excluded from
+   public paid value**. See `PLAN_ENTITLEMENTS_DESIGN_REVIEW.md` Part 5.
 1. **Domain** not yet decided → config-driven from day one (§63). Confirm when known.
 2. **Activation fee** ₹2,999 "waived for pilot" (§17) — plan metadata now, or defer?
 3. **Scheduling** (§88): MVP is "operator contacts prospect" — confirm no Calendly.

@@ -243,3 +243,94 @@ entitlements*). ANNOUNCE-1/2/3 next (small, self-contained). WEB-\* after.
    cross-period reports (all of which exist in `core/insights`).
 6. **Activation fee** (₹2,999, website §17) — model as plan metadata now, or defer?
 7. **Part 2 §64+** is still missing (truncated).
+
+
+---
+
+# PART 5 — FOUNDER PRODUCT-TRUTH DECISIONS (2026-08-12) + STRICT RE-AUDIT
+
+## The governing standard (founder, final)
+
+> A capability may appear as a **current paid public-plan checkmark** only when it has a **real
+> end-to-end usable path** — not merely a schema/table, provider adapter, archetype declaration,
+> tool permission, placeholder, simulated producer, or future architecture.
+
+`AVAILABLE` (sellable) · `PUBLIC BETA` (sellable with an honest label) · `PARTIAL / PRIVATE BETA`
+(internal catalog only, **never** public paid value) · `PLANNED` (**never** sold, **never** an
+effective runtime entitlement).
+
+> **"A shorter pricing table where every checkmark is true is substantially better than a longer
+> pricing table containing aspirational functionality."**
+
+## The decisive evidence: the mediation registry
+
+Agents can only execute what is in `core/mediation/tools.REGISTRY`. Granted ≠ executable:
+
+| Archetype | Granted tools → actual state |
+|---|---|
+| **concierge (Priya)** | `messages.send` **OK** · `catalog.search` **OK** · `pricing.compute` **OK** · `ledger.read` **OK** · `calendar.book` **STUB** · `crm.read` **STUB** · `crm.write` **STUB** |
+| **nurture (Nisha)** | `messages.send` **OK** · `crm.read` **STUB** · `segments.read` **ABSENT** |
+| **campaigner (Zara)** | `segments.query` **ABSENT** · `campaigns.execute` **ABSENT** · `templates.read` **ABSENT** · `landing_page.generate` **OK** · `landing_page.publish` **OK** |
+| **ops (Mira)** | `ingestion.review` **ABSENT** · `catalog.write` **ABSENT** · `rates.read` **ABSENT** |
+| **planner** | `bus.route` **ABSENT** · `digest.compose` **ABSENT** |
+
+**Every founder suspicion is confirmed by code:** Zara cannot execute campaigns; Mira can execute
+nothing; Nisha's CRM path is a stub. Only **Priya's core loop is fully executable** (and it is proven
+end-to-end by `tests/e2e/test_jewelry_journey.py`).
+
+## Channel reachability
+
+`InstagramClient` and `GoogleAdsClient` have **no caller anywhere outside their own adapter module** —
+no route, no service, no agent tool. A store owner **cannot reach either capability at all**.
+→ Both are **PARTIAL/adapter-only**, weaker even than "private beta usable internally".
+
+## Decisions recorded (all 12 accepted)
+
+| # | Decision | Audit verdict |
+|---|---|---|
+| 1 | **Appointment booking → PLANNED**, removed from all tiers | ✅ Confirmed: `calendar.book` is a stub; no service/API |
+| 2 | **Segmentation → PLANNED**; sell "Consent-based WhatsApp Campaigns" | ✅ Confirmed: `audience.py` says segment-targeting is a follow-up; `segments.query` ABSENT |
+| 3 | **Nisha → PARTIAL/INTERNAL**; no separate nurture checkmark (no double-counting) | ✅ Confirmed: `crm.read` STUB, `segments.read` ABSENT |
+| 4 | **Support removed**; `core/support` is GO↔owner platform support, not a shopper capability | ✅ Confirmed: `support` archetype not seeded |
+| 5 | **Competitor → PRIVATE BETA**, not public value | ✅ Confirmed: CRUD only |
+| 6 | **No "Limited Analytics"**; name the real ones | ✅ Mostly confirmed — **but see the NEW FLAG below** |
+| 7 | **Zara → PARTIAL/INTERNAL** | ✅ Confirmed: `campaigns.execute` ABSENT from the registry |
+| 8 | **Mira → PARTIAL/INTERNAL**; underlying ingestion + rate ops stay sellable | ✅ Confirmed: all three tools ABSENT; **but `/v1/imports` and `/v1/rates` ARE owner-reachable and permission-gated** |
+| 9 | **`ads.instagram` misnamed** → publishing, not ads; PRIVATE BETA | ✅ Confirmed, and stronger: **no reachable path at all** |
+| 10 | **Google Ads → PRIVATE/INTERNAL BETA** | ✅ Confirmed: **no caller outside the adapter** |
+| 11 | **SEO → PLANNED, must not be runtime-grantable** | ✅ ENT-1a's grantable `seo` is wrong and will be corrected |
+| 12 | **`agent.marketing` → PLANNED/PARTIAL**, not the campaigner archetype | ✅ Confirmed: no such agent exists |
+
+## 🚩 NEW FLAG — "Recovery insights" (Recover tier) is not end-to-end
+
+**Instruction #4 requires me to stop rather than preserve the table.**
+
+- The **owner-reachable** analytics surface is: `/v1/dashboard/overview` (pending_approvals,
+  open_conversations, catalog_items, open_tickets), `/v1/insights/summary` (week-over-week), and
+  `/v1/insights/transparency` (spend by channel + revenue + **ROI**).
+- `business_metrics` keys are exactly: `leads_created, quotes_sent, orders, revenue_minor,
+  messages_in, messages_out`. **Nothing recovery-specific.**
+- **No owner route reads `lead_diagnoses` at all.** The ghost-recovery outcome data (top reason,
+  owner's pick, outcome) is *written* by the workflow but **never surfaced to the store owner**.
+
+**So:** generic business insights are genuinely AVAILABLE, but a capability *named* **"Recovery
+insights"** — telling the owner how many ghosted leads were recovered and why they went cold — **does
+not exist end-to-end**. Under the new standard it cannot be a Recover checkmark as named.
+
+**Options (founder's call):**
+- **(a)** Rename the Recover bullet to **"Business insights"** (weekly outcomes + revenue) — true today, zero build.
+- **(b)** Keep "Recovery insights" and build a small owner-facing recovery view over `lead_diagnoses` + lead stages (a real ticket, likely GHOST-3).
+- **(c)** Drop the analytics bullet from Recover entirely; introduce it at Grow.
+
+**Related, smaller:** `/v1/insights/reports/generate` is documented as *"Run a **(simulated)**
+intelligence agent"* — consistent with decision #6, so **report generation stays internal**, while
+weekly summary + transparency/ROI are real.
+
+## Also recorded: BASELINE_FEATURES is transitional (founder correction)
+
+ENT-1a grants `BASELINE_FEATURES` **even with no active subscription** — a compatibility device to
+introduce gates without breaking dev/pilot stores. It is **not** the business rule, and
+**Ghost Lead Recovery must not become permanently free**. PLAN-1 preserves it *and documents it as
+transitional*; **PLAN-2** designs the final subscription-state semantics (active → plan + promotions;
+inactive/expired/cancelled → minimum safe account/data access, **not** ongoing paid growth
+automation).
