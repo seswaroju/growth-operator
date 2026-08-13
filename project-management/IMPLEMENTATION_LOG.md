@@ -5906,3 +5906,48 @@ rendered element, not the stylesheet class). `MAX_ASSETS` is documented as **dis
 
 **Next action:** the owner-facing upload widget + "your pages are ready" notification, or a
 pilot-readiness pass.
+
+---
+
+## 2026-08-12 — ENT-1a · Plan entitlements (server-side enforcement)
+
+**Ticket:** ENT-1a — from the founder's question about plan-gated features. **Audit finding:** only
+**seats** (CP-3) and **agents** (CP-2b) were plan-gated. `billing_plans.features` was written by the
+plan builder and **never read**; nothing consulted `config.channels`/`addons`; the owner nav gates on
+**role permissions only**. So a starter-tier store could open Campaigns and send one. Founder chose
+**"ENT-1 entitlements first, then the widget"** — retrofitting later would mean revisiting every
+feature shipped meanwhile.
+
+**Files created:** `core/tenancy/entitlements.py`, `tests/unit/test_entitlements.py` (4).
+**Files modified:** `core/api/main.py` (register the 403 handler), `core/landing/api.py` +
+`core/campaigns/api.py` (gates), `core/tenancy/orgs_router.py` (`/v1/me` returns `features`),
+`tests/integration/test_landing_page.py` (+4 enforcement tests, fixture gains a plan),
+`tests/integration/test_campaigns.py` (fixture gains a plan), tracking docs.
+
+**Model:** a **baseline** every plan includes — `conversations`, `catalog`, `customers`,
+**`ghost_recovery`** (the founder's entry tier is "ghost leads only", so the wedge is baseline) —
+plus **grantable** tier features (`campaigns.whatsapp`, `landing_pages`, `ads.instagram`,
+`ads.google`, `seo`, `agent.marketing`). Stored in the existing `billing_plans.features` column →
+**no migration**. `normalize()` accepts only catalog ids, so a typo in a plan grants nothing.
+`requires_feature(f)` mirrors `requires(perm)` and raises `FeatureNotInPlan` → **403
+application/problem+json** naming the feature; no new canonical error code was invented.
+
+**Non-breaking:** every plan's `features` is `[]` today, so the baseline keeps existing stores
+working; tiers add on top. **Role and plan are independent gates** — a caller needs both.
+
+**APIs:** gated `POST /v1/landing/pages`, `POST /v1/landing/pages/from-upload`, campaign create +
+send. `GET /v1/me` gains `features`. **Migration/Events:** none.
+
+**Test churn (disclosed):** the landing (35) and campaigns (4) fixtures now subscribe their test
+store to a plan granting the feature — a real store always has a plan. The 3 `test_rate_ingestion`
+failures seen locally are the **pre-existing** BLOCKER #22b DB pollution (they pass on a fresh DB).
+
+**Commands / gate (all green):** `ruff check .` · `mypy core` (**214**) · `guards.py` (**0**) ·
+`pytest tests/unit` (**593**) · **fresh-DB integration+isolation — 689 passed, 4 skipped, 0 errors**
+(+4: starter plan → 403 with nothing created, upload trigger gated, upgrade unlocks, `/me` reports
+entitlements).
+
+**Commit hash:** _pending — awaiting commit._
+
+**Next action:** ENT-1b (owner nav hides what the plan does not include + operator plan-builder
+feature ticks), then the upload widget.

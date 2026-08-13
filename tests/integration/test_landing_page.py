@@ -70,6 +70,15 @@ async def scene() -> AsyncIterator[Scene]:
                                owner, f"own+{owner.hex[:8]}@t.test")
             await conn.execute(
                 "INSERT INTO user_orgs (user_id, org_id, role) VALUES ($1,$2,'owner')", owner, org)
+            # ENT-1a: a real store always has a plan; landing pages are a tier feature, so the
+            # test store is subscribed to a plan that grants it.
+            plan = await conn.fetchval(
+                "INSERT INTO billing_plans (name, price_minor, features) "
+                "VALUES ($1, 500000, $2::jsonb) RETURNING id",
+                f"LPPlan-{tag}-{suffix}", '["landing_pages"]')
+            await conn.execute(
+                "INSERT INTO billing_subscriptions (org_id, plan_id, status) "
+                "VALUES ($1,$2,'active')", org, plan)
     finally:
         await conn.close()
     from core.api.main import app
@@ -84,6 +93,7 @@ async def scene() -> AsyncIterator[Scene]:
             "DELETE FROM audit_log WHERE org_id = ANY($1::uuid[])", [org_a, org_b])
         await conn.execute("ALTER TABLE audit_log ENABLE TRIGGER trg_audit_log_immutable")
         await conn.execute("DELETE FROM organizations WHERE name LIKE $1", f"LPStore-{tag}%")
+        await conn.execute("DELETE FROM billing_plans WHERE name LIKE $1", f"LPPlan-{tag}%")
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [owner_a, owner_b])
     finally:
         await conn.close()
@@ -750,3 +760,60 @@ async def test_upload_over_the_media_cap_is_refused(scene: Scene) -> None:
         files=[("files", (f"{i}.png", _PNG, "image/png")) for i in range(6)])
     assert r.status_code == 422
     assert await _pages_named(scene.org_a, "too-much-media") == 0
+
+
+# ---- ENT-1a: the plan actually gates the feature ------------------------------------------------
+
+async def _set_plan_features(org: uuid.UUID, features: list[str]) -> None:
+    conn = await asyncpg.connect(_dsn())
+    try:
+        await conn.execute(
+            "UPDATE billing_plans SET features = $2::jsonb WHERE id = "
+            "(SELECT plan_id FROM billing_subscriptions WHERE org_id=$1 AND status='active')",
+            org, json.dumps(features))
+    finally:
+        await conn.close()
+
+
+async def test_a_starter_plan_cannot_create_landing_pages(scene: Scene) -> None:
+    """Founder's tiering: a starter store (ghost recovery only) must NOT reach a paid surface —
+    even though its OWNER role holds `campaigns:send`. Role and plan are separate gates."""
+    await _set_plan_features(scene.org_a, [])  # entry tier: baseline only
+    r = await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a), json=_body())
+    assert r.status_code == 403
+    body = r.json()
+    assert body["feature"] == "landing_pages"
+    assert "not included in this plan" in body["detail"]
+    # and nothing was created
+    assert await _pages_named(scene.org_a, "diwali-diamond") == 0
+
+
+async def test_the_upload_trigger_is_gated_too(scene: Scene) -> None:
+    await _set_plan_features(scene.org_a, [])
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers=_owner(scene.owner_a, scene.org_a),
+        data={"slug": "gated", "headline": "H"},
+        files=[("files", ("hero.png", _PNG, "image/png"))])
+    assert r.status_code == 403
+    assert await _pages_named(scene.org_a, "gated") == 0
+
+
+async def test_upgrading_the_plan_unlocks_it(scene: Scene) -> None:
+    await _set_plan_features(scene.org_a, [])
+    assert (await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body())).status_code == 403
+    await _set_plan_features(scene.org_a, ["landing_pages"])  # the store upgrades
+    assert (await scene.client.post(
+        "/v1/landing/pages", headers=_owner(scene.owner_a, scene.org_a),
+        json=_body())).status_code == 201
+
+
+async def test_me_reports_the_stores_entitlements(scene: Scene) -> None:
+    r = await scene.client.get("/v1/me", headers=_owner(scene.owner_a, scene.org_a))
+    assert r.status_code == 200
+    features = r.json()["features"]
+    assert "landing_pages" in features            # granted by this store's plan
+    assert "ghost_recovery" in features           # baseline — every tier has the wedge
+    assert "campaigns.whatsapp" not in features   # not on this plan

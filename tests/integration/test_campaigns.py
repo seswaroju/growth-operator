@@ -67,6 +67,16 @@ async def scene() -> AsyncIterator[Scene]:
     try:
         await conn.execute("INSERT INTO organizations (id,name) VALUES ($1,'Alpha'),($2,'Beta')",
                            org_a, org_b)
+        # ENT-1a: WhatsApp campaigns are a tier feature — subscribe both stores to a plan that
+        # grants it (a real store always has a plan).
+        plan_id = await conn.fetchval(
+            "INSERT INTO billing_plans (name, price_minor, features) "
+            "VALUES ($1, 500000, '[\"campaigns.whatsapp\"]'::jsonb) RETURNING id",
+            f"CampPlan-{org_a.hex[:8]}")
+        for _org in (org_a, org_b):
+            await conn.execute(
+                "INSERT INTO billing_subscriptions (org_id, plan_id, status) "
+                "VALUES ($1,$2,'active')", _org, plan_id)
         await conn.execute("INSERT INTO users (id,email) VALUES ($1,$2),($3,$4)",
                            user_a, f"{user_a}@example.test", user_b, f"{user_b}@example.test")
     finally:

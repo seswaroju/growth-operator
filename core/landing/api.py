@@ -32,6 +32,7 @@ from core.landing.plan import (
 from core.landing.render import render_html
 from core.landing.validate import SpecInvalid
 from core.tenancy.deps import CurrentAuth
+from core.tenancy.entitlements import LANDING_PAGES, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
 from core.tenancy.rbac import requires
@@ -154,7 +155,8 @@ class LandingPageDetail(BaseModel):
 
 
 @router.post("/pages", response_model=LandingCreated, status_code=status.HTTP_201_CREATED,
-             summary="Generate a campaign landing page (deterministic; owner)")
+             summary="Generate a campaign landing page (deterministic; owner)",
+             dependencies=[Depends(requires_feature(LANDING_PAGES))])
 async def create_page(
     body: LandingCreate,
     current: CurrentAuth = Depends(requires(CAMPAIGNS_SEND)),
@@ -467,7 +469,8 @@ async def archive_page(
 
 @router.post("/pages/from-upload", response_model=LandingCreated,
              status_code=status.HTTP_201_CREATED,
-             summary="Upload campaign photos → auto-generate candidate pages (owner)")
+             summary="Upload campaign photos → auto-generate candidate pages (owner)",
+             dependencies=[Depends(requires_feature(LANDING_PAGES))])
 async def create_from_upload(
     slug: str = Form(..., min_length=1, max_length=80, pattern=r"^[a-z0-9][a-z0-9\-]*$"),
     headline: str = Form(..., min_length=1, max_length=200),

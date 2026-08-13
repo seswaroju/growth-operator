@@ -17,6 +17,7 @@ from core.campaigns import attribution, audience, producer, service
 from core.campaigns import send as campaign_send
 from core.insights import reports
 from core.tenancy.deps import CurrentAuth
+from core.tenancy.entitlements import CAMPAIGNS_WHATSAPP, requires_feature
 from core.tenancy.middleware import get_db
 from core.tenancy.permissions import CAMPAIGNS_READ, CAMPAIGNS_SEND
 from core.tenancy.rbac import requires
@@ -61,6 +62,7 @@ class CampaignSendOut(BaseModel):
 
 
 @router.post("", response_model=CampaignOut, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(requires_feature(CAMPAIGNS_WHATSAPP))],
              summary="Create a campaign")
 async def create_campaign(
     body: CampaignCreate,
@@ -80,6 +82,7 @@ async def create_campaign(
 
 
 @router.post("/{campaign_id}/send", response_model=CampaignSendOut,
+             dependencies=[Depends(requires_feature(CAMPAIGNS_WHATSAPP))],
              status_code=status.HTTP_201_CREATED,
              summary="Request a broadcast — typed-count gate → tier-3 approval (no bypass)")
 async def send_campaign(
