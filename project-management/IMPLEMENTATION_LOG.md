@@ -6303,3 +6303,67 @@ organization, `campaign_fanout` kept sending after a downgrade, and coverage was
   logged (no cheap sink at that volume).
 
 **Commit:** `bfaaacc`, merged to `main` as `f5190de`. **CI:** run 31729955488 **success** — lint, unit, migrate, e2e, restore drill, isolation, integration, contract, secret-scan. **Next recommended action:** founder selects the next ticket.
+
+
+---
+
+## 2026-08-13 · PILOT-1B — Provider-agnostic real Priya runtime + retrieval grounding
+
+**Branch** `feature/pilot-1b-provider-agnostic-runtime`. **Migration 052.**
+
+### Audit finding that reframed the ticket
+Provider selection was **cosmetic**. `llm_client` read a single global `llm_provider` /
+`llm_api_key` / `llm_api_base`, so a route selecting `openai` was answered by whatever the global
+setting named, and "fallback" re-hit the same vendor with the same key. Not only future lock-in — a
+present misrouting bug that would have silently sent a pilot store's traffic to the wrong vendor.
+
+### Files changed
+**New:** `core/runtime/providers.py`, `model_registry.py`, `adapters/{__init__,base,
+openai_compatible,anthropic_native}.py`, `grounding.py`, `scripts/eval_models.py`,
+`migrations/versions/…052…py`, `tests/unit/test_provider_registry.py`,
+`tests/unit/test_provider_routing.py`, `tests/integration/test_provider_fallback.py`.
+**Modified:** `llm_client.py` (rewritten transport), `model.py` (`LlmProvider` honours its
+provider), `routing.py` (per-attempt resolution, per-model cost, config-fault alerting),
+`model_catalog.py` + `models_admin.py` (derived catalog + availability), `core/common/config.py`
+(per-provider keys, approved default), `web-ops/{api.ts,StoreModelsSection.tsx}`,
+`tests/{unit/test_llm_client,unit/test_routing_cost,integration/test_model_routing,
+integration/test_models_admin}.py`.
+
+### Commands run
+| Command | Result |
+|---|---|
+| `uv run ruff check .` | PASS |
+| `bash scripts/lint.sh` | PASS — 6 guards (**industry-nouns fired once**: my system prompt named a trade; persona moved to the pack's prompt layer) |
+| `uv run mypy core` | PASS — 226 files |
+| `uv run pytest tests/unit` | PASS — **865** |
+| `uv run pytest tests/e2e` | PASS — 5 |
+| fresh DB: `isolation + integration + contract` | PASS — **860 passed, 4 skipped, 0 failed** |
+| `alembic downgrade -1` / `upgrade head` / `heads` | PASS — single head `e605b61fbf0f` |
+| web-ops lint / tsc / build | PASS |
+| `scripts/eval_models.py` (mocked) | Runs; 6 candidates compared, cost spread 23× |
+
+### Defects found and fixed during implementation
+- **Seeded routes named models the Anthropic API rejects** (`claude-3-5-sonnet`,
+  `claude-3-5-haiku`). Invisible while the transport never reached a vendor; every turn would now
+  fail `model_unknown`. Repointed in 052, reversibly.
+- **Default `llm_model` was `claude-sonnet-4-5`** — not an approved id. Corrected, with a test.
+- **An already-classified failure was re-wrapped** as `transport_error`, discarding the reason the
+  telemetry exists to record.
+- **Credential was checked after the model lookup**, so an unconfigured provider reported a
+  confusing "unknown model". Reordered.
+- **My own marker-stripping was too weak**: removing the dashes left the literal `END EVIDENCE`
+  phrase in hostile catalog text. Hardened to strip the boundary vocabulary.
+- **Rule Zero**: the system policy named a trade. The persona now comes from the pack.
+- `op.execute` with multiple statements is rejected by the async driver — split.
+
+### Known issues / disclosed limitations
+- **No real-vendor call has been made.** CI is mocked; `--live` and the smoke procedure require
+  credentials the developer does not hold. Reported as external-credential blocked, not success.
+- Retrieval-first by design: `tool_call` is always `None` on the real path. General tool calling
+  remains deliberately unbuilt.
+- `RealModel`/`complete()` keep the single-provider settings for non-routing callers.
+- No permanent default model is declared — an operational decision from eval results.
+- Qwen, Gemini, Mistral, xAI not integrated; adding a compatible vendor is a registry change.
+
+**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects the next
+ticket (PILOT-1A/1C are unblocked and parallel).

@@ -25,8 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.runtime.model_catalog import (
     DEFAULT_CHOICE,
-    MODEL_CATALOG,
     TUNABLE_NODES,
+    _catalog,
     is_tunable_node,
     is_valid_model,
 )
@@ -50,6 +50,10 @@ class ModelChoiceOut(BaseModel):
     provider: str
     model: str
     label: str
+    available: bool = True
+    reason: str = "ok"
+    quality_tier: str = "normal"
+
 
 
 class TunableNodeOut(BaseModel):
@@ -86,8 +90,12 @@ async def model_catalog(
     _session: AsyncSession = Depends(require_platform(PLATFORM_TENANTS_READ)),
 ) -> ModelCatalogOut:
     return ModelCatalogOut(
-        models=[ModelChoiceOut(provider=c.provider, model=c.model, label=c.label)
-                for c in MODEL_CATALOG],
+        # Re-derived per request: a credential added to the environment changes availability
+        # without a redeploy, and a stale module-level snapshot would report the old answer.
+        models=[ModelChoiceOut(provider=c.provider, model=c.model, label=c.label,
+                               available=c.available, reason=c.reason,
+                               quality_tier=c.quality_tier)
+                for c in _catalog()],
         nodes=[TunableNodeOut(node_key=n.node_key, label=n.label) for n in TUNABLE_NODES],
         default_provider=DEFAULT_CHOICE.provider, default_model=DEFAULT_CHOICE.model)
 
@@ -144,9 +152,14 @@ async def set_model(
     if not is_tunable_node(node_key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown agent-task: {node_key}")
     if not is_valid_model(body.provider, body.model):
+        # The reason distinguishes "no such model" from "approved but this provider has no
+        # credential" — an operator can act on the second, and neither leaks a secret or endpoint.
+        from core.runtime.model_registry import model_availability
+
+        reason = model_availability(body.provider, body.model)
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"unknown model: {body.provider}/{body.model}")
+            f"{body.provider}/{body.model} is not selectable: {reason}")
     await repository.set_org_context(session, org_id)
     await session.execute(
         text("INSERT INTO org_model_routes (org_id, node_key, provider, model) "

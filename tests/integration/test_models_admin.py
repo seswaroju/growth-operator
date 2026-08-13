@@ -54,6 +54,11 @@ async def scene(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[Scene]:
     if not await _db_ready():
         pytest.skip("Postgres/org_model_routes not ready")
     monkeypatch.setenv("GROWTH_OPERATOR_ADMIN_PLANE_ENABLED", "true")
+    # PILOT-1B: a model is only selectable when its provider is actually callable, so the operator
+    # surface is exercised with credentials present — the unavailable case has its own test.
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_KEY_OPENAI", "sk-test-openai")
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_KEY_ANTHROPIC", "sk-test-anthropic")
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_KEY_DEEPSEEK", "sk-test-deepseek")
     dbmod.get_engine.cache_clear()
     dbmod.get_sessionmaker.cache_clear()
     operator, org = uuid.uuid4(), uuid.uuid4()
@@ -98,8 +103,9 @@ async def test_catalog_lists_choices_and_default(scene: Scene) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     pairs = {(m["provider"], m["model"]) for m in body["models"]}
-    assert ("anthropic", "claude-3-5-sonnet") in pairs and ("openai", "gpt-4o") in pairs
-    assert body["default_provider"] == "anthropic" and body["default_model"] == "claude-3-5-sonnet"
+    assert ("anthropic", "claude-3-5-sonnet-20241022") in pairs and ("openai", "gpt-4o") in pairs
+    assert body["default_provider"] == "anthropic"
+    assert body["default_model"] == "claude-3-5-sonnet-20241022"
     node_keys = {n["node_key"] for n in body["nodes"]}
     assert {"default", "converse", "campaign", "classify"} <= node_keys
 
@@ -110,8 +116,8 @@ async def test_effective_config_defaults_when_no_override(scene: Scene) -> None:
     by_key = {i["node_key"]: i for i in r.json()}
     # every tunable node reads the GLOBAL default (per-node), none is an override
     assert by_key["default"]["provider"] == "anthropic"
-    assert by_key["default"]["model"] == "claude-3-5-sonnet"
-    assert by_key["classify"]["model"] == "claude-3-5-haiku"  # its own seeded default
+    assert by_key["default"]["model"] == "claude-3-5-sonnet-20241022"
+    assert by_key["classify"]["model"] == "claude-3-5-haiku-20241022"  # its own seeded default
     assert all(i["is_override"] is False for i in r.json())
 
 
@@ -124,7 +130,8 @@ async def test_set_override_then_effective_reflects_it(scene: Scene) -> None:
     item = put.json()
     assert item["provider"] == "openai" and item["model"] == "gpt-4o"
     assert item["is_override"] is True
-    assert item["default_provider"] == "anthropic" and item["default_model"] == "claude-3-5-sonnet"
+    assert item["default_provider"] == "anthropic"
+    assert item["default_model"] == "claude-3-5-sonnet-20241022"
     # persisted + reflected in the effective list
     conn = await asyncpg.connect(_dsn())
     try:
@@ -155,7 +162,7 @@ async def test_clear_override_reverts_to_default(scene: Scene) -> None:
     conv = next(
         i for i in (await scene.client.get(_models_url(scene.org), headers=op)).json()
         if i["node_key"] == "converse")
-    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet"
+    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet-20241022"
 
 
 async def test_unknown_node_key_is_404(scene: Scene) -> None:
@@ -194,7 +201,7 @@ async def test_override_is_org_scoped(scene: Scene) -> None:
     conv = next(
         i for i in (await scene.client.get(_models_url(other), headers=op)).json()
         if i["node_key"] == "converse")
-    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet"
+    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet-20241022"
 
 
 async def test_non_operator_is_403(scene: Scene) -> None:

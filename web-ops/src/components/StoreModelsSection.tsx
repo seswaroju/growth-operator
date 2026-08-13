@@ -66,8 +66,14 @@ function Row(
             className={fieldClasses("py-1.5 text-xs")}
           >
             {models.map((m) => (
-              <option key={encode(m.provider, m.model)} value={encode(m.provider, m.model)}>
+              <option
+                key={encode(m.provider, m.model)}
+                value={encode(m.provider, m.model)}
+                disabled={m.available === false}
+              >
                 {m.label}
+                {m.quality_tier && m.quality_tier !== "normal" ? ` · ${m.quality_tier}` : ""}
+                {m.available === false ? ` — unavailable (${m.reason ?? "not configured"})` : ""}
               </option>
             ))}
           </select>

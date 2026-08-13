@@ -370,6 +370,12 @@ export interface ModelChoice {
   provider: string;
   model: string;
   label: string;
+  // PILOT-1B: approved AND enabled models are always listed, but only `available` ones can be
+  // selected — hiding an unconfigured model would leave an operator unable to tell a missing
+  // credential from a missing feature. `reason` is a non-sensitive code, never a secret or host.
+  available?: boolean;
+  reason?: string;
+  quality_tier?: string;
 }
 
 export interface ModelCatalog {

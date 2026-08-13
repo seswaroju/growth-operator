@@ -25,6 +25,12 @@ class ModelChoice:
     provider: str
     model: str
     label: str
+    #: Callable right now. False means approved-but-unusable, with a non-sensitive `reason`
+    #: (`provider_not_configured`, `credential_missing`, `provider_disabled`, `model_disabled`).
+    #: Never a credential name, secret path, endpoint or stack trace.
+    available: bool = True
+    reason: str = "ok"
+    quality_tier: str = "normal"
 
 
 @dataclass(frozen=True)
@@ -33,15 +39,27 @@ class TunableNode:
     label: str
 
 
-# Provider+model options the operator can assign. First entry is the platform default.
-MODEL_CATALOG: tuple[ModelChoice, ...] = (
-    ModelChoice("anthropic", "claude-3-5-sonnet", "Claude 3.5 Sonnet"),
-    ModelChoice("anthropic", "claude-3-5-haiku", "Claude 3.5 Haiku"),
-    ModelChoice("openai", "gpt-4o", "GPT-4o"),
-    ModelChoice("openai", "gpt-4o-mini", "GPT-4o mini"),
-)
+def _catalog() -> tuple[ModelChoice, ...]:
+    """Derived from the model registry (PILOT-1B), so the picker can never offer a model the
+    runtime does not approve. `available` reports whether it is currently *callable* — an approved
+    model whose provider lacks a credential stays visible with a reason, because hiding it would
+    leave an operator unable to tell a missing key from a missing feature."""
+    from core.runtime.model_registry import approved_models, model_availability
 
-DEFAULT_CHOICE: ModelChoice = MODEL_CATALOG[0]  # claude-3-5-sonnet (decision d2)
+    return tuple(
+        ModelChoice(m.provider, m.model, m.label,
+                    available=model_availability(m.provider, m.model) == "ok",
+                    reason=model_availability(m.provider, m.model),
+                    quality_tier=m.quality_tier)
+        for m in approved_models()
+    )
+
+
+MODEL_CATALOG: tuple[ModelChoice, ...] = _catalog()
+
+#: No permanent Vaylorn default is declared in this ticket — that is an operational decision to be
+#: made from evaluation results, not an architectural one.
+DEFAULT_CHOICE: ModelChoice = MODEL_CATALOG[0]
 
 # The routing keys the operator can override per store (friendly labels for the web-ops picker).
 # `default` catches every turn unless a more specific key is set.
@@ -54,7 +72,16 @@ TUNABLE_NODES: tuple[TunableNode, ...] = (
 
 
 def is_valid_model(provider: str, model: str) -> bool:
-    return any(c.provider == provider and c.model == model for c in MODEL_CATALOG)
+    """Approved AND currently callable. The override API uses this, so an operator cannot select a
+    model the backend could not execute — the catalog shows it, the server still refuses it."""
+    from core.runtime.model_registry import model_availability
+
+    return model_availability(provider, model) == "ok"
+
+
+def is_approved_model(provider: str, model: str) -> bool:
+    """Approved regardless of current callability — for display, not for accepting a selection."""
+    return any(c.provider == provider and c.model == model for c in _catalog())
 
 
 def is_tunable_node(node_key: str) -> bool:
