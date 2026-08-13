@@ -6097,4 +6097,4 @@ three FORCE-RLS tables, so absent context fails closed. Cross-tenant leakage tes
 - All 11 existing plans are legacy; none uses the structured schema until PLAN-3 writes presets.
 - Promotions are absolute calendar windows, not per-subscriber trials.
 
-**Commit:** see the follow-up docs entry. **Next recommended action:** founder selects PLAN-3.
+**Commit:** `d2475dd`, merged to `main` as `0018346`. **CI:** run 31714488763 **success** — lint, unit, migrate, e2e, isolation, integration, contract. **Next recommended action:** founder selects PLAN-3.
