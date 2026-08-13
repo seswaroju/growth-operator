@@ -1459,3 +1459,53 @@ a plan must not revoke an existing active subscriber, and the resolver does not 
 independent querying or lifecycle at MVP scale.
 
 **Decided by:** Founder (2026-08-13), across three PLAN-2 design-review corrections.
+
+
+---
+
+## 2026-08-13 — Canonical commercial presets (PLAN-3)
+
+**Decision.** Recover ₹3,999 / Grow ₹6,999 (*recommended*) / Scale ₹12,999. Meta messaging fees and
+advertising spend are billed separately and are never bundled into subscription pricing. Presets are
+**defined in code** and **materialised as `billing_plans` snapshots** — provisioning needs a
+`plan_id` FK, a plan builder copies rows, and a historical subscription must resolve against the row
+it was sold.
+
+**Machine config is not marketing copy.** 17 public bullets map to 9 authorization boundaries: the
+three analytics bullets all resolve to `campaigns.analytics`, and the three landing bullets to
+`landing_pages`. No entitlement exists merely to produce a pricing-table row. Bullets live in
+`config.display`; `billing_plans.features` is written **empty** and stays legacy display data.
+
+**A surface that is not its own boundary is not an entitlement.** The concierge is a plan *agent*
+(CP-2b enforces), WhatsApp a plan *channel*, team seats the CP-3 columns, and pricing /
+business-insights are RBAC-governed. None appear in `config.entitlements`.
+
+**Commercial tier placement is declared, never inferred.** A capability being `public` and
+`runtime_grantable` says nothing about which tier sells it, so a pack declares placement in
+`commercial/plan_presets.yaml`. The overlay only *references* canonical keys; the definition stays in
+`commercial/capabilities.yaml`. Validation rejects an overlay that names an unknown tier, a key
+outside the catalog, another vertical's key, a generic key, or anything not sellable. Generic Scale
+carries no vertical capability; `Scale · Jewelry` is a separate composed row, and `core/` contains no
+vertical noun.
+
+**Canonical rows are immutable once sold.** If **any** subscription of **any** status — including
+cancelled history — has ever referenced a preset, the seeder never rewrites its price, config,
+entitlements or limits. There is deliberately **no override flag**: once sold, the row is historical
+commercial truth, and a future v2 must be a new snapshot. Unsold rows update on a `preset_version`
+bump; a row edited by an operator at the same version is reported as drift and **never clobbered**.
+
+**Seeding requires effective global visibility.** `billing_subscriptions` is FORCE-RLS, so an
+ordinary application role sees zero rows and would report every plan as never-sold. The seeder
+asserts `rolbypassrls OR rolsuper` — a *privilege*, not a role name — and aborts otherwise.
+
+**Canonical presets are protected from the legacy CP-1 editor.** That editor rebuilds `config` from
+`agents`/`channels`/`addons` only, and `update_plan` replaces the whole JSONB, so editing a price
+would have silently demoted a structured plan to legacy. `update_plan` now refuses any row carrying
+`preset_key`, and `create_plan` refuses caller-supplied preset identity. Hiding the button in
+web-ops is convenience; the server is the boundary.
+
+**Team seats, not staff users.** Recover 0+2, Grow 1+4, Scale 2+8 → 2/5/10 capped manager+staff
+seats. The owner is never counted. Read-only viewers remain uncapped under CP-3 and display copy must
+not imply they consume the capped seats.
+
+**Decided by:** Founder (2026-08-13), across three PLAN-3 design-review rounds.

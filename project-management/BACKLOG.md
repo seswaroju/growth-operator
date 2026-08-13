@@ -62,14 +62,19 @@ Jewelry Premium, Association, Founder…) built from the *same* entitlement syst
   intentionally adopts the structured capability contract. An unmappable legacy value is preserved
   as legacy/custom display, never silently discarded.
 
-- **PLAN-3 — Recover/Grow/Scale presets** · **NEXT (founder selects)**
+- **PLAN-3 — Recover/Grow/Scale presets** · **DONE (2026-08-13)**
   Presets **must write `entitlement_schema_version: 1`** plus canonical machine keys to
   `config.entitlements` — never new authorization truth into free-text `features`. Also owns the
   marketing-bullet → capability mapping.
   Snapshot/data composition, **no live inheritance**. Presets seeded from the catalog. Also owns the
   marketing-bullet → capability mapping (several bullets may ride on one entitlement).
 
-- **PLAN-4 — Operator Plan Builder UI, including promotion authoring** · **QUEUED**
+- **PLAN-4 — Operator Plan Builder UI, including promotion authoring** · **NEXT (founder selects)**
+  **Carried requirement from PLAN-3:** copying a canonical preset must **strip** `preset_key` and
+  `preset_version`, so the copy is an ordinary operator plan the seeder can never overwrite. The
+  builder is also the sanctioned way to customise a preset, since the legacy CP-1 editor now
+  returns 409 for canonical rows. It should render `config.display.bullets` (canonical presets write
+  `features = []`, so the old operator list is sparse until then).
   Grouped + searchable capability selection, start-from-existing-plan copy (explicit snapshot),
   staff limit, positioning metadata (`recommended`), plan preview showing the business promise (not
   machine keys), and a subscriber-impact confirmation before material removals. Channels come from
@@ -122,6 +127,29 @@ machine keys ≠ marketing copy; no coupon/discount/metered-billing engine.
   marketing-site project. Requires clear **surface separation** between marketing site and app.
   Reconcile with the commercial model above (pricing page should render from plan/catalog metadata,
   not duplicated copy — §67).
+
+---
+
+## C2. FUTURE SCALE ROADMAP — recorded, deliberately not built (PLAN-3)
+
+Today's Scale is intentionally thinner than the ultimate vision: **Grow + operational leverage**
+(automated catalog ingestion, vertical rate operations, higher team seats). Nothing below is faked
+to make the pricing table look larger, and none of it may become a paid checkmark until a fresh
+current-main audit shows a real end-to-end owner-reachable path.
+
+- **SEO / AEO / GEO** · **ROADMAP** — organic and answer-engine discovery, technical SEO,
+  content/search-intent opportunities, generative-engine visibility. Catalog status: `planned`.
+- **Competitor intelligence** · **ROADMAP** — competitor website changes, campaigns/offers,
+  Meta/Instagram advertising intelligence, product/pricing/content changes, and strategic
+  interpretation of what actually matters to the merchant. Simulated producers are **not** sellable.
+- **Growth Strategist** · **ROADMAP** — one orchestrating persona combining first-party performance,
+  campaign analytics, customer behaviour, landing-page performance, competitor intelligence, search
+  intelligence and seasonality into **ranked recommended actions**. Catalog key `agent.marketing`
+  remains `planned`.
+- **Additional autonomous operational agents + channel execution** · **ROADMAP**.
+
+**Direction (founder, 2026-08-13):** favour a **single Growth Strategist persona / orchestration
+layer** over ten customer-facing agents; the rest stay internal capabilities.
 
 ---
 

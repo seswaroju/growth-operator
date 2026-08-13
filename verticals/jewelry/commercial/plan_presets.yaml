@@ -1,0 +1,10 @@
+# Commercial tier placement for this pack (PLAN-3).
+#
+# References canonical capability keys declared in `capabilities.yaml` — it never redefines them.
+# Placement is explicit on purpose: a capability being public and grantable says nothing about
+# which tier should sell it, so a pack states the tier itself rather than defaulting to the top one.
+scale:
+  entitlements:
+    - jewelry.rate_operations
+  display_bullets:
+    - "Gold & rate operations"

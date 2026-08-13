@@ -241,6 +241,30 @@ class CommercialPack(_Strict):
     capabilities: list[CapabilityDef] = []
 
 
+class PresetTierAddition(_Strict):
+    """What a vertical adds to one generic commercial tier (PLAN-3).
+
+    References canonical keys only — the capability definition itself stays in `CapabilityDef`.
+    Tier placement is declared **explicitly** here rather than inferred from a capability's
+    maturity or visibility: how mature something is says nothing about which tier sells it."""
+
+    entitlements: list[str] = []
+    display_bullets: list[str] = []
+
+
+class VerticalPresetOverlay(_Strict):
+    """`verticals/<slug>/commercial/plan_presets.yaml` — tier name → what this pack adds."""
+
+    model_config = ConfigDict(extra="allow")
+
+    @property
+    def tiers(self) -> dict[str, PresetTierAddition]:
+        out: dict[str, PresetTierAddition] = {}
+        for key, value in (self.model_extra or {}).items():
+            out[key] = PresetTierAddition.model_validate(value or {})
+        return out
+
+
 class EvalSuite(_Open):
     suite: str
     pass_bar: dict[str, Any]

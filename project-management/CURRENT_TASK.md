@@ -9,28 +9,28 @@ selects and approves the next ticket.
 
 ---
 
-## PLAN-2 · Structured entitlement resolver — **Completed — awaiting founder review** (2026-08-13)
+## PLAN-3 · Recover/Grow/Scale structured presets — **Completed — awaiting founder review** (2026-08-13)
 
-Branch `feature/plan-2-entitlement-resolver`. **No migration.**
+Branch `feature/plan-3-plan-presets`. **No migration.**
 
-- `core/tenancy/plan_config.py` (NEW) — typed `billing_plans.config`: `entitlement_schema_version`
-  (the explicit legacy/structured boundary), `entitlements`, `agents`, `channels`, `addons`,
-  `promotions`. Machine authorization moved off free-text `billing_plans.features`.
-- `core/tenancy/entitlements.py` — `resolve()` returns `EffectiveEntitlements` (capabilities,
-  agents, channels, limits, grants, excluded, subscription_state, plan). `entitlements()` remains a
-  thin `frozenset[str]` wrapper, so the four `requires_feature` gates and `/v1/orgs/me` are
-  untouched.
-- **No active subscription → zero paid capabilities.** Public `BASELINE_FEATURES` /
-  `GRANTABLE_FEATURES` / `ALL_FEATURES` deleted; the historical set survives only as the private
-  `_LEGACY_ENT1A_BASELINE` inside the compatibility loader.
-- **Active legacy plan** reconstructs ENT-1a semantics: historical baseline ∪ valid legacy features,
-  plus the channels those capabilities necessarily imply (derived from PLAN-1 `depends_on`, not
-  hardcoded). Provenance `legacy_compat`, never `plan`.
-- Component-aware dependencies · pack-aware vertical filtering · tenant/pack-aware agent validation
-  (binding existence, **not** instance status) · absolute UTC promotion windows.
+- `core/billing/presets.py` (NEW) — canonical definitions (Recover ₹3,999 / Grow ₹6,999 *recommended*
+  / Scale ₹12,999), explicit vertical overlay composition, static validation, idempotent
+  materialisation. **Rule Zero verified** — no vertical noun in the module.
+- `verticals/jewelry/commercial/plan_presets.yaml` (NEW) — declares tier placement **explicitly**
+  (`scale: [jewelry.rate_operations]`). Placement is never inferred from public+grantable.
+- `core/billing/service.py` — `CanonicalPresetLocked`: the legacy CP-1 editor can no longer edit a
+  canonical preset (it rebuilds `config` from agents/channels/addons and would strip the structured
+  contract); `create_plan` refuses caller-supplied `preset_key`. API → **409**.
+- `scripts/seed_plans.py` (NEW) — asserts **effective** global visibility (`rolbypassrls OR
+  rolsuper`), never a role name, before deciding sold/unsold.
+- Canonical rows are **immutable once referenced by any subscription** (active *or* cancelled).
+  No override flag exists.
+- `billing_plans.features = []` on every preset; bullets live in `config.display`.
 
-**PLAN-2 resolves; it does not enforce.** `catalog.ingestion`, `campaigns.analytics` and
-`jewelry.rate_operations` are computed but still ungated on their routes — PLAN-5 owns that,
-including the **P0** plan-reassignment agent reconciliation.
+**Seeded (dev):** `recover` 3bfd21ee · `grow` 8251fa31 · `scale` 2151aa7b · `scale.jewelry` 06fb735a.
+25 legacy/custom rows untouched.
 
-**Do not start PLAN-3 automatically — the founder selects the next ticket.**
+**PLAN-3 defines what tiers should grant; it does not enforce.** PLAN-5 still owns `/v1/imports`,
+`/v1/rates`, `campaigns.analytics` gating and the **P0** plan-reassignment agent reconciliation.
+
+**Do not start PLAN-4 automatically — the founder selects the next ticket.**
