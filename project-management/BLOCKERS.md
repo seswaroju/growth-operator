@@ -455,13 +455,21 @@ what ran — with a unit test asserting every entry against the migration's CHEC
 Adding `negotiating` means a CRM stage change (migration + pipeline UI + stage-transition rules),
 which is outside this ticket. **Decision needed:** add the stage, or leave recovery on `quoted`.
 
-## #36 — Three `test_rate_ingestion` failures pre-date PILOT-1C (OPEN — unowned)
+## #36 — Three `test_rate_ingestion` failures are a LOCAL dev-database artifact (OPEN — low)
 
-**Opened** 2026-08-13. `test_fetch_writes_snapshot_and_publishes_updated`,
-`test_out_of_bounds_quarantined_no_snapshot_and_alert` and `test_manual_entry_writes_snapshot_and_audits`
-fail with `snapshot_count() == 0`. Verified pre-existing by checking out `main` and re-running: they
-fail there identically, so they are not caused by this ticket. Not investigated — doing so would
-have been unrelated work inside an authorized ticket. Needs its own ticket.
+**Opened** 2026-08-13. **Refined during post-merge verification.**
+
+`test_fetch_writes_snapshot_and_publishes_updated`, `test_out_of_bounds_quarantined_no_snapshot_and_alert`
+and `test_manual_entry_writes_snapshot_and_audits` fail with `snapshot_count() == 0` on the local
+development database. First established as pre-existing by checking out `main` and re-running.
+
+They then **passed on a freshly migrated database** with the CI role split (`app_rw` runtime,
+`growth_operator` migrator), and CI itself is green on them. So this is not a code defect: the tests
+carry an assumption about database state that a long-lived development database eventually violates.
+
+That is worth its own small ticket — a test that only passes on a clean database will eventually
+fail for everyone and be diagnosed as a real regression. It is **not** a PILOT-1C blocker and must
+not be attributed to it.
 
 ## #37 — A real message has never physically reached a phone (OPEN — needs founder approval)
 

@@ -44,6 +44,9 @@ class Scene:
         self.conn = conn
         self.org = uuid.uuid4()
         self.plan = uuid.uuid4()
+        #: Only set when THIS fixture created them — shared rows are never torn down.
+        self.created_pack: uuid.UUID | None = None
+        self.created_binding: uuid.UUID | None = None
 
     def _config(self, capabilities: list[str]) -> str:
         return json.dumps({
@@ -70,7 +73,18 @@ class Scene:
             "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active')",
             self.org, self.plan)
 
+        # Build every precondition. A fresh database has no packs; a developer database has them
+        # because an earlier suite installed one. Reading without creating means this passes locally
+        # and on CI only because `test_pack_installer` happens to sort earlier — a test whose result
+        # depends on alphabetical ordering is not a test.
         pack = await self.conn.fetchval("SELECT id FROM packs WHERE slug='jewelry'")
+        if pack is None:
+            pack = uuid.uuid4()
+            await self.conn.execute(
+                "INSERT INTO packs (id, slug, version, platform_api, manifest, bundle_uri, "
+                "signature, status) VALUES ($1,'jewelry','1','1','{}'::jsonb,'x','x','published')",
+                pack)
+            self.created_pack = pack
         arch = await self.conn.fetchval("SELECT id FROM agent_archetypes WHERE slug='nurture'")
         binding = await self.conn.fetchval(
             "SELECT id FROM agent_bindings WHERE pack_id=$1 AND archetype_id=$2", pack, arch)
@@ -79,6 +93,7 @@ class Scene:
                 "INSERT INTO agent_bindings (pack_id, archetype_id, persona_default, tool_grants, "
                 "kpi_defs, tier_defaults) VALUES ($1,$2,'N','[]'::jsonb,'[]'::jsonb,'[]'::jsonb) "
                 "RETURNING id", pack, arch)
+            self.created_binding = binding
         self.instance = await self.conn.fetchval(
             "INSERT INTO agent_instances (org_id, binding_id, persona_name, status, "
             "permission_manifest) VALUES ($1,$2,'N',$3,$4::jsonb) RETURNING id",
@@ -109,6 +124,9 @@ async def scene() -> AsyncIterator[Scene]:
     dbmod.get_sessionmaker.cache_clear()
     conn = await asyncpg.connect(_dsn())
     sc = Scene(conn)
+    # Setup runs inside the try so a fixture that raises still tears down: a half-built scene
+    # leaks rows and fails *other* suites, which is how one broken fixture becomes a red build
+    # nobody can attribute.
     try:
         yield sc
     finally:
@@ -118,6 +136,10 @@ async def scene() -> AsyncIterator[Scene]:
         await conn.execute("DELETE FROM billing_subscriptions WHERE org_id=$1", sc.org)
         await conn.execute("DELETE FROM billing_plans WHERE id=$1", sc.plan)
         await conn.execute("DELETE FROM organizations WHERE id=$1", sc.org)
+        if sc.created_binding is not None:
+            await conn.execute("DELETE FROM agent_bindings WHERE id=$1", sc.created_binding)
+        if sc.created_pack is not None:
+            await conn.execute("DELETE FROM packs WHERE id=$1", sc.created_pack)
         await conn.close()
         await dbmod.get_engine().dispose()
         dbmod.get_engine.cache_clear()
