@@ -45,6 +45,7 @@ class RecoveryContext:
     silence_episode_anchor: str | None
     pre_silence_thread: list[dict[str, str]]
     quoted_catalog_item: dict[str, Any] | None
+    template_parameters: list[str]
 
     def as_subject(self) -> dict[str, Any]:
         """The workflow run subject. Every key a `tool_call` input_map may reference must be here —
@@ -56,6 +57,7 @@ class RecoveryContext:
             "silence_episode_anchor": self.silence_episode_anchor,
             "pre_silence_thread": self.pre_silence_thread,
             "quoted_catalog_item": self.quoted_catalog_item,
+            "template_parameters": self.template_parameters,
         }
 
 
@@ -103,7 +105,25 @@ async def build(session: AsyncSession, org_id: UUID, payload: dict[str, Any]) ->
         silence_episode_anchor=anchor.isoformat() if anchor else None,
         pre_silence_thread=thread,
         quoted_catalog_item=await _provable_quoted_item(session, org_id, conversation_id),
+        template_parameters=await _template_parameters(session, org_id, contact_id),
     )
+
+
+async def _template_parameters(
+    session: AsyncSession, org_id: UUID, contact_id: Any
+) -> list[str]:
+    """The `{{1}}`, `{{2}}` values for the approved template: who we are writing to, and who we are.
+
+    Read from the store's own records, not composed. `there` is the fallback for a contact whose
+    name we never captured — a message opening "Hi ," is worse than a slightly generic one, and
+    guessing a name from a phone number is not an option."""
+    contact_name = (await session.execute(
+        text("SELECT full_name FROM contacts WHERE id = :c AND org_id = :o"),
+        {"c": str(contact_id), "o": str(org_id)})).scalar_one_or_none()
+    org_name = (await session.execute(
+        text("SELECT name FROM organizations WHERE id = :o"),
+        {"o": str(org_id)})).scalar_one_or_none()
+    return [str(contact_name or "there").split(" ")[0], str(org_name or "our store")]
 
 
 async def _provable_quoted_item(

@@ -141,6 +141,17 @@ async def _default_agent_runner(org_id: UUID, instr: dict[str, Any]) -> dict[str
     if instance_id is None:
         return {"status": "skipped", "reason": "no_active_instance",
                 "archetype": instr["archetype"]}
+
+    # A **classification** task returns structured output the next step branches on, so it runs the
+    # diagnosis path rather than the general agent loop: no tools, no channel, no external effect,
+    # and a result validated against the pack's declared answer set before anything reads it.
+    if instr.get("output_as") and instr.get("output"):
+        from core.workflows import diagnose_step
+
+        result = await diagnose_step.run(org_id, instance_id, instr)
+        if result is not None:
+            return result
+
     from core.runtime import executor as runtime_executor  # local import avoids a cycle
     outcome = await runtime_executor.start_run(
         org_id, instance_id, trigger="workflow",
@@ -332,7 +343,11 @@ async def _advance(org_id: UUID, run_id: UUID, agent_runner: AgentRunner) -> Non
                         tool_pc = pc
                         tool_activation = activation
                     else:
-                        agent_ins, agent_pc = ins, pc
+                        # The diagnosis path needs the run's facts; the general agent path ignores
+                        # the extra key. Passed explicitly rather than re-read, so what the model
+                        # sees is exactly what the step was evaluated against.
+                        agent_ins = {**ins, "_activation": activation}
+                        agent_pc = pc
 
         # --- outside the run session ---
         if promote is not None:

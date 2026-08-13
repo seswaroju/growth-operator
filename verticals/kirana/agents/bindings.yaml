@@ -29,7 +29,7 @@ bindings:
       - {task: reorder_nudge, intents: [], prompt_layer: {ref: prompts/nurture.md#reorder, version: "1.x"}}
     tool_grants:
       - {name: crm.read}
-      - {name: messages.send, params_constraints: {template_class: [reorder]}}
+      - {name: messages.send, params_constraints: {template_key: {enum: [reorder]}}}
     tier_defaults:
       - {rule_key: reorder, applies_to: action.message.send, condition: "true", tier: 1,
          description: "Weekly staples reminder (max 1/week)"}

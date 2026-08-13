@@ -18,7 +18,8 @@ bindings:
       - {name: catalog.search, rate_limit: {per_min: 60}}
       - {name: pricing.compute, params_constraints: {strategy: {enum: [formula_weight_rate_v1]}}, rate_limit: {per_min: 20}}
       - {name: calendar.book, params_constraints: {calendar: store_visits}, rate_limit: {per_min: 10}}
-      - {name: crm.write, params_constraints: {fields: [stage, occasion, budget_band, notes]}}
+      - {name: crm.write,
+         params_constraints: {fields: {type: array, items: {enum: [stage, occasion, budget_band, notes]}}}}
       - {name: messages.send, params_constraints: {conversation_scope: assigned_only}}
     tier_defaults:
       - {rule_key: reply_standard, applies_to: action.message.send, condition: "true", tier: 1,
@@ -35,9 +36,22 @@ bindings:
     persona_default: "Nisha"
     tasks:
       - {task: nudge, intents: [], prompt_layer: {ref: prompts/nurture.md#nudge, version: "3.x"}}
+      # PILOT-1C. Diagnosis is non-effectful: it classifies why a lead went quiet and returns a
+      # ranked distribution for the owner. It sends nothing, and the binding must exist for the
+      # step to run at all — an unbound diagnosis would be the model improvising about a real
+      # customer, and its output would look identical to a grounded one.
+      - {task: ghost_diagnosis, intents: [],
+         prompt_layer: {ref: prompts/nurture.md#ghost_diagnosis, version: "1.x"}}
     tool_grants:
       - {name: crm.read}
-      - {name: messages.send, params_constraints: {template_class: [reactivation]}}
+      # `template_class: [reactivation]` USED to be written here as a bare list. The manifest
+      # validator only enforces schema-shaped (dict) constraints, so a list was silently ignored
+      # and this agent's one send constraint enforced nothing. It is also the wrong key:
+      # `messages.send` receives `template_key`, so no value of `template_class` could ever match.
+      # Constraining the real parameter to the approved pilot template is what the pack author
+      # intended, and the proxy now refuses a constraint it cannot enforce rather than skipping it.
+      - {name: messages.send,
+         params_constraints: {template_key: {enum: [pilot_recovery_check_in]}}}
     tier_defaults:
       - {rule_key: nudge_send, applies_to: action.message.send, condition: "true", tier: 1,
          description: "Follow-up nudges (max 3 per lead / 30 days)"}
