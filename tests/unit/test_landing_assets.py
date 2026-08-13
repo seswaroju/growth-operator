@@ -9,6 +9,7 @@ import pytest
 from core.channels.whatsapp.media import MediaScanError
 from core.landing.assets import (
     MAX_ASSETS,
+    MAX_PRODUCT_ASSETS,
     AssetRejected,
     UploadedAsset,
     build_campaign,
@@ -75,12 +76,32 @@ async def test_bad_type_empty_and_oversized_are_rejected() -> None:
     assert store.puts == []
 
 
-async def test_upload_count_is_bounded() -> None:
-    many = [JPEG] * (MAX_ASSETS + 1)
-    with pytest.raises(AssetRejected, match="at most"):
-        await store_assets(ORG, many, scanner=_Scanner(), store=_Store())
-    with pytest.raises(AssetRejected, match="no files"):
+async def test_media_bounds_are_one_hero_plus_four_products() -> None:
+    """Founder: the hero is required, plus up to four product photos — five media in total."""
+    assert MAX_ASSETS == 1 + MAX_PRODUCT_ASSETS == 5
+
+    # exactly at the cap is fine
+    ok = await store_assets(ORG, [JPEG] * MAX_ASSETS, scanner=_Scanner(), store=_Store())
+    assert len(ok) == 5
+    # one more is refused, and the message says why
+    with pytest.raises(AssetRejected, match="one hero plus up to 4"):
+        await store_assets(ORG, [JPEG] * (MAX_ASSETS + 1), scanner=_Scanner(), store=_Store())
+
+
+async def test_a_hero_is_required() -> None:
+    with pytest.raises(AssetRejected, match="hero image is required"):
         await store_assets(ORG, [], scanner=_Scanner(), store=_Store())
+
+
+async def test_hero_only_upload_is_valid() -> None:
+    """The owner may upload just the hero — the page then simply has no product grid."""
+    stored = await store_assets(ORG, [JPEG], scanner=_Scanner(), store=_Store())
+    assert len(stored) == 1
+    campaign = build_campaign(
+        headline="Everyday Diamond Pendants", offer="", subheadline="", objective="whatsapp",
+        wa_number="", assets=stored, product_titles=[])
+    assert campaign.hero_image_url is not None
+    assert campaign.products == []
 
 
 # ---- campaign assembly -------------------------------------------------------------------------

@@ -721,3 +721,32 @@ async def test_upload_requires_campaign_permission(scene: Scene) -> None:
         data={"slug": "nope", "headline": "H"},
         files=[("files", ("a.png", _PNG, "image/png"))])
     assert r.status_code == 403
+
+
+async def test_hero_only_upload_produces_a_valid_page(scene: Scene) -> None:
+    """Founder: the owner may upload only the hero. The page renders without a product grid."""
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers=_owner(scene.owner_a, scene.org_a),
+        data={"slug": "hero-only", "headline": "Everyday Diamond Pendants",
+              "offer": "from ₹29,999"},
+        files=[("files", ("hero.png", _PNG, "image/png"))])
+    assert r.status_code == 201, r.text
+    page_id = r.json()["page_id"]
+    assert len(await _versions(page_id)) == 3  # still three layouts to choose from
+
+    p = await scene.client.get(f"/v1/landing/pages/{page_id}/versions/1/preview",
+                               headers=_owner(scene.owner_a, scene.org_a))
+    assert p.status_code == 200
+    assert "lp-hero-img" in p.text                     # the hero is used
+    # no empty product grid is RENDERED (the class exists in the stylesheet either way)
+    assert '<section class="lp-grid' not in p.text
+    assert "Enquire on WhatsApp" in p.text             # still a working conversion surface
+
+
+async def test_upload_over_the_media_cap_is_refused(scene: Scene) -> None:
+    r = await scene.client.post(
+        "/v1/landing/pages/from-upload", headers=_owner(scene.owner_a, scene.org_a),
+        data={"slug": "too-much-media", "headline": "H"},
+        files=[("files", (f"{i}.png", _PNG, "image/png")) for i in range(6)])
+    assert r.status_code == 422
+    assert await _pages_named(scene.org_a, "too-much-media") == 0
