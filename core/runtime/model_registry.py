@@ -55,16 +55,27 @@ class ModelDefinition:
     #: never the preferred choice for a new deployment. Retired models are absent entirely — see
     #: RETIRED_MODEL_IDS.
     lifecycle: Lifecycle = "current"
+    #: The official vendor page that proves this exact API id, checked on `verified_on`. Recorded
+    #: per model rather than in a comment because "where did this id come from?" is the question
+    #: that went unasked for a year while two retired models sat here looking legitimate. A model
+    #: with no source is not enabled — `validate_registry` refuses it.
+    source: str = ""
+    verified_on: str = ""
+
+
+#: The date every entry below was last checked against its vendor's own documentation. A registry
+#: is only as good as this date; PILOT-1A found entries that had been wrong for ten months.
+VERIFIED_ON = "2026-08-13"
 
 
 def _m(provider: str, model: str, label: str, *, tier: str, ctx: int,
-       cin: str, cout: str, caps: set[str] | None = None,
-       lifecycle: Lifecycle = "current") -> ModelDefinition:
+       cin: str, cout: str, source: str, caps: set[str] | None = None,
+       lifecycle: Lifecycle = "current", enabled: bool = True) -> ModelDefinition:
     return ModelDefinition(
         provider=provider, model=model, label=label, quality_tier=tier, max_context=ctx,
         cost_per_1k_in=Decimal(cin), cost_per_1k_out=Decimal(cout),
         capabilities=frozenset(caps or {TEXT, TOOL_CALLING, STRUCTURED_OUTPUT}),
-        lifecycle=lifecycle,
+        lifecycle=lifecycle, enabled=enabled, source=source, verified_on=VERIFIED_ON,
     )
 
 
@@ -94,54 +105,88 @@ RETIRED_REPLACEMENTS: dict[str, str] = {
 }
 
 
-#: Approved models. Verified against each vendor's own documentation on 2026-08-13; pricing is
-#: indicative operational metadata for comparison, never quoted to a customer.
+#: Approved models. **Every id below was read from the vendor's own documentation on 2026-08-13**,
+#: and the page that proves it is recorded per entry — see `source`. A model without a source is
+#: refused by `validate_registry`, because the failure this guards against is not a typo but a
+#: plausible-looking id nobody ever checked.
 #:
-#: Everything here was wrong before PILOT-1A. The Anthropic pair (`claude-3-5-*-20241022`) had been
-#: RETIRED for months — Sonnet 3.5 on 2025-10-28, Haiku 3.5 on 2026-02-19 — and four database routes
-#: pointed at them, so the first real request would have failed with `model_unknown` at the worst
-#: possible moment. Migration 052 had "fixed" those ids by adding date suffixes, which made them
-#: well-formed and no more callable. The DeepSeek pair was retired on 2026-07-24. A registry is only
-#: as good as the last time someone checked it against the vendor, so the check date is recorded
-#: above and belongs in any future edit.
+#: That is not hypothetical here. Before PILOT-1A this registry offered two Anthropic models their
+#: vendor had already RETIRED — Sonnet 3.5 (2025-10-28) and Haiku 3.5 (2026-02-19) — and four
+#: database routes pointed at them. Requests to a retired id fail, so the first call made with a
+#: real key would have failed during the first live smoke. Migration 052 had "fixed" those ids by
+#: adding date suffixes, which made them well-formed and no more callable.
+#:
+#: Capabilities are asserted only where the vendor states them. An optimistic capability is worse
+#: than a missing one: the router would select this model for a task it cannot perform, and the
+#: failure would surface mid-request instead of at selection time.
 MODELS: tuple[ModelDefinition, ...] = (
     # --- anthropic (anthropic_native) ---------------------------------------------------------
-    # Haiku 4.5 is the documented replacement for the retired Haiku 3.5 and the cheap tier here.
+    # Ids from the "Claude API ID" row of the models overview; lifecycle from the deprecations
+    # table; tool use from the tool-use pricing table (each has a tool-use system prompt token
+    # count, which only supported models have); vision from "All current Claude models support
+    # text and image input ... and vision"; structured output via strict tool use.
     _m("anthropic", "claude-haiku-4-5-20251001", "Claude Haiku 4.5",
        tier="cheap", ctx=200_000, cin="0.001", cout="0.005",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}),
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
     _m("anthropic", "claude-sonnet-5", "Claude Sonnet 5",
        tier="normal", ctx=1_000_000, cin="0.002", cout="0.010",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}),
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
     _m("anthropic", "claude-opus-5", "Claude Opus 5",
        tier="strong", ctx=1_000_000, cin="0.005", cout="0.025",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}),
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
 
     # --- openai (openai_compatible) -----------------------------------------------------------
-    # GPT-5 nano is the cheapest current candidate anywhere in this registry, by a wide margin.
+    # Ids, context, max output, pricing and the supported-feature list (function_calling,
+    # structured_outputs, image_input) all read from each model's own API documentation page.
     _m("openai", "gpt-5-nano", "GPT-5 nano",
-       tier="cheap", ctx=400_000, cin="0.00005", cout="0.0004"),
+       tier="cheap", ctx=400_000, cin="0.00005", cout="0.0004",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5-nano"),
     _m("openai", "gpt-5.4-nano", "GPT-5.4 nano",
-       tier="cheap", ctx=400_000, cin="0.0002", cout="0.00125"),
+       tier="cheap", ctx=400_000, cin="0.0002", cout="0.00125",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5.4-nano"),
     _m("openai", "gpt-5.6-sol", "GPT-5.6 Sol",
-       tier="strong", ctx=1_050_000, cin="0.005", cout="0.030"),
-    # Still listed by OpenAI and still callable, so an existing configuration keeps working — but
-    # deliberately marked, so a new pilot is never steered onto a 2024 model by default.
+       tier="strong", ctx=1_050_000, cin="0.005", cout="0.030",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5.6-sol"),
+    # Still listed on OpenAI's pricing page, so an existing configuration keeps working — but
+    # marked, so a new pilot is never steered onto a 2024 model by default.
     _m("openai", "gpt-4o", "GPT-4o (legacy)",
        tier="strong", ctx=128_000, cin="0.0025", cout="0.010",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}, lifecycle="deprecated"),
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}, lifecycle="deprecated",
+       source="https://developers.openai.com/api/docs/pricing"),
     _m("openai", "gpt-4o-mini", "GPT-4o mini (legacy)",
-       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006", lifecycle="deprecated"),
+       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006", lifecycle="deprecated",
+       source="https://developers.openai.com/api/docs/pricing"),
 
     # --- deepseek (the SAME openai_compatible adapter, a different vendor) ---------------------
-    # Prices are the PEAK rates effective 2026-08-16. Off-peak (all hours outside 01:00-04:00 and
-    # 06:00-10:00 UTC) is half. Recording peak deliberately: a cost estimate that runs low is the
-    # dangerous direction, and this registry exists to answer "what will this cost".
+    # Context (1M), max output (384K), pricing and the JSON-output/tool-call capability statement
+    # come from the DeepSeek models-and-pricing page. Vision is NOT claimed: the documentation does
+    # not state it, so a task requiring it must not route here.
+    #
+    # Prices are the PEAK rates effective 2026-08-16 (off-peak, outside 01:00-04:00 and 06:00-10:00
+    # UTC, is half). Recording peak deliberately — a cost estimate that runs low is the dangerous
+    # direction, and this registry exists to answer "what will this cost".
     _m("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash",
-       tier="cheap", ctx=1_000_000, cin="0.00044", cout="0.00132"),
+       tier="cheap", ctx=1_000_000, cin="0.00044", cout="0.00132",
+       source="https://api-docs.deepseek.com/quick_start/pricing"),
     _m("deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro",
-       tier="strong", ctx=1_000_000, cin="0.00132", cout="0.00396"),
+       tier="strong", ctx=1_000_000, cin="0.00132", cout="0.00396",
+       source="https://api-docs.deepseek.com/quick_start/pricing"),
 )
+
+#: Retirement horizons the vendor has published, for models where that date is near enough to
+#: matter when choosing. Not enforcement — a note, so a pilot picking a default can weigh how long
+#: the choice will keep working. Anthropic states these as "not sooner than".
+RETIREMENT_HORIZON: dict[str, str] = {
+    "claude-haiku-4-5-20251001": "not sooner than 2026-10-15",
+    "claude-sonnet-5": "not sooner than 2027-06-30",
+    "claude-opus-5": "not sooner than 2027-07-24",
+}
 
 _BY_PAIR: dict[tuple[str, str], ModelDefinition] = {(m.provider, m.model): m for m in MODELS}
 
@@ -222,6 +267,13 @@ def replacement_for(model: str) -> str | None:
     return RETIRED_REPLACEMENTS.get(model)
 
 
+def is_selectable(provider: str, model: str) -> bool:
+    """True when this exact pair is registered AND enabled — the question a migration or an
+    operator UI actually needs answered before writing a model id anywhere durable."""
+    definition = _BY_PAIR.get((provider, model))
+    return definition is not None and definition.enabled
+
+
 def validate_registry() -> list[str]:
     from core.runtime.providers import _BY_KEY
 
@@ -230,6 +282,15 @@ def validate_registry() -> list[str]:
     if len(pairs) != len(set(pairs)):
         problems.append(f"duplicate provider/model pairs: {sorted(pairs)}")
     for m in MODELS:
+        if m.enabled and not m.source:
+            # The registry's stated invariant: only ids verified against current official provider
+            # documentation may be selectable. An unsourced entry is indistinguishable from a
+            # guessed one, so it is refused rather than trusted.
+            problems.append(
+                f"{m.provider}/{m.model}: enabled without an official source URL — verify the id "
+                "against the vendor's documentation or set enabled=False")
+        if m.enabled and not m.verified_on:
+            problems.append(f"{m.provider}/{m.model}: enabled without a verification date")
         if m.model in RETIRED_MODEL_IDS:
             problems.append(
                 f"{m.provider}/{m.model}: {RETIRED_MODEL_IDS[m.model]} — a retired id must not be "

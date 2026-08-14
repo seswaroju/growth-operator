@@ -185,3 +185,102 @@ def test_migration_054_repoints_every_retired_id_it_could_encounter() -> None:
                     "deepseek-chat", "deepseek-reasoner"):
         assert retired in text, f"migration does not handle {retired}"
         assert replacement_for(retired) in text
+
+
+# ---- auditable evidence (PILOT-1A final verification) ------------------------------------------
+
+
+def test_every_enabled_model_names_its_official_source() -> None:
+    """The registry's stated invariant, enforced rather than asserted in prose: only ids verified
+    against current official provider documentation may be selectable. An entry with no source is
+    indistinguishable from a guessed slug — which is exactly how two retired models sat here for
+    ten months looking legitimate."""
+    for m in MODELS:
+        if not m.enabled:
+            continue
+        assert m.source, f"{m.provider}/{m.model} is enabled with no source URL"
+        assert m.source.startswith("https://"), f"{m.model}: source must be a URL"
+        assert m.verified_on, f"{m.model}: no verification date"
+
+
+@pytest.mark.parametrize(
+    ("model", "host"),
+    [
+        ("claude-haiku-4-5-20251001", "platform.claude.com"),
+        ("claude-sonnet-5", "platform.claude.com"),
+        ("claude-opus-5", "platform.claude.com"),
+        ("gpt-5-nano", "developers.openai.com"),
+        ("gpt-5.4-nano", "developers.openai.com"),
+        ("gpt-5.6-sol", "developers.openai.com"),
+        ("deepseek-v4-flash", "api-docs.deepseek.com"),
+        ("deepseek-v4-pro", "api-docs.deepseek.com"),
+    ],
+)
+def test_each_source_is_the_vendors_own_documentation(model: str, host: str) -> None:
+    """First-party documentation only. Not aggregators, not blogs, not search snippets — a model id
+    is a fact about the vendor's live API, and only the vendor states it."""
+    definition = next(m for m in MODELS if m.model == model)
+    assert host in definition.source
+
+
+def test_an_unsourced_enabled_model_fails_validation() -> None:
+    """The guard has teeth: adding a model without evidence breaks CI rather than shipping."""
+    from dataclasses import replace
+
+    import core.runtime.model_registry as registry
+
+    original = registry.MODELS
+    try:
+        registry.MODELS = (*original, replace(original[0], model="invented-model", source=""))
+        problems = registry.validate_registry()
+    finally:
+        registry.MODELS = original
+    assert any("official source" in p for p in problems)
+
+
+def test_deepseek_does_not_claim_vision() -> None:
+    """DeepSeek documents text, JSON output and tool calls — not image input. An optimistic
+    capability is worse than a missing one: the router would select this model for a task it cannot
+    perform, and the failure would surface mid-request instead of at selection time."""
+    for model in ("deepseek-v4-flash", "deepseek-v4-pro"):
+        assert "vision" not in get_model("deepseek", model).capabilities
+
+
+def test_every_migration_054_target_is_selectable() -> None:
+    """A migration that writes a model id into persisted routes must only write ids the registry
+    will actually accept — otherwise it replaces one broken route with another."""
+    from pathlib import Path
+
+    from core.runtime.model_registry import is_selectable
+
+    migration = (Path(__file__).resolve().parents[2]
+                 / "migrations/versions/d53fdc8c9b82_054_repoint_routes_off_retired_models.py")
+    source = migration.read_text()
+    # The tuple literal is parsed rather than imported: what matters is what the migration will
+    # actually write, not what a constant elsewhere currently says.
+    import ast
+
+    tree = ast.parse(source)
+    repoints = next(
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", "") == "_REPOINTS" for t in node.targets))
+    for element in repoints.elts:  # type: ignore[attr-defined]
+        provider, _old, new = (ast.literal_eval(v) for v in element.elts)
+        assert is_selectable(provider, new), f"migration writes unselectable {provider}/{new}"
+
+
+def test_migration_054_never_writes_a_retired_id_forward() -> None:
+    import ast
+    from pathlib import Path
+
+    migration = (Path(__file__).resolve().parents[2]
+                 / "migrations/versions/d53fdc8c9b82_054_repoint_routes_off_retired_models.py")
+    tree = ast.parse(migration.read_text())
+    repoints = next(
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", "") == "_REPOINTS" for t in node.targets))
+    for element in repoints.elts:  # type: ignore[attr-defined]
+        _provider, old, new = (ast.literal_eval(v) for v in element.elts)
+        assert not is_retired(new), f"{old} would be repointed to retired {new}"

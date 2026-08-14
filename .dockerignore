@@ -21,6 +21,14 @@ secrets/*.enc.yaml
 .env
 .env.*
 
+# Not needed by any of the three processes. `prompts/base` and `verticals/` ARE read at runtime
+# (core/prompts/base_layers.py and the pack loader), so they deliberately stay.
+tests
+web
+web-ops
+project-management
+spec
+
 **/__pycache__
 **/*.pyc
 .pytest_cache

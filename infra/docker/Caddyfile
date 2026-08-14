@@ -5,7 +5,6 @@
 # no route, so a mistyped host cannot reach the API.
 #
 # `web-ops` is an internal directory name and never appears in a public hostname.
-
 {
 	email {$ACME_EMAIL}
 	# Postgres and Redis are NOT proxied. They have no listener on the host network at all; see

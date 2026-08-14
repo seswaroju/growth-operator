@@ -115,9 +115,29 @@ def test_migrations_run_under_the_migrator_url() -> None:
     text = DEPLOY.read_text()
     assert "alembic upgrade head" in text
     assert "GROWTH_OPERATOR_DATABASE_MIGRATOR_URL" in text
-    migrate_at = text.index("alembic upgrade head")
-    start_at = text.index("up -d")
-    assert migrate_at < start_at, "migrations must run before the container swap"
+
+
+def test_deploy_order_supports_a_first_install_as_well_as_an_upgrade() -> None:
+    """Three orderings, and the middle one is what a first deploy needs.
+
+    Data services must start BEFORE migration, because on an empty host there is no Postgres to
+    migrate against — the earlier draft used `compose run --no-deps` and `compose exec postgres`,
+    both of which quietly assume an already-running stack. Application services must start AFTER,
+    because new code meeting an old schema is the failure migrations exist to prevent."""
+    text = DEPLOY.read_text()
+    data_up = text.index("up -d postgres redis")
+    migrate = text.index("alembic upgrade head")
+    app_up = text.index("up -d --remove-orphans")
+    assert data_up < migrate, "data services must be running before migrations"
+    assert migrate < app_up, "migrations must run before application containers serve traffic"
+
+
+def test_deploy_waits_for_postgres_health_before_using_it() -> None:
+    """On a first install the volume is empty and initdb takes seconds; `up -d` returns
+    immediately, so proceeding without waiting means migrating against a database that is not
+    accepting connections yet."""
+    text = DEPLOY.read_text()
+    assert "healthy" in text and text.index("healthy") < text.index("alembic upgrade head")
 
 
 @pytest.mark.parametrize("path", ["infra/db/roles.sql", "infra/db/roles-prod.sh"])
