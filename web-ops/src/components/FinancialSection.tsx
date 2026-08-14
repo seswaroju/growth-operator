@@ -5,6 +5,7 @@ import { PlanBuilder } from "./PlanBuilder";
 import {
   adminAssignSubscription, adminBillingRollup, adminCreatePlan, adminGetSubscription,
   adminListCharges, adminListPlans, adminListTenants, adminRecordCharge, adminCopyPlan,
+  adminSetPlanActive,
   adminUpdatePlan,
   type BillingPlan, type BillingRollup, type ChargeType, type PlanInput,
 } from "../api";
@@ -167,6 +168,14 @@ function PlanRow({ token, plan, canManage }:
     mutationFn: (f: FormState) => adminUpdatePlan(token, plan.id, toInput(f)),
     onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
   });
+  // Archive, never delete. A plan can be referenced by a live subscription, historical billing and
+  // the audit trail; destroying the row would destroy the explanation for charges a store has
+  // already paid. Existing subscribers keep the plan they bought — `active=false` only removes it
+  // from future assignment (PLAN-4).
+  const setActive = useMutation({
+    mutationFn: (next: boolean) => adminSetPlanActive(token, plan.id, next),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["billing-plans"] }),
+  });
 
   if (editing) {
     return (
@@ -233,6 +242,20 @@ function PlanRow({ token, plan, canManage }:
               code-managed
             </span>
           )}
+          {/* Canonical presets are excluded: Recover/Grow/Scale are code-managed commercial truth
+              (PLAN-3), and the server refuses regardless of what this UI offers. */}
+          {canManage && !isCanonical && (
+            <button
+              onClick={() => setActive.mutate(!plan.active)}
+              disabled={setActive.isPending}
+              title={plan.active
+                ? "Archive — hides it from new assignment; existing subscribers keep it"
+                : "Restore — makes it assignable again"}
+              className={buttonClasses("ghost", "sm")}
+            >
+              {setActive.isPending ? "…" : plan.active ? "Archive" : "Restore"}
+            </button>
+          )}
         </div>
       </div>
       {building && (
@@ -257,6 +280,11 @@ function PlanRow({ token, plan, canManage }:
 function PlansPanel({ token, canManage }: { token: string; canManage: boolean }) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  // Archived plans are hidden by default. They are never deleted — a plan may be referenced by a
+  // live subscription, historical billing and the audit trail, so destroying the row would destroy
+  // the explanation for charges a store has already paid. `active=false` is the lifecycle;
+  // this is the view.
+  const [showArchived, setShowArchived] = useState(false);
   const plans = useQuery({ queryKey: ["billing-plans"], queryFn: () => adminListPlans(token) });
   const create = useMutation({
     mutationFn: (f: FormState) => {
@@ -269,20 +297,44 @@ function PlansPanel({ token, canManage }: { token: string; canManage: boolean })
     onSuccess: () => { setCreating(false); qc.invalidateQueries({ queryKey: ["billing-plans"] }); },
   });
 
+  const all = plans.data ?? [];
+  const archivedCount = all.filter((p) => !p.active).length;
+  const visible = showArchived ? all : all.filter((p) => p.active);
+
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-ink">Plans</h2>
-        {canManage && !creating && (
-          <button onClick={() => setCreating(true)} className={buttonClasses("ghost", "sm")}>New plan</button>
-        )}
+        <h2 className="text-sm font-semibold text-ink">
+          Plans
+          <span className="ml-2 text-[11px] font-normal text-muted">
+            {visible.length} shown{archivedCount > 0 && ` · ${archivedCount} archived`}
+          </span>
+        </h2>
+        <div className="flex items-center gap-3">
+          {archivedCount > 0 && (
+            <label className="flex items-center gap-1.5 text-[11px] text-muted">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />
+              Show archived
+            </label>
+          )}
+          {canManage && !creating && (
+            <button onClick={() => setCreating(true)} className={buttonClasses("ghost", "sm")}>New plan</button>
+          )}
+        </div>
       </div>
       <ul className="mt-3 space-y-2">
-        {(plans.data ?? []).map((p) => (
+        {visible.map((p) => (
           <PlanRow key={p.id} token={token} plan={p} canManage={canManage} />
         ))}
-        {(plans.data ?? []).length === 0 && !creating && (
-          <li className="text-xs text-muted">No plans yet.</li>
+        {visible.length === 0 && !creating && (
+          <li className="text-xs text-muted">
+            {archivedCount > 0 ? "No active plans — tick “Show archived” to see the rest."
+                               : "No plans yet."}
+          </li>
         )}
       </ul>
       {canManage && creating && (
@@ -485,7 +537,7 @@ export default function FinancialSection() {
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-sm font-semibold text-ink">Financial · Growth Operator</h1>
+        <h1 className="text-sm font-semibold text-ink">Financial · Vaylorn</h1>
         <span className="text-xs text-muted">MRR + this month's service margin</span>
       </div>
       {rollup.isLoading ? (

@@ -7,7 +7,7 @@ const MESSAGES: Record<string, { title: string; body: string }> = {
   },
   forbidden: {
     title: "Not an operator",
-    body: "You're signed in, but this account isn't a Growth Operator operator. Ask an admin to grant access.",
+    body: "You're signed in, but this account isn't a Vaylorn operator. Ask an admin to grant access.",
   },
   unreachable: {
     title: "Can't reach the backend",

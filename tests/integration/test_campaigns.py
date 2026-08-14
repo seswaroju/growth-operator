@@ -89,7 +89,13 @@ async def scene() -> AsyncIterator[Scene]:
     try:
         orgs = [org_a, org_b]
         await conn.execute("DELETE FROM campaigns WHERE org_id = ANY($1::uuid[])", orgs)
+        # Subscriptions before organizations, and the plan last: this fixture created a
+        # `CampPlan-*` row per run and never removed it, so 126 had accumulated in the founder's
+        # development database. The suite that creates a row is the suite that removes it.
+        await conn.execute(
+            "DELETE FROM billing_subscriptions WHERE org_id = ANY($1::uuid[])", orgs)
         await conn.execute("DELETE FROM organizations WHERE id = ANY($1::uuid[])", orgs)
+        await conn.execute("DELETE FROM billing_plans WHERE name LIKE $1", "CampPlan-%")
         await conn.execute("DELETE FROM users WHERE id = ANY($1::uuid[])", [user_a, user_b])
     finally:
         await conn.close()

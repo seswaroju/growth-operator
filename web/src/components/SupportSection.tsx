@@ -119,7 +119,7 @@ function ReportIssue({ token }: { token: string }) {
       )}
       {mutation.isSuccess && (
         <p className="rounded-xl bg-good-soft px-3 py-2 text-xs text-good">
-          Thanks — your issue is with the Growth Operator team.
+          Thanks — your issue is with the Vaylorn team.
         </p>
       )}
     </form>
@@ -169,7 +169,7 @@ export default function SupportSection() {
   if (!token) return null;
   return (
     <div>
-      <PageHeader title="Support" subtitle="Reach the Growth Operator team — and track your open tickets." />
+      <PageHeader title="Support" subtitle="Reach the Vaylorn team — and track your open tickets." />
       <div className="grid gap-5 md:grid-cols-2">
         <Card className="p-5">
           <h2 className="mb-3 text-sm font-semibold text-ink">Report an issue</h2>

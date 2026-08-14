@@ -176,7 +176,7 @@ function QuestionLevels({ detail }: { detail: InsightReportDetail }) {
   );
 }
 
-// ---- Ask Growth Operator (human operator answers; no AI reply) --------------
+// ---- Ask Vaylorn (human operator answers; no AI reply) ---------------------
 
 function AskThread({ reportId, token }: { reportId: string; token: string }) {
   const qc = useQueryClient();
@@ -197,9 +197,9 @@ function AskThread({ reportId, token }: { reportId: string; token: string }) {
   const messages = msgsQ.data ?? [];
   return (
     <Card className="mt-4 p-5">
-      <h3 className="text-sm font-semibold text-ink">Ask Growth Operator</h3>
+      <h3 className="text-sm font-semibold text-ink">Ask Vaylorn</h3>
       <p className="mt-0.5 text-xs text-muted">
-        For anything the levels above don't answer. A Growth Operator specialist replies here.
+        For anything the levels above don't answer. A Vaylorn specialist replies here.
       </p>
       {messages.length > 0 && (
         <ul className="mt-3 space-y-2">
@@ -213,7 +213,7 @@ function AskThread({ reportId, token }: { reportId: string; token: string }) {
                 }`}
               >
                 <div className="text-[11px] font-medium text-muted">
-                  {fromOp ? "Growth Operator" : "You"} · {fmtDate(m.created_at)}
+                  {fromOp ? "Vaylorn" : "You"} · {fmtDate(m.created_at)}
                 </div>
                 <div className="mt-0.5 text-ink">{m.body}</div>
               </li>
@@ -245,7 +245,7 @@ function AskThread({ reportId, token }: { reportId: string; token: string }) {
             {mutation.isPending ? "Sending…" : "Send"}
           </button>
           {mutation.isSuccess && !text && (
-            <span className="text-xs text-good">Sent — Growth Operator will reply here.</span>
+            <span className="text-xs text-good">Sent — Vaylorn will reply here.</span>
           )}
           {mutation.isError && (
             <span className="text-xs text-danger">
@@ -329,7 +329,7 @@ export default function InsightsSection() {
           <EmptyState
             icon={<BarChart className="h-6 w-6" />}
             title="No insights yet"
-            hint="As your campaigns run, Growth Operator analyses them and posts what worked — and why — right here, with the numbers to back it up."
+            hint="As your campaigns run, Vaylorn analyses them and posts what worked — and why — right here, with the numbers to back it up."
           />
         </Card>
       )}

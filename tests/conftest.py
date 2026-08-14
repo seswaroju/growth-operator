@@ -48,6 +48,19 @@ ALL_CAPABILITIES = [
 ]
 
 
+#: Every plan this helper creates is named with this prefix, and `_purge_test_plans` deletes the
+#: lot when the session ends.
+#:
+#: Before DEMO-UX-1 the helper created a `billing_plans` row per call and cleaned up nothing.
+#: Callers deleted their own orgs and subscriptions — the plan id was usually discarded — so each
+#: `pytest` run left one row per call behind forever. The founder's development database had
+#: accumulated **1010** of them, which is why the operator console's plan list was unusable.
+#:
+#: Fixed here rather than in each caller: the helper creates the row, so the helper owns removing
+#: it. A convention that every future fixture must remember is a convention that will be forgotten.
+TEST_PLAN_PREFIX = "ent-"
+
+
 async def entitle_org(
     conn: object, org_id: object, *, capabilities: list[str] | None = None,
     agents: list[str] | None = None, name: str | None = None,
@@ -56,6 +69,9 @@ async def entitle_org(
 
     `conn` is an asyncpg connection. Written as a helper rather than a fixture because the suites
     that need it build their worlds in very different shapes.
+
+    The plan is removed at session end (`_purge_test_plans`) unless the caller passed an explicit
+    `name`, in which case the caller has taken responsibility for it.
     """
     import json
     import uuid as _uuid
@@ -70,7 +86,7 @@ async def entitle_org(
     await conn.execute(  # type: ignore[attr-defined]
         "INSERT INTO billing_plans (id, name, price_minor, features, config, max_managers, "
         "max_staff) VALUES ($1,$2,1,'[]'::jsonb,$3::jsonb,5,20)",
-        plan_id, name or f"ent-{plan_id.hex[:10]}", json.dumps(config))
+        plan_id, name or f"{TEST_PLAN_PREFIX}{plan_id.hex[:10]}", json.dumps(config))
     await conn.execute(  # type: ignore[attr-defined]
         "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active') "
         "ON CONFLICT DO NOTHING",
@@ -109,3 +125,41 @@ def _classify_fixture_tools() -> Iterator[None]:
     yield
     for name in added:
         TOOL_PLAN_EXEMPT.pop(name, None)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _purge_test_plans() -> Iterator[None]:
+    """Remove the plans `entitle_org` created, once, when the session ends.
+
+    Session-scoped and autouse so no test or fixture has to remember. Deletes only rows whose name
+    carries the test prefix — the canonical Recover/Grow/Scale plans and anything an operator or
+    the founder created by hand are never matched.
+
+    Subscriptions referencing those plans go first, or the foreign key refuses the delete. A
+    subscription that survives its plan would be worse than the leak this fixes.
+
+    Best-effort: a database that is unreachable at teardown must not turn a green run red.
+    """
+    yield
+    import asyncio
+
+    import asyncpg
+
+    from core.common.config import get_settings
+
+    async def _purge() -> None:
+        dsn = get_settings().database_migrator_url.replace("+asyncpg", "")
+        conn = await asyncpg.connect(dsn, timeout=5)
+        try:
+            await conn.execute(
+                "DELETE FROM billing_subscriptions WHERE plan_id IN "
+                "(SELECT id FROM billing_plans WHERE name LIKE $1)", f"{TEST_PLAN_PREFIX}%")
+            await conn.execute(
+                "DELETE FROM billing_plans WHERE name LIKE $1", f"{TEST_PLAN_PREFIX}%")
+        finally:
+            await conn.close()
+
+    try:
+        asyncio.run(_purge())
+    except Exception:  # noqa: BLE001 - teardown hygiene must never fail the suite
+        pass
