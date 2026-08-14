@@ -157,7 +157,7 @@ async def test_cost_row_attributes_to_run_and_route(env: Env) -> None:
     assert len(rows) == 1
     row = rows[0]
     assert row["run_id"] == env.run_id and row["node_key"] == "converse"
-    assert row["provider"] == "anthropic" and row["model"] == "claude-3-5-sonnet-20241022"
+    assert row["provider"] == "anthropic" and row["model"] == "claude-sonnet-5"
     assert row["tokens_in"] == 10 and row["tokens_out"] == 5 and row["outcome"] == "ok"
     assert row["cost_usd"] > 0
 
@@ -166,7 +166,7 @@ async def test_unrouted_node_key_uses_the_default_chain(env: Env) -> None:
     # 'priya.reason' (the executor's node_key) has no row → resolves through the seeded default.
     model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
     route = await model._route("priya.reason")
-    assert route.chain == [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
+    assert route.chain == [("anthropic", "claude-sonnet-5"), ("openai", "gpt-5.6-sol")]
 
 
 # ---- Per-tenant model override (CP-5) --------------------------------------------------------
@@ -184,28 +184,28 @@ async def _set_override(org: uuid.UUID, node_key: str, provider: str, model: str
 
 
 async def test_org_override_wins_over_global_default(env: Env) -> None:
-    # This store overrides 'converse' to openai/gpt-4o; the global default is anthropic/sonnet.
-    await _set_override(env.org, "converse", "openai", "gpt-4o")
+    # This store overrides 'converse' to openai/gpt-5.6-sol; the global default is anthropic/sonnet.
+    await _set_override(env.org, "converse", "openai", "gpt-5.6-sol")
     model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
     route = await model._route("converse")
-    assert route.chain == [("openai", "gpt-4o")]  # the store's override, not the seeded sonnet
+    assert route.chain == [("openai", "gpt-5.6-sol")]  # the store's override, not the seeded sonnet
     # and the turn actually runs on the overridden provider (cost row attributes to it)
     await model.turn(node_key="converse", prompt="hi", context={})
     rows = await _costs(env.org, env.run_id)
-    assert rows[0]["provider"] == "openai" and rows[0]["model"] == "gpt-4o"
+    assert rows[0]["provider"] == "openai" and rows[0]["model"] == "gpt-5.6-sol"
 
 
 async def test_org_default_override_applies_to_unrouted_keys(env: Env) -> None:
     # A store-level 'default' override catches every turn, including the executor's 'priya.reason'.
-    await _set_override(env.org, "default", "openai", "gpt-4o")
+    await _set_override(env.org, "default", "openai", "gpt-5.6-sol")
     model = RoutingModel(env.org, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
     route = await model._route("priya.reason")
-    assert route.chain == [("openai", "gpt-4o")]
+    assert route.chain == [("openai", "gpt-5.6-sol")]
 
 
 async def test_override_is_org_scoped(env: Env) -> None:
     # env.org overrides 'converse'; a DIFFERENT store must still get the global default (RLS).
-    await _set_override(env.org, "converse", "openai", "gpt-4o")
+    await _set_override(env.org, "converse", "openai", "gpt-5.6-sol")
     other = uuid.uuid4()
     conn = await asyncpg.connect(_dsn())
     try:
@@ -215,7 +215,7 @@ async def test_override_is_org_scoped(env: Env) -> None:
     try:
         model = RoutingModel(other, env.run_id, FakeRedis(), get_provider_fn=lambda name: _Ok(name))
         route = await model._route("converse")
-        assert route.chain == [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
+        assert route.chain == [("anthropic", "claude-sonnet-5"), ("openai", "gpt-5.6-sol")]
     finally:
         conn = await asyncpg.connect(_dsn())
         try:

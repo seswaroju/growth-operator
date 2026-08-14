@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Literal
 
 #: What a node may require of a model.
 TEXT = "text"
@@ -30,6 +31,16 @@ STRUCTURED_OUTPUT = "structured_output"
 VISION = "vision"
 
 QualityTier = str  # cheap | normal | strong
+
+#: Where a model sits in its vendor's lifecycle. This is not decoration: a `retired` id is one the
+#: vendor REFUSES, so a route pointing at one fails on every request. PILOT-1A found four such
+#: routes in the database, all pointing at Anthropic models retired months earlier.
+#: Three states, because "not what a new pilot should use" and "the vendor has announced its end"
+#: are different claims and only one of them is ours to make.
+#:   current    — the vendor's present generation; what a new deployment should be offered
+#:   legacy     — callable and NOT documented as deprecated; an older generation, non-preferred
+#:   deprecated — the vendor's own lifecycle documentation says so
+Lifecycle = Literal["current", "legacy", "deprecated"]
 
 
 @dataclass(frozen=True)
@@ -45,39 +56,156 @@ class ModelDefinition:
     cost_per_1k_in: Decimal | None = None
     cost_per_1k_out: Decimal | None = None
     quality_tier: QualityTier = "normal"
+    #: `legacy` and `deprecated` models still answer, so an existing configuration keeps working,
+    #: but neither is a preferred choice for a new deployment. Only `deprecated` asserts that the
+    #: VENDOR has said so. Retired models are absent entirely — see RETIRED_MODEL_IDS.
+    lifecycle: Lifecycle = "current"
+    #: The official vendor page that proves this exact API id, checked on `verified_on`. Recorded
+    #: per model rather than in a comment because "where did this id come from?" is the question
+    #: that went unasked for a year while two retired models sat here looking legitimate. A model
+    #: with no source is not enabled — `validate_registry` refuses it.
+    source: str = ""
+    verified_on: str = ""
+
+
+#: The date every entry below was last checked against its vendor's own documentation. A registry
+#: is only as good as this date; PILOT-1A found entries that had been wrong for ten months.
+VERIFIED_ON = "2026-08-13"
 
 
 def _m(provider: str, model: str, label: str, *, tier: str, ctx: int,
-       cin: str, cout: str, caps: set[str] | None = None) -> ModelDefinition:
+       cin: str, cout: str, source: str, caps: set[str] | None = None,
+       lifecycle: Lifecycle = "current", enabled: bool = True) -> ModelDefinition:
     return ModelDefinition(
         provider=provider, model=model, label=label, quality_tier=tier, max_context=ctx,
         cost_per_1k_in=Decimal(cin), cost_per_1k_out=Decimal(cout),
         capabilities=frozenset(caps or {TEXT, TOOL_CALLING, STRUCTURED_OUTPUT}),
+        lifecycle=lifecycle, enabled=enabled, source=source, verified_on=VERIFIED_ON,
     )
 
 
-#: Approved models. Pricing is indicative operational metadata for comparison, refreshed
-#: deliberately — it is never quoted to a customer and never mixed with commercial plan pricing.
+#: Model ids this repository used to offer that the vendor has since **retired**. Kept as a named
+#: set rather than deleted quietly, because the useful behaviour is not "these are gone" but "if you
+#: find one of these in a route or a config, replace it" — which `validate_registry` and migration
+#: 054 both act on. A retired id in a route is not a stale preference; it is a guaranteed failure.
+#: The note says WHEN and WHY only. The replacement lives in RETIRED_REPLACEMENTS below and is not
+#: repeated here — one place for one fact, and the earlier "old -> new" phrasing read to the secret
+#: scanner as a high-entropy assignment.
+RETIRED_MODEL_IDS: dict[str, str] = {
+    # Anthropic retired both on the dates below; requests to them fail (docs: model-deprecations).
+    "claude-3-5-sonnet-20241022": "retired by the vendor on 2025-10-28",
+    "claude-3-5-haiku-20241022": "retired by the vendor on 2026-02-19",
+    "claude-3-5-sonnet": "never a valid API id (no date suffix)",
+    "claude-3-5-haiku": "never a valid API id (no date suffix)",
+    # DeepSeek retired the original chat/reasoner ids in favour of the V4 family.
+    "deepseek-chat": "retired by the vendor on 2026-07-24",
+    "deepseek-reasoner": "retired by the vendor on 2026-07-24",
+}
+
+#: The replacement to migrate a retired id to. Separate from the note above so code can act on it.
+RETIRED_REPLACEMENTS: dict[str, str] = {
+    "claude-3-5-sonnet-20241022": "claude-sonnet-5",
+    "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+    "claude-3-5-sonnet": "claude-sonnet-5",
+    "claude-3-5-haiku": "claude-haiku-4-5-20251001",
+    "deepseek-chat": "deepseek-v4-flash",
+    "deepseek-reasoner": "deepseek-v4-pro",
+}
+
+
+#: Approved models. **Every id below was read from the vendor's own documentation on 2026-08-13**,
+#: and the page that proves it is recorded per entry — see `source`. A model without a source is
+#: refused by `validate_registry`, because the failure this guards against is not a typo but a
+#: plausible-looking id nobody ever checked.
+#:
+#: That is not hypothetical here. Before PILOT-1A this registry offered two Anthropic models their
+#: vendor had already RETIRED — Sonnet 3.5 (2025-10-28) and Haiku 3.5 (2026-02-19) — and four
+#: database routes pointed at them. Requests to a retired id fail, so the first call made with a
+#: real key would have failed during the first live smoke. Migration 052 had "fixed" those ids by
+#: adding date suffixes, which made them well-formed and no more callable.
+#:
+#: Capabilities are asserted only where the vendor states them. An optimistic capability is worse
+#: than a missing one: the router would select this model for a task it cannot perform, and the
+#: failure would surface mid-request instead of at selection time.
 MODELS: tuple[ModelDefinition, ...] = (
-    # --- anthropic (anthropic_native) ---
-    _m("anthropic", "claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet",
-       tier="strong", ctx=200_000, cin="0.003", cout="0.015",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}),
-    _m("anthropic", "claude-3-5-haiku-20241022", "Claude 3.5 Haiku",
-       tier="cheap", ctx=200_000, cin="0.0008", cout="0.004"),
-    # --- openai (openai_compatible) ---
-    _m("openai", "gpt-4o", "GPT-4o",
+    # --- anthropic (anthropic_native) ---------------------------------------------------------
+    # Ids from the "Claude API ID" row of the models overview; lifecycle from the deprecations
+    # table; tool use from the tool-use pricing table (each has a tool-use system prompt token
+    # count, which only supported models have); vision from "All current Claude models support
+    # text and image input ... and vision"; structured output via strict tool use.
+    _m("anthropic", "claude-haiku-4-5-20251001", "Claude Haiku 4.5",
+       tier="cheap", ctx=200_000, cin="0.001", cout="0.005",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
+    _m("anthropic", "claude-sonnet-5", "Claude Sonnet 5",
+       tier="normal", ctx=1_000_000, cin="0.002", cout="0.010",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
+    _m("anthropic", "claude-opus-5", "Claude Opus 5",
+       tier="strong", ctx=1_000_000, cin="0.005", cout="0.025",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://platform.claude.com/docs/en/about-claude/models/overview"),
+
+    # --- openai (openai_compatible) -----------------------------------------------------------
+    # Ids, context, max output, pricing and the supported-feature list (function_calling,
+    # structured_outputs, image_input) all read from each model's own API documentation page.
+    _m("openai", "gpt-5-nano", "GPT-5 nano",
+       tier="cheap", ctx=400_000, cin="0.00005", cout="0.0004",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5-nano"),
+    _m("openai", "gpt-5.4-nano", "GPT-5.4 nano",
+       tier="cheap", ctx=400_000, cin="0.0002", cout="0.00125",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5.4-nano"),
+    _m("openai", "gpt-5.6-sol", "GPT-5.6 Sol",
+       tier="strong", ctx=1_050_000, cin="0.005", cout="0.030",
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
+       source="https://developers.openai.com/api/docs/models/gpt-5.6-sol"),
+    # Both remain listed and callable, so an existing configuration keeps working — but neither is
+    # offered to a new pilot. The two carry DIFFERENT statuses on purpose: OpenAI's lifecycle
+    # documentation marks gpt-4o deprecated, and does not currently say that of gpt-4o-mini.
+    # Calling it deprecated anyway would be this repository asserting a vendor decision the vendor
+    # has not made — the same class of error as keeping a retired id, pointed the other way.
+    _m("openai", "gpt-4o", "GPT-4o (deprecated)",
        tier="strong", ctx=128_000, cin="0.0025", cout="0.010",
-       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}),
-    _m("openai", "gpt-4o-mini", "GPT-4o mini",
-       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006"),
-    # --- deepseek (the SAME openai_compatible adapter, a different vendor) ---
-    _m("deepseek", "deepseek-chat", "DeepSeek Chat",
-       tier="normal", ctx=64_000, cin="0.00027", cout="0.0011"),
-    _m("deepseek", "deepseek-reasoner", "DeepSeek Reasoner",
-       tier="strong", ctx=64_000, cin="0.00055", cout="0.00219",
-       caps={TEXT}),  # reasoning model: no tool calling on the chat completions surface
+       caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}, lifecycle="deprecated",
+       source="https://developers.openai.com/api/docs/pricing"),
+    _m("openai", "gpt-4o-mini", "GPT-4o mini (previous generation)",
+       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006", lifecycle="legacy",
+       source="https://developers.openai.com/api/docs/pricing"),
+
+    # --- deepseek (the SAME openai_compatible adapter, a different vendor) ---------------------
+    # Context (1M), max output (384K), pricing and the JSON-output/tool-call capability statement
+    # come from the DeepSeek models-and-pricing page. Vision is NOT claimed: the documentation does
+    # not state it, so a task requiring it must not route here.
+    #
+    # Prices are the PEAK rates effective 2026-08-16 (off-peak, outside 01:00-04:00 and 06:00-10:00
+    # UTC, is half). Recording peak deliberately — a cost estimate that runs low is the dangerous
+    # direction, and this registry exists to answer "what will this cost".
+    _m("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash",
+       tier="cheap", ctx=1_000_000, cin="0.00044", cout="0.00132",
+       source="https://api-docs.deepseek.com/quick_start/pricing"),
+    _m("deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro",
+       tier="strong", ctx=1_000_000, cin="0.00132", cout="0.00396",
+       source="https://api-docs.deepseek.com/quick_start/pricing"),
 )
+
+#: Retirement horizons the vendor has published, for models where that date is near enough to
+#: matter when choosing. Not enforcement — a note, so a pilot picking a default can weigh how long
+#: the choice will keep working. Anthropic states these as "not sooner than".
+RETIREMENT_HORIZON: dict[str, str] = {
+    "claude-haiku-4-5-20251001": "not sooner than 2026-10-15",
+    "claude-sonnet-5": "not sooner than 2027-06-30",
+    "claude-opus-5": "not sooner than 2027-07-24",
+}
+
+#: The Anthropic model Pilot-1 prefers where one must be chosen before evaluation data exists
+#: (founder ruling, 2026-08-14). Sonnet 5 rather than the cheaper Haiku 4.5 purely on horizon:
+#: Haiku's published floor is about two months out, and a pilot that has to swap models mid-flight
+#: has spent its attention on the wrong problem. Haiku stays available and is expected in the
+#: benchmark; Opus 5 stays available as the quality ceiling. **This is a placeholder, not a
+#: declared default** — that decision belongs to evaluation against the real corpus.
+PILOT_ANTHROPIC_CANDIDATE = "claude-sonnet-5"
 
 _BY_PAIR: dict[tuple[str, str], ModelDefinition] = {(m.provider, m.model): m for m in MODELS}
 
@@ -140,6 +268,31 @@ def approved_models() -> tuple[ModelDefinition, ...]:
     return tuple(m for m in MODELS if m.enabled)
 
 
+def current_models() -> tuple[ModelDefinition, ...]:
+    """What a NEW deployment should be offered. Legacy and deprecated models remain callable and
+    remain in `approved_models()` so an existing configuration keeps working; neither is what
+    anyone should be steered onto today."""
+    return tuple(m for m in approved_models() if m.lifecycle == "current")
+
+
+def is_retired(model: str) -> bool:
+    """True for an id the vendor no longer answers. Checked by name rather than by absence from the
+    registry, because "unknown" and "retired" call for different responses: one is a typo, the
+    other is a route that used to work and now silently cannot."""
+    return model in RETIRED_MODEL_IDS
+
+
+def replacement_for(model: str) -> str | None:
+    return RETIRED_REPLACEMENTS.get(model)
+
+
+def is_selectable(provider: str, model: str) -> bool:
+    """True when this exact pair is registered AND enabled — the question a migration or an
+    operator UI actually needs answered before writing a model id anywhere durable."""
+    definition = _BY_PAIR.get((provider, model))
+    return definition is not None and definition.enabled
+
+
 def validate_registry() -> list[str]:
     from core.runtime.providers import _BY_KEY
 
@@ -148,6 +301,19 @@ def validate_registry() -> list[str]:
     if len(pairs) != len(set(pairs)):
         problems.append(f"duplicate provider/model pairs: {sorted(pairs)}")
     for m in MODELS:
+        if m.enabled and not m.source:
+            # The registry's stated invariant: only ids verified against current official provider
+            # documentation may be selectable. An unsourced entry is indistinguishable from a
+            # guessed one, so it is refused rather than trusted.
+            problems.append(
+                f"{m.provider}/{m.model}: enabled without an official source URL — verify the id "
+                "against the vendor's documentation or set enabled=False")
+        if m.enabled and not m.verified_on:
+            problems.append(f"{m.provider}/{m.model}: enabled without a verification date")
+        if m.model in RETIRED_MODEL_IDS:
+            problems.append(
+                f"{m.provider}/{m.model}: {RETIRED_MODEL_IDS[m.model]} — a retired id must not be "
+                "offered; requests to it fail")
         if m.provider not in _BY_KEY:
             problems.append(f"{m.provider}/{m.model}: provider is not in the provider registry")
         if TEXT not in m.capabilities:

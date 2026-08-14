@@ -17,6 +17,7 @@ import pytest
 
 from core.common import db as dbmod
 from core.common.config import get_settings
+from core.runtime.model_registry import current_models, is_retired
 from core.tenancy.auth import issue_access_token
 
 
@@ -103,9 +104,13 @@ async def test_catalog_lists_choices_and_default(scene: Scene) -> None:
     assert r.status_code == 200, r.text
     body = r.json()
     pairs = {(m["provider"], m["model"]) for m in body["models"]}
-    assert ("anthropic", "claude-3-5-sonnet-20241022") in pairs and ("openai", "gpt-4o") in pairs
+    assert ("anthropic", "claude-sonnet-5") in pairs and ("openai", "gpt-5.6-sol") in pairs
     assert body["default_provider"] == "anthropic"
-    assert body["default_model"] == "claude-3-5-sonnet-20241022"
+    # Asserted as a PROPERTY, not an id. The default is an explicit placeholder until live
+    # evaluation picks one, so pinning a model here would fail every time that decision is
+    # revisited while still not catching the thing that matters: that it is callable at all.
+    assert not is_retired(body["default_model"])
+    assert body["default_model"] in {m.model for m in current_models()}
     node_keys = {n["node_key"] for n in body["nodes"]}
     assert {"default", "converse", "campaign", "classify"} <= node_keys
 
@@ -116,8 +121,8 @@ async def test_effective_config_defaults_when_no_override(scene: Scene) -> None:
     by_key = {i["node_key"]: i for i in r.json()}
     # every tunable node reads the GLOBAL default (per-node), none is an override
     assert by_key["default"]["provider"] == "anthropic"
-    assert by_key["default"]["model"] == "claude-3-5-sonnet-20241022"
-    assert by_key["classify"]["model"] == "claude-3-5-haiku-20241022"  # its own seeded default
+    assert by_key["default"]["model"] == "claude-sonnet-5"
+    assert by_key["classify"]["model"] == "claude-haiku-4-5-20251001"  # its own seeded default
     assert all(i["is_override"] is False for i in r.json())
 
 
@@ -125,32 +130,33 @@ async def test_set_override_then_effective_reflects_it(scene: Scene) -> None:
     op = _op(scene.operator)
     put = await scene.client.put(
         f"{_models_url(scene.org)}/converse", headers=op,
-        json={"provider": "openai", "model": "gpt-4o"})
+        json={"provider": "openai", "model": "gpt-5.6-sol"})
     assert put.status_code == 200, put.text
     item = put.json()
-    assert item["provider"] == "openai" and item["model"] == "gpt-4o"
+    assert item["provider"] == "openai" and item["model"] == "gpt-5.6-sol"
     assert item["is_override"] is True
     assert item["default_provider"] == "anthropic"
-    assert item["default_model"] == "claude-3-5-sonnet-20241022"
+    assert not is_retired(item["default_model"])
+    assert item["default_model"] in {m.model for m in current_models()}
     # persisted + reflected in the effective list
     conn = await asyncpg.connect(_dsn())
     try:
         row = await conn.fetchrow(
             "SELECT provider, model FROM org_model_routes WHERE org_id=$1 AND node_key='converse'",
             scene.org)
-        assert row is not None and row["provider"] == "openai" and row["model"] == "gpt-4o"
+        assert row is not None and row["provider"] == "openai" and row["model"] == "gpt-5.6-sol"
     finally:
         await conn.close()
     lst = await scene.client.get(_models_url(scene.org), headers=op)
     conv = next(i for i in lst.json() if i["node_key"] == "converse")
-    assert conv["is_override"] is True and conv["model"] == "gpt-4o"
+    assert conv["is_override"] is True and conv["model"] == "gpt-5.6-sol"
 
 
 async def test_clear_override_reverts_to_default(scene: Scene) -> None:
     op = _op(scene.operator)
     await scene.client.put(
         f"{_models_url(scene.org)}/converse", headers=op,
-        json={"provider": "openai", "model": "gpt-4o"})
+        json={"provider": "openai", "model": "gpt-5.6-sol"})
     d = await scene.client.delete(f"{_models_url(scene.org)}/converse", headers=op)
     assert d.status_code == 204
     conn = await asyncpg.connect(_dsn())
@@ -162,13 +168,13 @@ async def test_clear_override_reverts_to_default(scene: Scene) -> None:
     conv = next(
         i for i in (await scene.client.get(_models_url(scene.org), headers=op)).json()
         if i["node_key"] == "converse")
-    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet-20241022"
+    assert conv["is_override"] is False and conv["model"] == "claude-sonnet-5"
 
 
 async def test_unknown_node_key_is_404(scene: Scene) -> None:
     r = await scene.client.put(
         f"{_models_url(scene.org)}/not_a_task", headers=_op(scene.operator),
-        json={"provider": "openai", "model": "gpt-4o"})
+        json={"provider": "openai", "model": "gpt-5.6-sol"})
     assert r.status_code == 404
 
 
@@ -189,7 +195,7 @@ async def test_override_is_org_scoped(scene: Scene) -> None:
     op = _op(scene.operator)
     await scene.client.put(
         f"{_models_url(scene.org)}/converse", headers=op,
-        json={"provider": "openai", "model": "gpt-4o"})
+        json={"provider": "openai", "model": "gpt-5.6-sol"})
     other = uuid.uuid4()
     conn = await asyncpg.connect(_dsn())
     try:
@@ -201,7 +207,7 @@ async def test_override_is_org_scoped(scene: Scene) -> None:
     conv = next(
         i for i in (await scene.client.get(_models_url(other), headers=op)).json()
         if i["node_key"] == "converse")
-    assert conv["is_override"] is False and conv["model"] == "claude-3-5-sonnet-20241022"
+    assert conv["is_override"] is False and conv["model"] == "claude-sonnet-5"
 
 
 async def test_non_operator_is_403(scene: Scene) -> None:

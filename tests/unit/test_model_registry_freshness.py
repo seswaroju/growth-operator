@@ -1,0 +1,322 @@
+"""PILOT-1A — the model registry must describe vendors' CURRENT APIs.
+
+A model id is a fact about someone else's live service, not something this repository can settle
+among itself. Before this ticket the registry offered four models, two of which their vendor had
+already retired — `claude-3-5-sonnet-20241022` (retired 2025-10-28) and `claude-3-5-haiku-20241022`
+(retired 2026-02-19) — and four database routes pointed at them. The first request made with a real
+API key would have failed, at the worst possible moment: during the first live smoke.
+
+Migration 052 had already "fixed" those ids once by adding date suffixes, on the reasonable belief
+that the suffix was the problem. It made them well-formed and no more callable.
+
+Verified against vendor documentation on 2026-08-13.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from core.runtime.model_registry import (
+    MODELS,
+    RETIRED_MODEL_IDS,
+    RETIRED_REPLACEMENTS,
+    approved_models,
+    current_models,
+    get_model,
+    is_retired,
+    replacement_for,
+    validate_registry,
+)
+from core.runtime.routing import _FALLBACK_CHAIN
+
+
+def test_registry_has_no_structural_problems() -> None:
+    assert validate_registry() == []
+
+
+# ---- 21: retired ids are not selectable --------------------------------------------------------
+
+
+@pytest.mark.parametrize("model", sorted(RETIRED_MODEL_IDS))
+def test_a_retired_model_is_not_offered(model: str) -> None:
+    """Not merely deprioritised — absent. A retired id is a guaranteed failure, so offering it at
+    any priority is offering a broken choice."""
+    assert model not in {m.model for m in MODELS}
+
+
+@pytest.mark.parametrize("model", ["deepseek-chat", "deepseek-reasoner"])
+def test_retired_deepseek_ids_are_gone(model: str) -> None:
+    """DeepSeek retired both on 2026-07-24 in favour of the V4 family."""
+    assert is_retired(model)
+    with pytest.raises(Exception, match="model_unknown"):
+        get_model("deepseek", model)
+
+
+@pytest.mark.parametrize(
+    "model", ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"])
+def test_retired_anthropic_ids_are_gone(model: str) -> None:
+    assert is_retired(model)
+    with pytest.raises(Exception, match="model_unknown"):
+        get_model("anthropic", model)
+
+
+def test_every_retired_id_names_its_replacement() -> None:
+    """So a route or config found pointing at one can be repaired, not just diagnosed."""
+    assert set(RETIRED_MODEL_IDS) == set(RETIRED_REPLACEMENTS)
+    for retired, replacement in RETIRED_REPLACEMENTS.items():
+        assert not is_retired(replacement), f"{retired} is replaced by another retired model"
+        assert replacement in {m.model for m in MODELS}
+
+
+# ---- 22: current metadata validates ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("model", ["deepseek-v4-flash", "deepseek-v4-pro"])
+def test_current_deepseek_models_are_registered(model: str) -> None:
+    definition = get_model("deepseek", model)
+    assert definition.lifecycle == "current"
+    # Both V4 models document a 1M context window.
+    assert definition.max_context == 1_000_000
+    # Both are served by the OpenAI-compatible endpoint Vaylorn already speaks — the reason this
+    # refresh needed no transport change.
+    from core.runtime.providers import get_provider_definition
+
+    assert get_provider_definition("deepseek").adapter == "openai_compatible"
+
+
+def test_deepseek_v4_pricing_is_not_the_old_chat_pricing() -> None:
+    """The specific trap: copying the retired model's numbers onto its replacement produces a
+    registry that looks refreshed and estimates costs wrongly."""
+    from decimal import Decimal
+
+    flash = get_model("deepseek", "deepseek-v4-flash")
+    assert flash.cost_per_1k_in != Decimal("0.00027")   # deepseek-chat's old input price
+    assert flash.cost_per_1k_out != Decimal("0.0011")   # deepseek-chat's old output price
+
+
+def test_every_model_has_complete_cost_metadata() -> None:
+    """Cost is why this registry exists; a model without it silently estimates as free."""
+    for m in MODELS:
+        assert m.cost_per_1k_in is not None and m.cost_per_1k_out is not None
+        assert m.cost_per_1k_out >= m.cost_per_1k_in, f"{m.model}: output should not be cheaper"
+        assert m.max_context and m.max_context > 0
+
+
+def test_the_cheapest_current_candidates_are_available() -> None:
+    """The pilot picks the cheapest model that clears the quality bar, so cheap current options
+    must actually be offered."""
+    cheap = {m.model for m in current_models() if m.quality_tier == "cheap"}
+    assert {"gpt-5-nano", "deepseek-v4-flash"} <= cheap
+
+
+def test_at_least_two_vendors_offer_a_current_model() -> None:
+    """Cross-provider fallback is only real if a second vendor is actually usable."""
+    assert len({m.provider for m in current_models()}) >= 2
+
+
+# ---- lifecycle handling -------------------------------------------------------------------------
+
+
+def test_older_models_remain_callable_but_are_not_preferred() -> None:
+    """Both remain listed by OpenAI, so an existing configuration keeps working; neither is what a
+    new pilot should be steered onto."""
+    older = {m.model for m in MODELS if m.lifecycle in ("legacy", "deprecated")}
+    assert older == {"gpt-4o", "gpt-4o-mini"}
+    assert older <= {m.model for m in approved_models()}
+    assert not older & {m.model for m in current_models()}
+
+
+def test_only_vendor_documented_deprecation_is_called_deprecated() -> None:
+    """OpenAI's lifecycle documentation marks gpt-4o deprecated and does not currently say that of
+    gpt-4o-mini. Labelling the latter deprecated would be this repository asserting a vendor
+    decision the vendor has not made — the same class of error as keeping a retired id, pointed the
+    other way. `legacy` says what is true: older generation, still callable, not preferred."""
+    assert get_model("openai", "gpt-4o").lifecycle == "deprecated"
+    assert get_model("openai", "gpt-4o-mini").lifecycle == "legacy"
+
+
+def test_the_pilot_anthropic_candidate_has_the_longer_horizon() -> None:
+    """Founder ruling: prefer Sonnet 5 over the cheaper Haiku 4.5 purely on retirement horizon —
+    a pilot that has to swap models mid-flight has spent its attention on the wrong problem."""
+    from core.runtime.model_registry import PILOT_ANTHROPIC_CANDIDATE, RETIREMENT_HORIZON
+
+    assert PILOT_ANTHROPIC_CANDIDATE == "claude-sonnet-5"
+    assert not is_retired(PILOT_ANTHROPIC_CANDIDATE)
+    assert PILOT_ANTHROPIC_CANDIDATE in {m.model for m in current_models()}
+    assert RETIREMENT_HORIZON["claude-sonnet-5"] > RETIREMENT_HORIZON["claude-haiku-4-5-20251001"]
+
+
+def test_haiku_and_opus_remain_available_for_benchmarking() -> None:
+    """Neither is deleted: Haiku is the low-cost evaluation candidate and Opus the quality
+    ceiling. A near horizon is a reason to prefer something else, not to remove a model."""
+    available = {m.model for m in approved_models()}
+    assert {"claude-haiku-4-5-20251001", "claude-opus-5"} <= available
+
+
+def test_no_permanent_default_is_declared() -> None:
+    """The placeholder is a placeholder. The real decision is the cheapest model that clears the
+    quality bar on Vaylorn's own corpus, and that evidence does not exist yet."""
+    from pathlib import Path
+
+    catalog = (Path(__file__).resolve().parents[2] / "core/runtime/model_catalog.py").read_text()
+    assert "placeholder" in catalog.lower() or "No permanent Vaylorn default" in catalog
+
+
+def test_current_models_are_a_strict_subset_of_approved() -> None:
+    assert set(current_models()) < set(approved_models()) or set(current_models()) == set(
+        approved_models())
+
+
+# ---- 23: nothing else still points at a retired model ------------------------------------------
+
+
+def test_the_fallback_chain_names_only_current_models() -> None:
+    """A fail-safe that names a retired model is not a fail-safe. Both entries used to."""
+    for provider, model in _FALLBACK_CHAIN:
+        assert not is_retired(model)
+        assert get_model(provider, model).lifecycle == "current"
+
+
+def test_the_fallback_chain_crosses_vendors() -> None:
+    """Falling back to the same provider protects against nothing that took the primary down."""
+    assert len({provider for provider, _ in _FALLBACK_CHAIN}) > 1
+
+
+def test_the_configured_default_model_is_current() -> None:
+    from core.common.config import Settings
+
+    default = Settings(env="dev").llm_model
+    assert not is_retired(default)
+    assert default in {m.model for m in current_models()}
+
+
+def test_no_source_file_still_references_a_retired_model() -> None:
+    """The registry can be right while a seed script, a fallback or a docstring quietly is not."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    offenders: list[str] = []
+    for directory in ("core", "scripts", "verticals"):
+        for path in (root / directory).rglob("*"):
+            if path.suffix not in {".py", ".yaml", ".yml", ".md"} or "__pycache__" in str(path):
+                continue
+            if path.name == "model_registry.py":
+                continue  # the one file that must name them, to refuse them
+            text = path.read_text(errors="ignore")
+            for retired in RETIRED_MODEL_IDS:
+                if retired in text:
+                    offenders.append(f"{path.relative_to(root)}: {retired}")
+    assert not offenders, f"retired model ids still referenced: {offenders}"
+
+
+def test_migration_054_repoints_every_retired_id_it_could_encounter() -> None:
+    """Persisted routes are tenant-visible truth; §28 requires an explicit repoint rather than
+    letting the first live request discover the problem."""
+    from pathlib import Path
+
+    migration = (Path(__file__).resolve().parents[2]
+                 / "migrations/versions/d53fdc8c9b82_054_repoint_routes_off_retired_models.py")
+    text = migration.read_text()
+    for retired in ("claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022",
+                    "deepseek-chat", "deepseek-reasoner"):
+        assert retired in text, f"migration does not handle {retired}"
+        assert replacement_for(retired) in text
+
+
+# ---- auditable evidence (PILOT-1A final verification) ------------------------------------------
+
+
+def test_every_enabled_model_names_its_official_source() -> None:
+    """The registry's stated invariant, enforced rather than asserted in prose: only ids verified
+    against current official provider documentation may be selectable. An entry with no source is
+    indistinguishable from a guessed slug — which is exactly how two retired models sat here for
+    ten months looking legitimate."""
+    for m in MODELS:
+        if not m.enabled:
+            continue
+        assert m.source, f"{m.provider}/{m.model} is enabled with no source URL"
+        assert m.source.startswith("https://"), f"{m.model}: source must be a URL"
+        assert m.verified_on, f"{m.model}: no verification date"
+
+
+@pytest.mark.parametrize(
+    ("model", "host"),
+    [
+        ("claude-haiku-4-5-20251001", "platform.claude.com"),
+        ("claude-sonnet-5", "platform.claude.com"),
+        ("claude-opus-5", "platform.claude.com"),
+        ("gpt-5-nano", "developers.openai.com"),
+        ("gpt-5.4-nano", "developers.openai.com"),
+        ("gpt-5.6-sol", "developers.openai.com"),
+        ("deepseek-v4-flash", "api-docs.deepseek.com"),
+        ("deepseek-v4-pro", "api-docs.deepseek.com"),
+    ],
+)
+def test_each_source_is_the_vendors_own_documentation(model: str, host: str) -> None:
+    """First-party documentation only. Not aggregators, not blogs, not search snippets — a model id
+    is a fact about the vendor's live API, and only the vendor states it."""
+    definition = next(m for m in MODELS if m.model == model)
+    assert host in definition.source
+
+
+def test_an_unsourced_enabled_model_fails_validation() -> None:
+    """The guard has teeth: adding a model without evidence breaks CI rather than shipping."""
+    from dataclasses import replace
+
+    import core.runtime.model_registry as registry
+
+    original = registry.MODELS
+    try:
+        registry.MODELS = (*original, replace(original[0], model="invented-model", source=""))
+        problems = registry.validate_registry()
+    finally:
+        registry.MODELS = original
+    assert any("official source" in p for p in problems)
+
+
+def test_deepseek_does_not_claim_vision() -> None:
+    """DeepSeek documents text, JSON output and tool calls — not image input. An optimistic
+    capability is worse than a missing one: the router would select this model for a task it cannot
+    perform, and the failure would surface mid-request instead of at selection time."""
+    for model in ("deepseek-v4-flash", "deepseek-v4-pro"):
+        assert "vision" not in get_model("deepseek", model).capabilities
+
+
+def test_every_migration_054_target_is_selectable() -> None:
+    """A migration that writes a model id into persisted routes must only write ids the registry
+    will actually accept — otherwise it replaces one broken route with another."""
+    from pathlib import Path
+
+    from core.runtime.model_registry import is_selectable
+
+    migration = (Path(__file__).resolve().parents[2]
+                 / "migrations/versions/d53fdc8c9b82_054_repoint_routes_off_retired_models.py")
+    source = migration.read_text()
+    # The tuple literal is parsed rather than imported: what matters is what the migration will
+    # actually write, not what a constant elsewhere currently says.
+    import ast
+
+    tree = ast.parse(source)
+    repoints = next(
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", "") == "_REPOINTS" for t in node.targets))
+    for element in repoints.elts:  # type: ignore[attr-defined]
+        provider, _old, new = (ast.literal_eval(v) for v in element.elts)
+        assert is_selectable(provider, new), f"migration writes unselectable {provider}/{new}"
+
+
+def test_migration_054_never_writes_a_retired_id_forward() -> None:
+    import ast
+    from pathlib import Path
+
+    migration = (Path(__file__).resolve().parents[2]
+                 / "migrations/versions/d53fdc8c9b82_054_repoint_routes_off_retired_models.py")
+    tree = ast.parse(migration.read_text())
+    repoints = next(
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(getattr(t, "id", "") == "_REPOINTS" for t in node.targets))
+    for element in repoints.elts:  # type: ignore[attr-defined]
+        _provider, old, new = (ast.literal_eval(v) for v in element.elts)
+        assert not is_retired(new), f"{old} would be repointed to retired {new}"

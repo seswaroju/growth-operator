@@ -84,6 +84,15 @@ async def _main() -> None:
 
 
 def main() -> None:
+    # The worker and scheduler hold the same signing keys and reach the same database as the API,
+    # and the worker is the process that actually messages customers — guarding only the API would
+    # leave the loudest external effect unguarded.
+    from core.common.config import assert_secrets_available, get_settings
+    from core.common.safety import assert_environment_safe
+
+    _settings = get_settings()
+    assert_environment_safe(_settings)
+    assert_secrets_available(_settings)
     logging.basicConfig(level=logging.INFO)
     asyncio.run(_main())
 

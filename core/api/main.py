@@ -14,6 +14,7 @@ from core.channels.whatsapp.ingress import router as whatsapp_ingress_router
 from core.common.config import assert_secrets_available, get_settings
 from core.common.error_tracking import setup_error_tracking
 from core.common.errors import register_exception_handlers
+from core.common.safety import assert_environment_safe
 from core.common.telemetry import setup_telemetry
 from core.competitors.api import router as competitors_router
 from core.conversations.api import router as conversations_router
@@ -54,6 +55,9 @@ from core.workflows.api import router as workflows_router
 # Fail closed at import/startup: dev-only OTP echo outside dev (§10.3), and a required
 # secrets file that decryption did not produce (MVP-008).
 _settings = get_settings()
+# Refuse to serve on development configuration outside dev (PILOT-1A). First, because every check
+# after this one assumes the process is allowed to exist at all.
+assert_environment_safe(_settings)
 assert_otp_config_safe(_settings)
 assert_secrets_available(_settings)
 

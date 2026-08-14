@@ -60,9 +60,9 @@ class Recorder:
 
 
 @pytest.mark.parametrize("provider,model,host,header,value", [
-    ("openai", "gpt-4o", "api.openai.com", "Authorization", "Bearer sk-openai"),
-    ("deepseek", "deepseek-chat", "api.deepseek.com", "Authorization", "Bearer sk-deepseek"),
-    ("anthropic", "claude-3-5-haiku-20241022", "api.anthropic.com", "x-api-key", "sk-anthropic"),
+    ("openai", "gpt-5.6-sol", "api.openai.com", "Authorization", "Bearer sk-openai"),
+    ("deepseek", "deepseek-v4-flash", "api.deepseek.com", "Authorization", "Bearer sk-deepseek"),
+    ("anthropic", "claude-haiku-4-5-20251001", "api.anthropic.com", "x-api-key", "sk-anthropic"),
 ])
 async def test_each_provider_is_called_at_its_own_host_with_its_own_key(
     configured, provider, model, host, header, value
@@ -78,9 +78,9 @@ async def test_each_provider_is_called_at_its_own_host_with_its_own_key(
 
 async def test_openai_and_deepseek_differ_only_in_host_and_key(configured) -> None:
     rec = Recorder()
-    await call_provider(provider="openai", model="gpt-4o", system="s", user="u", transport=rec)
+    await call_provider(provider="openai", model="gpt-5.6-sol", system="s", user="u", transport=rec)
     await call_provider(
-        provider="deepseek", model="deepseek-chat", system="s", user="u", transport=rec)
+        provider="deepseek", model="deepseek-v4-flash", system="s", user="u", transport=rec)
     a, b = rec.calls
     assert a.url.endswith("/v1/chat/completions") and b.url.endswith("/v1/chat/completions")
     assert a.url != b.url
@@ -97,7 +97,7 @@ async def test_a_missing_credential_fails_closed_not_by_borrowing_another_key(mo
     rec = Recorder()
     with pytest.raises(ProviderNotConfigured) as exc:
         await call_provider(
-            provider="deepseek", model="deepseek-chat", system="s", user="u", transport=rec)
+            provider="deepseek", model="deepseek-v4-flash", system="s", user="u", transport=rec)
     assert exc.value.reason == "credential_missing"
     assert rec.calls == [], "no request may be sent without the provider's own credential"
 
@@ -117,9 +117,13 @@ async def test_a_capability_mismatch_is_refused_before_any_request(configured) -
     rec = Recorder()
     with pytest.raises(CapabilityMismatch):
         await call_provider(
-            provider="deepseek", model="deepseek-reasoner", system="s", user="u",
-            required_capabilities=frozenset({"tool_calling"}), transport=rec)
-    assert rec.calls == []
+            provider="deepseek", model="deepseek-v4-flash", system="s", user="u",
+            # Vision: DeepSeek documents text, JSON output and tool calls, and the registry claims
+            # nothing more. (This previously used tool-calling on `deepseek-reasoner`, which the
+            # vendor retired — and its replacement supports tool calls, so the assertion would
+            # have silently stopped proving anything.)
+            required_capabilities=frozenset({"vision"}), transport=rec)
+    assert rec.calls == [], "no request may leave before the capability check"
 
 
 async def test_the_gate_is_closed_by_default(monkeypatch) -> None:
@@ -127,7 +131,7 @@ async def test_the_gate_is_closed_by_default(monkeypatch) -> None:
     from core.common.errors import GrowthOperatorError
 
     with pytest.raises(GrowthOperatorError):
-        await call_provider(provider="openai", model="gpt-4o", system="s", user="u",
+        await call_provider(provider="openai", model="gpt-5.6-sol", system="s", user="u",
                             transport=Recorder())
 
 
@@ -145,7 +149,7 @@ async def test_transient_failures_are_classified_as_fallback_safe(
         raise exc
 
     with pytest.raises(ProviderCallFailed) as raised:
-        await call_provider(provider="openai", model="gpt-4o", system="s", user="u",
+        await call_provider(provider="openai", model="gpt-5.6-sol", system="s", user="u",
                             transport=boom)
     assert raised.value.error_class == expected
 
