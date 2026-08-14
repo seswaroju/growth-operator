@@ -246,7 +246,8 @@ class Settings(BaseSettings):
     llm_key_deepseek: str | None = Field(default=None)
     # Must be an id present in `core.runtime.model_registry` — a unit test pins this, since an
     # unapproved default would fail every non-routing call at runtime.
-    llm_model: str = Field(default="claude-3-5-sonnet-20241022")
+    # Refreshed PILOT-1A: the previous default was retired by Anthropic on 2025-10-28.
+    llm_model: str = Field(default="claude-sonnet-5")
     llm_api_base: str | None = Field(default=None)  # e.g. https://api.anthropic.com
     llm_max_tokens: int = Field(default=1024)
 

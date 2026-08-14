@@ -163,7 +163,7 @@ async def test_openai_failure_falls_back_to_deepseek_with_its_own_credential(
     scene: Scene,
 ) -> None:
     """The heart of PILOT-1B: a real vendor switch, not a retry against the same vendor."""
-    await scene.route("pilot1b.a", ("openai", "gpt-4o"), [("deepseek", "deepseek-chat")])
+    await scene.route("pilot1b.a", ("openai", "gpt-5.6-sol"), [("deepseek", "deepseek-v4-flash")])
     record: list[tuple[str, str, str]] = []
     model = RoutingModel(scene.org, scene.run, FakeRedis(),
                          get_provider_fn=_providers(record, fail={"openai"}))
@@ -179,8 +179,8 @@ async def test_openai_failure_falls_back_to_deepseek_with_its_own_credential(
 
 async def test_deepseek_failure_falls_back_to_anthropic_across_adapters(scene: Scene) -> None:
     """The fallback also crosses *adapters* — chat-completions to Messages."""
-    await scene.route("pilot1b.b", ("deepseek", "deepseek-chat"),
-                      [("anthropic", "claude-3-5-haiku-20241022")])
+    await scene.route("pilot1b.b", ("deepseek", "deepseek-v4-flash"),
+                      [("anthropic", "claude-haiku-4-5-20251001")])
     record: list[tuple[str, str, str]] = []
     model = RoutingModel(scene.org, scene.run, FakeRedis(),
                          get_provider_fn=_providers(record, fail={"deepseek"}))
@@ -195,7 +195,7 @@ async def test_deepseek_failure_falls_back_to_anthropic_across_adapters(scene: S
 async def test_every_attempt_is_recorded_with_index_latency_and_error_class(
     scene: Scene,
 ) -> None:
-    await scene.route("pilot1b.c", ("openai", "gpt-4o"), [("deepseek", "deepseek-chat")])
+    await scene.route("pilot1b.c", ("openai", "gpt-5.6-sol"), [("deepseek", "deepseek-v4-flash")])
     model = RoutingModel(scene.org, scene.run, FakeRedis(),
                          get_provider_fn=_providers([], fail={"openai"}))
     await model.turn(node_key="pilot1b.c", prompt="hi", context={})
@@ -208,8 +208,8 @@ async def test_every_attempt_is_recorded_with_index_latency_and_error_class(
 
 
 async def test_cost_is_computed_from_the_exact_model(scene: Scene) -> None:
-    """gpt-4o-mini must not be billed at gpt-4o's rate."""
-    await scene.route("pilot1b.d", ("openai", "gpt-4o-mini"), [])
+    """gpt-5-nano must not be billed at gpt-5.6-sol's rate."""
+    await scene.route("pilot1b.d", ("openai", "gpt-5-nano"), [])
     model = RoutingModel(scene.org, scene.run, FakeRedis(),
                          get_provider_fn=_providers([], fail=set()))
     await model.turn(node_key="pilot1b.d", prompt="hi", context={})
@@ -219,15 +219,15 @@ async def test_cost_is_computed_from_the_exact_model(scene: Scene) -> None:
     from core.runtime.model_registry import estimate_cost, get_model
 
     rows = await scene.attempts()
-    expected = estimate_cost(get_model("openai", "gpt-4o-mini"), 10, 20)
+    expected = estimate_cost(get_model("openai", "gpt-5-nano"), 10, 20)
     assert Decimal(str(rows[0]["cost_usd"])) == expected
-    assert expected < estimate_cost(get_model("openai", "gpt-4o"), 10, 20)
+    assert expected < estimate_cost(get_model("openai", "gpt-5.6-sol"), 10, 20)
 
 
 async def test_a_misconfigured_route_is_alerted_not_silently_masked(scene: Scene) -> None:
     """A permanently broken route must surface to Operations rather than hide behind fallback."""
     await scene.route("pilot1b.e", ("openai", "gpt-9-does-not-exist"),
-                      [("deepseek", "deepseek-chat")])
+                      [("deepseek", "deepseek-v4-flash")])
     redis = FakeRedis()
     model = RoutingModel(scene.org, scene.run, redis,
                          get_provider_fn=_providers([], fail=set()))
@@ -243,7 +243,7 @@ async def test_a_misconfigured_route_is_alerted_not_silently_masked(scene: Scene
 async def test_when_every_provider_fails_the_holding_reply_is_used(scene: Scene) -> None:
     from core.runtime.routing import HOLDING_TEMPLATE
 
-    await scene.route("pilot1b.f", ("openai", "gpt-4o"), [("deepseek", "deepseek-chat")])
+    await scene.route("pilot1b.f", ("openai", "gpt-5.6-sol"), [("deepseek", "deepseek-v4-flash")])
     redis = FakeRedis()
     model = RoutingModel(scene.org, scene.run, redis,
                          get_provider_fn=_providers([], fail={"openai", "deepseek"}))
@@ -278,7 +278,7 @@ async def test_one_orgs_route_override_is_invisible_to_another(scene: Scene) -> 
     try:
         await scene.conn.execute(
             "INSERT INTO org_model_routes (org_id, node_key, provider, model, params, fallbacks) "
-            "VALUES ($1,'pilot1b.iso','deepseek','deepseek-chat','{}'::jsonb,'[]'::jsonb)",
+            "VALUES ($1,'pilot1b.iso','deepseek','deepseek-v4-flash','{}'::jsonb,'[]'::jsonb)",
             scene.org)
         async with dbmod.get_sessionmaker()() as s:
             from core.tenancy.repository import set_org_context

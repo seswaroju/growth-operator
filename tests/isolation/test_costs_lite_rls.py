@@ -45,7 +45,7 @@ async def two_orgs() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID]]:
             await conn.execute("INSERT INTO organizations (id, name) VALUES ($1,'iso')", org)
             await conn.execute(
                 "INSERT INTO costs_lite (org_id, node_key, provider, model) "
-                "VALUES ($1,'converse','anthropic','claude-3-5-sonnet')", org)
+                "VALUES ($1,'converse','anthropic','claude-sonnet-5')", org)
     finally:
         await conn.close()
     yield a, b

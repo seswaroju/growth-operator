@@ -168,17 +168,27 @@ def test_no_adapter_accepts_an_endpoint_from_the_request() -> None:
 
 
 def test_capability_mismatch_is_refused() -> None:
-    reasoner = get_model("deepseek", "deepseek-reasoner")
+    """A node that needs something the model cannot do is refused BEFORE the call, not discovered
+    mid-request.
+
+    Uses vision as the missing capability. It used to use tool-calling on `deepseek-reasoner`,
+    which no longer exists — and its V4 replacements do support tool calls, so the old assertion
+    would have quietly stopped testing anything. Vision is a real gap: DeepSeek documents text,
+    JSON output and tool calls, and the registry claims nothing beyond that."""
+    flash = get_model("deepseek", "deepseek-v4-flash")
     with pytest.raises(CapabilityMismatch):
-        require_capabilities(reasoner, frozenset({"tool_calling"}))
-    require_capabilities(get_model("openai", "gpt-4o"), frozenset({"tool_calling"}))
+        require_capabilities(flash, frozenset({"vision"}))
+    # The positive half: a model that HAS the capability is allowed through, so the test cannot
+    # pass by refusing everything.
+    require_capabilities(get_model("anthropic", "claude-sonnet-5"), frozenset({"vision"}))
+    require_capabilities(flash, frozenset({"tool_calling"}))
 
 
 def test_cost_uses_the_exact_model_not_the_provider() -> None:
-    """gpt-4o and gpt-4o-mini differ by more than an order of magnitude; the old per-provider
+    """gpt-5.6-sol and gpt-5-nano differ by more than an order of magnitude; the old per-provider
     table priced them identically."""
-    big = estimate_cost(get_model("openai", "gpt-4o"), 1000, 1000)
-    small = estimate_cost(get_model("openai", "gpt-4o-mini"), 1000, 1000)
+    big = estimate_cost(get_model("openai", "gpt-5.6-sol"), 1000, 1000)
+    small = estimate_cost(get_model("openai", "gpt-5-nano"), 1000, 1000)
     assert big > small * 10
 
 
@@ -194,7 +204,7 @@ def test_every_approved_model_prices_input_and_output_separately() -> None:
 
 def test_availability_reports_a_reason_without_leaking_configuration(monkeypatch) -> None:
     monkeypatch.delenv("GROWTH_OPERATOR_LLM_KEY_OPENAI", raising=False)
-    reason = model_availability("openai", "gpt-4o")
+    reason = model_availability("openai", "gpt-5.6-sol")
     assert reason in ("ok", "credential_missing", "provider_disabled")
     assert "https://" not in reason and "llm_key" not in reason
 

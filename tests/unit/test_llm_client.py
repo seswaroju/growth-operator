@@ -35,7 +35,7 @@ async def test_enabled_without_the_providers_own_key_fails_closed(
     monkeypatch.delenv("GROWTH_OPERATOR_LLM_KEY_ANTHROPIC", raising=False)
     with pytest.raises(ProviderNotConfigured) as ei:
         await llm_client.call_provider(
-            provider="anthropic", model="claude-3-5-haiku-20241022",
+            provider="anthropic", model="claude-haiku-4-5-20251001",
             system="s", user="u", transport=_echo)
     assert ei.value.reason == "credential_missing"
 
@@ -50,7 +50,7 @@ async def test_anthropic_request_shape_and_parse(monkeypatch: pytest.MonkeyPatch
         return await _echo(call)
 
     result = await llm_client.call_provider(
-        provider="anthropic", model="claude-3-5-haiku-20241022", system="S", user="U",
+        provider="anthropic", model="claude-haiku-4-5-20251001", system="S", user="U",
         transport=transport)
     assert seen["url"] == "https://api.anthropic.com/v1/messages"
     assert seen["headers"]["x-api-key"] == "sk-a"
@@ -68,7 +68,7 @@ async def test_openai_request_shape_and_parse(monkeypatch: pytest.MonkeyPatch) -
         return await _echo(call)
 
     result = await llm_client.call_provider(
-        provider="openai", model="gpt-4o", system="S", user="U", transport=transport)
+        provider="openai", model="gpt-5.6-sol", system="S", user="U", transport=transport)
     assert seen["url"] == "https://api.openai.com/v1/chat/completions"
     assert seen["headers"]["Authorization"] == "Bearer sk-o"
     assert seen["body"]["messages"][0] == {"role": "system", "content": "S"}
@@ -88,7 +88,7 @@ async def test_deepseek_uses_the_same_adapter_at_its_own_host(
         return await _echo(call)
 
     await llm_client.call_provider(
-        provider="deepseek", model="deepseek-chat", system="S", user="U", transport=transport)
+        provider="deepseek", model="deepseek-v4-flash", system="S", user="U", transport=transport)
     assert seen["url"] == "https://api.deepseek.com/v1/chat/completions"
     assert seen["headers"]["Authorization"] == "Bearer sk-d"
 
@@ -100,7 +100,7 @@ async def test_the_back_compatible_entry_point_still_works(
     monkeypatch.setenv("GROWTH_OPERATOR_LLM_PROVIDER_ENABLED", "true")
     monkeypatch.setenv("GROWTH_OPERATOR_LLM_KEY_ANTHROPIC", "sk-a")
     monkeypatch.setenv("GROWTH_OPERATOR_LLM_PROVIDER", "anthropic")
-    monkeypatch.setenv("GROWTH_OPERATOR_LLM_MODEL", "claude-3-5-haiku-20241022")
+    monkeypatch.setenv("GROWTH_OPERATOR_LLM_MODEL", "claude-haiku-4-5-20251001")
     monkeypatch.setattr(llm_client, "call_provider", llm_client.call_provider)
 
     async def transport(call):

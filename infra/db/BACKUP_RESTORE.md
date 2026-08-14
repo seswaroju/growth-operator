@@ -58,3 +58,55 @@ This ticket delivers the mechanism + continuous proof. The production hardening 
 - **Point-in-time recovery** (WAL archiving) for RPO ≈ minutes, and a **scheduled** restore drill
   against real backups (not just the CI schema check).
 - A documented **RTO/RPO** target for the pilot.
+
+---
+
+## Pilot production schedule (PILOT-1A)
+
+`scripts/backup-nightly.sh` wraps the mechanism above with the three things a bare dump lacks:
+encryption before the file leaves the host, an S3-compatible off-site copy, and pruning.
+
+```cron
+15 3 * * *  cd /opt/vaylorn && scripts/backup-nightly.sh >> /var/log/vaylorn-backup.log 2>&1
+```
+
+Environment (set on the host, not in git):
+
+| Variable | Purpose |
+|---|---|
+| `BACKUP_DIR` | local dump directory (default `/var/backups/vaylorn`) |
+| `BACKUP_AGE_RECIPIENT` | the founder's **public** age key — same one SOPS uses |
+| `BACKUP_S3_BUCKET` | off-site bucket |
+| `BACKUP_S3_ENDPOINT` | S3-compatible endpoint (Spaces, B2, MinIO); omit for AWS |
+| `BACKUP_KEEP_DAYS` | local retention, default 7 |
+
+**Encrypted before it leaves the host.** A dump is every customer phone number, every conversation
+and every price the store has quoted. Object storage is durable, not confidential, and a bucket
+that is public by accident is a routine incident. Reusing the SOPS age recipient means one key to
+protect rather than two. If the recipient is unset the backup still runs and warns loudly — a
+missing key must never mean no backup at all.
+
+**No provider is hard-coded.** Any S3-compatible endpoint works, so changing providers is a
+configuration change rather than a code change.
+
+### Retention
+
+* Host: 7 daily (`BACKUP_KEEP_DAYS`).
+* Off-site: set a bucket lifecycle rule — 30 daily + 6 monthly is a reasonable pilot default.
+
+### Weekly restore verification
+
+A backup nobody has restored is a hypothesis. Weekly, on the host:
+
+```bash
+scripts/db_restore_drill.sh          # same drill CI runs, against a real dump
+```
+
+Restore a specific dump into a scratch database with `scripts/db_restore.sh`. Decrypt first if
+encrypted: `age -d -i ~/.config/sops/age/keys.txt -o restore.dump backup.dump.age`.
+
+### Deliberately out of scope
+
+Point-in-time recovery. It means WAL archiving, more moving parts and a real operational burden;
+the pilot's RPO of up to one day is an accepted decision, not an oversight. Revisit when a merchant's
+data loss would cost more than the complexity.

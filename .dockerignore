@@ -1,9 +1,30 @@
+# Keep the build context small and, more importantly, keep things OUT of the image that must never
+# ship: local secrets, backups (real customer data), and the git history.
 .git
+.github
 docs
+
+# CRITICAL: the Dockerfile builds /app/.venv with `uv sync`, then copies the source over it. A host
+# .venv reaching the context would overwrite that with macOS binaries and the image would not run.
 .venv
+**/node_modules
+
+# Built assets are produced by scripts/build-frontend.sh and mounted into Caddy, not baked in — a
+# stale bundle inside the image would be served in preference to a freshly built one.
+**/dist
+
+# Real data / real secrets. `backups/` is pg_dump output; secrets/*.yaml is a decrypted SOPS file.
+# The encrypted .enc.yaml is safe by construction but has no reason to be in an image either.
+backups/
+secrets/*.yaml
+secrets/*.enc.yaml
+.env
+.env.*
+
 **/__pycache__
 **/*.pyc
-web/node_modules
 .pytest_cache
-.mypy_cache
 .ruff_cache
+.mypy_cache
+htmlcov
+*.log

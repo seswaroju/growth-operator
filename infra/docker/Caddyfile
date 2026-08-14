@@ -1,0 +1,55 @@
+# Production reverse proxy (PILOT-1A). Caddy obtains and renews Let's Encrypt certificates
+# automatically once the founder's DNS points these names at the host and 80/443 are reachable.
+#
+# Exactly three names are served. Anything else — including the bare IP — gets no certificate and
+# no route, so a mistyped host cannot reach the API.
+#
+# `web-ops` is an internal directory name and never appears in a public hostname.
+
+{
+	email {$ACME_EMAIL}
+	# Postgres and Redis are NOT proxied. They have no listener on the host network at all; see
+	# docker-compose.prod.yml, where neither publishes a port.
+}
+
+(security_headers) {
+	header {
+		# HSTS is set here rather than in the app because it is a property of the deployment: it is
+		# only ever correct where TLS actually terminates, which is here and nowhere else.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# --- API + Meta webhook -------------------------------------------------------------------
+api.vaylorn.com {
+	import security_headers
+	# The Meta webhook must stay publicly reachable: Meta cannot present a credential, so there is
+	# nothing for a proxy to check. Authenticity is established inside the application by the
+	# HMAC-SHA256 signature over the raw body (core/channels/whatsapp/ingress.py), which is the
+	# only check that can actually prove Meta sent it.
+	reverse_proxy api:8000
+}
+
+# --- Merchant app -------------------------------------------------------------------------
+app.vaylorn.com {
+	import security_headers
+	root * /srv/app
+	try_files {path} /index.html
+	file_server
+}
+
+# --- Vaylorn operator console -------------------------------------------------------------
+ops.vaylorn.com {
+	import security_headers
+	# Obscurity is not the control: every route behind this is platform-admin authenticated and
+	# additionally gated by admin_plane_enabled. An IP allow-list may be added by the operator as
+	# defence in depth, but it is deliberately NOT hard-coded here — a founder's IP is not
+	# repository content, and baking one in makes the console unreachable the day it changes.
+	root * /srv/ops
+	try_files {path} /index.html
+	file_server
+}

@@ -57,9 +57,25 @@ def _catalog() -> tuple[ModelChoice, ...]:
 
 MODEL_CATALOG: tuple[ModelChoice, ...] = _catalog()
 
-#: No permanent Vaylorn default is declared in this ticket — that is an operational decision to be
-#: made from evaluation results, not an architectural one.
-DEFAULT_CHOICE: ModelChoice = MODEL_CATALOG[0]
+#: No permanent Vaylorn default is declared — that is an operational decision to be made from
+#: evaluation results, not an architectural one.
+#:
+#: Until then this is a placeholder, and PILOT-1A made it a deliberate one. It used to be
+#: `MODEL_CATALOG[0]`, i.e. whichever model happened to sort first in the registry — so reordering
+#: the list silently changed what every store defaulted to, and for a while that default was a model
+#: Anthropic had already retired. It now resolves to the first **current** model, which at minimum
+#: cannot be something a vendor refuses to serve.
+def _default_choice() -> ModelChoice:
+    from core.runtime.model_registry import current_models
+
+    current = {m.model for m in current_models()}
+    for choice in MODEL_CATALOG:
+        if choice.model in current:
+            return choice
+    return MODEL_CATALOG[0]  # unreachable while any current model exists
+
+
+DEFAULT_CHOICE: ModelChoice = _default_choice()
 
 # The routing keys the operator can override per store (friendly labels for the web-ops picker).
 # `default` catches every turn unless a more specific key is set.

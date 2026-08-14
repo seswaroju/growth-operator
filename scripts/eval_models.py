@@ -11,7 +11,7 @@ not "which model is best overall" — a triage classifier and a customer reply h
 each provider's own credential to be configured. No vendor key belongs in a fixture or in source.
 
     uv run python scripts/eval_models.py                    # mocked, free, deterministic
-    uv run python scripts/eval_models.py --live --provider deepseek --model deepseek-chat
+    uv run python scripts/eval_models.py --live --provider deepseek --model deepseek-v4-flash
 """
 
 from __future__ import annotations

@@ -65,7 +65,7 @@ async def _llm(org: uuid.UUID, cost_usd: str, *, tin: int = 100, tout: int = 50,
     try:
         await conn.execute(
             "INSERT INTO costs_lite (org_id, node_key, provider, model, tokens_in, tokens_out, "
-            "cost_usd, created_at) VALUES ($1,'converse','anthropic','claude-3-5-sonnet',$2,$3,"
+            "cost_usd, created_at) VALUES ($1,'converse','anthropic','claude-sonnet-5',$2,$3,"
             "$4,$5)", org, tin, tout, Decimal(cost_usd), when)
     finally:
         await conn.close()

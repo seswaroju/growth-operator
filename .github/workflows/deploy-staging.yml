@@ -1,7 +1,23 @@
-# Deploy to staging on merge to main (MVP-009) — SCAFFOLD / GATED.
-# Inert until the `staging` environment and its secrets (STAGING_HOST, STAGING_SSH_KEY)
-# are configured, and the staging VPS exists (infra/terraform/staging). See that README —
-# this ticket is BLOCKED on a Hetzner account, a domain, the residency decision, and Meta.
+# Deploy on merge to main — GATED, and inert until the founder configures the environment.
+#
+# PILOT-1A rewrote this. The previous version ran, on the public host:
+#
+#     docker compose -f infra/docker/docker-compose.dev.yml up -d --build
+#
+# which is the development stack: `uvicorn --reload`, the source tree bind-mounted over the image,
+# and a Postgres whose password is the string `growth_operator`. Had `STAGING_ENABLED` ever been
+# flipped, that is what would have gone live — a code-reloading server on a public IP in front of a
+# trivially guessable database. It was never enabled, so nothing was exposed, but the only thing
+# standing between the repository and that outcome was a variable nobody had set yet.
+#
+# The deployment procedure now lives in `scripts/deploy-prod.sh`, in the repository, reviewed like
+# any other code: decrypt secrets, build the immutable image, migrate as the owner role, swap
+# containers, verify readiness. This workflow only invokes it, so there is no second definition of
+# "how we deploy" to drift.
+#
+# A guard job additionally refuses to let the deploy run if the production path ever mentions the
+# development compose again — see `tests/unit/test_deployment_artifacts.py` for the same property
+# checked on every push.
 name: Deploy staging
 
 on:
@@ -14,15 +30,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Runs even when deployment is disabled: the guarantee is about what the repository *contains*,
+  # so it must hold before anyone can enable the environment, not after.
+  guard:
     runs-on: ubuntu-latest
-    environment: staging # provides the gate + secrets; job is skippable until it exists
-    # Guard: only run when the staging host secret is configured.
+    steps:
+      - uses: actions/checkout@v5
+      - name: Refuse a development stack on the deployment path
+        run: |
+          set -euo pipefail
+          # Scans the artifacts that DEFINE deployment behaviour — the script and the production
+          # compose. Deliberately not this workflow file: a scanner that greps itself matches its
+          # own pattern list, which is a false alarm that trains people to ignore the guard.
+          # `tests/unit/test_deployment_artifacts.py` checks the same properties, including this
+          # workflow, on every push.
+          uv run python -c "
+          import sys
+          from pathlib import Path
+          bad = []
+          script = Path('scripts/deploy-prod.sh').read_text()
+          compose = Path('infra/docker/docker-compose.prod.yml').read_text()
+          for name, text in (('deploy-prod.sh', script), ('compose.prod', compose)):
+              for pattern in ('docker-compose.dev.yml', '--reload', 'Dockerfile.dev'):
+                  for line in text.splitlines():
+                      if pattern in line and not line.strip().startswith('#'):
+                          bad.append(f'{name}: {pattern} in: {line.strip()[:80]}')
+          if '../../core' in compose:
+              bad.append('compose.prod bind-mounts source')
+          for b in bad:
+              print(f'::error::{b}')
+          sys.exit(1 if bad else 0)
+          "
+
+  deploy:
+    needs: guard
+    runs-on: ubuntu-latest
+    environment: staging
+    # Still gated. The founder enables this only after the host, DNS, secrets and roles exist.
     if: ${{ vars.STAGING_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Deploy over SSH (migrations before container swap)
+      - name: Deploy over SSH (production procedure, from the repository)
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.STAGING_HOST }}
@@ -30,18 +79,19 @@ jobs:
           key: ${{ secrets.STAGING_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd /opt/growth-operator
+            cd /opt/vaylorn
             git fetch --all && git reset --hard origin/main
-            eval "$(scripts/decrypt-secrets.sh staging)"
-            uv run alembic upgrade head
-            docker compose -f infra/docker/docker-compose.dev.yml up -d --build
+            # The age private key lives on the host, installed by the founder out of band. It is
+            # deliberately NOT a GitHub secret: putting it there would let anyone who can trigger a
+            # workflow decrypt production credentials.
+            scripts/deploy-prod.sh ${{ vars.DEPLOY_ENVIRONMENT || 'prod' }}
 
-      - name: Smoke — readyz + version
+      - name: Smoke — public readiness over TLS
         run: |
           for i in $(seq 1 30); do
             if curl -fsS "https://api.${{ vars.STAGING_DOMAIN }}/readyz" >/dev/null; then
-              echo "staging ready"; exit 0
+              echo "deployment ready"; exit 0
             fi
             sleep 10
           done
-          echo "::error::staging did not become ready in time"; exit 1
+          echo "::error::deployment did not become ready in time"; exit 1

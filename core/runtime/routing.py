@@ -66,7 +66,10 @@ HOLDING_TEMPLATE = "Thanks for your message — a team member will follow up wit
 # The chain used when a node_key has no row and no `default` row is seeded (fail-safe). These
 # must be **approved registry models** — a fail-safe naming an unapproved id would itself be a
 # configuration fault, which a unit test now pins.
-_FALLBACK_CHAIN = [("anthropic", "claude-3-5-sonnet-20241022"), ("openai", "gpt-4o")]
+# PILOT-1A: both entries used to name models their vendors had retired or deprecated, so the
+# "fail-safe" would itself have failed. Two DIFFERENT vendors on purpose — a fallback to the same
+# provider protects against nothing that took the primary down.
+_FALLBACK_CHAIN = [("anthropic", "claude-sonnet-5"), ("openai", "gpt-5-nano")]
 
 
 @dataclass
@@ -167,7 +170,7 @@ class RoutingModel:
             # A per-store override (CP-5) wins: this store's exact node_key, else its 'default'
             # override. `org_model_routes` is RLS-scoped, so only THIS org's overrides are visible.
             row = await self._lookup(s, "org_model_routes", node_key)
-            # Otherwise the GLOBAL default chain (`model_routes`, seeded → claude-3-5-sonnet).
+            # Otherwise the GLOBAL default chain (`model_routes`, seeded → claude-sonnet-5).
             if row is None:
                 row = await self._lookup(s, "model_routes", node_key)
         if row is None:  # nothing seeded at all → the hard-coded fail-safe chain

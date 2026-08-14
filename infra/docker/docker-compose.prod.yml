@@ -1,0 +1,159 @@
+# Production compose (PILOT-1A) — one DigitalOcean BLR1 droplet, no Kubernetes.
+#
+# Differences from docker-compose.dev.yml that matter, rather than cosmetically:
+#   * no bind mounts — the image IS the release, so what ran in CI is what runs here
+#   * no --reload — a code-reloading server on a public host is a remote-execution surface
+#   * no published ports on postgres/redis — they are reachable only on the internal network
+#   * no credentials in this file — every value comes from the environment, which the deploy
+#     script populates from the SOPS-decrypted secrets file
+#
+# Nothing here contains a secret. This file is safe to read; the environment it consumes is not.
+#
+#   deploy:  scripts/deploy-prod.sh
+#   verify:  scripts/pilot-health-check.sh
+
+name: vaylorn
+
+x-app: &app
+  # One immutable image for all three processes — see infra/docker/Dockerfile for why.
+  image: ${VAYLORN_IMAGE:-vaylorn/app:latest}
+  build:
+    context: ../..
+    dockerfile: infra/docker/Dockerfile
+  restart: unless-stopped
+  # Unbounded container logs fill a 4 GiB droplet's disk and take Postgres down with them; that is
+  # a mundane way to lose a pilot.
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+  environment: &app_env
+    GROWTH_OPERATOR_ENV: ${GROWTH_OPERATOR_ENV:-prod}
+    # Runtime is app_rw (NOBYPASSRLS) so row-level security applies to every application query.
+    # Migrations use the owner URL and nothing else does — see scripts/deploy-prod.sh.
+    GROWTH_OPERATOR_DATABASE_URL: ${GROWTH_OPERATOR_DATABASE_URL:?app_rw runtime URL is required}
+    GROWTH_OPERATOR_DATABASE_MIGRATOR_URL: ${GROWTH_OPERATOR_DATABASE_MIGRATOR_URL:?owner URL is required}
+    GROWTH_OPERATOR_REDIS_URL: ${GROWTH_OPERATOR_REDIS_URL:?authenticated redis URL is required}
+    # The decrypted SOPS file. `require_secrets_file` is true outside dev, so a container whose
+    # decryption step did not run refuses to boot rather than falling back to repository defaults.
+    GROWTH_OPERATOR_SECRETS_FILE: /run/secrets/vaylorn.yaml
+    GROWTH_OPERATOR_REQUIRE_SECRETS_FILE: "true"
+    GROWTH_OPERATOR_PACKS_DEV_MODE: "false"
+    GROWTH_OPERATOR_CORS_ALLOW_ORIGINS: ${GROWTH_OPERATOR_CORS_ALLOW_ORIGINS:-https://app.vaylorn.com,https://ops.vaylorn.com}
+  volumes:
+    # Read-only, and mounted rather than baked: a secret inside an image layer is a secret in every
+    # registry that image reaches.
+    - ${VAYLORN_SECRETS_FILE:-/run/secrets/vaylorn.yaml}:/run/secrets/vaylorn.yaml:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - internal
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    # No `ports:` — deliberately. The database is reachable only from the internal network, so the
+    # droplet's firewall is not the only thing standing between it and the internet.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?database owner is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?database password is required}
+      POSTGRES_DB: ${POSTGRES_DB:-growth_operator}
+      APP_RW_PASSWORD: ${APP_RW_PASSWORD:?runtime role password is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates app_rw (NOBYPASSRLS) on a FRESH volume only — initdb scripts run once. NOT
+      # roles.sql: that one hardcodes the password `app_rw`, which is fine on a laptop and is
+      # exactly the credential the startup validator refuses in production. This variant takes the
+      # password from the environment. scripts/deploy-prod.sh verifies the role afterwards, so an
+      # existing volume does not silently skip it.
+      - ../db/roles-prod.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-growth_operator}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Authenticated as well as unpublished. Redis carries the event streams and rate-limit state;
+    # an unauthenticated instance on a shared host is a way to forge or drop work.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?redis password is required}"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    networks:
+      - internal
+
+  api:
+    <<: *app
+    command: ["uvicorn", "core.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *app
+    # Consumers are idempotent and claims are durable (PILOT-1C), so an unclean restart replays
+    # safely rather than double-sending.
+    command: ["python", "-m", "core.worker"]
+
+  scheduler:
+    <<: *app
+    command: ["python", "-m", "core.scheduler"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # The only service with published ports. 80 exists for the ACME challenge and the redirect.
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?an email is required for Let's Encrypt}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Pre-built static bundles, produced by scripts/build-frontend.sh with the real API base.
+      - ${VAYLORN_WEB_DIST:-../../web/dist}:/srv/app:ro
+      - ${VAYLORN_OPS_DIST:-../../web-ops/dist}:/srv/ops:ro
+      # Certificates survive restarts; re-issuing on every deploy would hit Let's Encrypt limits.
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:
