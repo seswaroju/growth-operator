@@ -313,3 +313,49 @@ def test_no_secret_material_is_committed_in_deployment_artifacts() -> None:
         text = path.read_text()
         assert "BEGIN PRIVATE KEY" not in text
         assert "AKIA" not in text  # an AWS access key id prefix
+
+
+# ---- workflow jobs must install what they use --------------------------------------------------
+
+
+def test_no_workflow_job_uses_uv_without_installing_it() -> None:
+    """Caught in production, by the founder's inbox rather than by a test.
+
+    The deploy guard ran `uv run python -c ...` in a job that had no `setup-uv` step, so it failed
+    with `uv: command not found` on every push to main. Nothing was wrong with what the guard
+    checked — it never got to check anything. That is the worst failure mode for a safeguard: a red
+    build that looks exactly like the violation it exists to detect, which is how people learn to
+    ignore it.
+
+    Applies to every workflow, because the mistake is not specific to one."""
+    workflows = sorted((ROOT / ".github/workflows").glob("*.yml"))
+    assert workflows, "no workflows found"
+    offenders: list[str] = []
+    for path in workflows:
+        spec = yaml.safe_load(path.read_text())
+        for job_name, job in (spec.get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            installs_uv = any("setup-uv" in str(step.get("uses", "")) for step in steps)
+            uses_uv = any(
+                line.strip().startswith("uv ") or " uv " in line
+                for step in steps
+                for line in str(step.get("run", "")).splitlines()
+                if not line.strip().startswith("#"))
+            if uses_uv and not installs_uv:
+                offenders.append(f"{path.name}:{job_name}")
+    assert not offenders, f"jobs use uv without installing it: {offenders}"
+
+
+def test_the_deploy_guard_needs_nothing_beyond_the_standard_library() -> None:
+    """It should stay that way: a guard with dependencies is a guard that can fail for reasons
+    unrelated to what it guards."""
+    spec = yaml.safe_load(WORKFLOW.read_text())
+    # Executable lines only — the comment explaining why `uv run` was removed obviously contains
+    # the string it is warning about.
+    run = " ".join(
+        line for step in spec["jobs"]["guard"]["steps"]
+        for line in str(step.get("run", "")).splitlines()
+        if not line.strip().startswith("#"))
+    assert "python3 -c" in run
+    for heavyweight in ("uv run", "pip install", "npm "):
+        assert heavyweight not in run

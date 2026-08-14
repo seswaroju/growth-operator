@@ -44,7 +44,11 @@ jobs:
           # own pattern list, which is a false alarm that trains people to ignore the guard.
           # `tests/unit/test_deployment_artifacts.py` checks the same properties, including this
           # workflow, on every push.
-          uv run python -c "
+          # `python3`, not `uv run python`: this job installs nothing, and the guard needs nothing
+          # beyond the standard library. Using uv here made the job fail with "uv: command not
+          # found" on a runner that had never set it up — a guard that errors instead of checking
+          # is worse than no guard, because the red build looks like the thing it was watching for.
+          python3 -c "
           import sys
           from pathlib import Path
           bad = []
