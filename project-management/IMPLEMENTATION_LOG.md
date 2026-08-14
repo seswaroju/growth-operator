@@ -6481,3 +6481,69 @@ pass. This also settled BLOCKERS #36: the three rate-ingestion failures **pass o
 so they are a stale-dev-database artifact, not a code defect.
 
 **Status:** PILOT-1C is CODE-COMPLETE. It is NOT physically live-proven.
+
+---
+
+## 2026-08-13 · PILOT-1A — Live Vaylorn pilot environment (engineering prerequisites)
+
+**Branch** `feature/pilot-1a-live-environment` · **Migration** 054 (`d53fdc8c9b82`)
+
+### Approved plan
+31-section founder authorization: production Dockerfile/compose/Caddy, deploy-workflow rewrite,
+centralized non-dev startup safety, SOPS scaffolding, DB/Redis hardening, frontend production build,
+backup schedule, health check, and a model-registry refresh against current vendor documentation.
+Explicitly **no** provisioning, DNS, Meta resources, live sends or paid calls.
+
+### Created
+`core/common/safety.py` · `infra/docker/{Dockerfile,Caddyfile,docker-compose.prod.yml}` ·
+`infra/db/roles-prod.sh` · `scripts/{deploy-prod.sh,build-frontend.sh,pilot-health-check.sh,backup-nightly.sh}` ·
+`secrets/prod.example.yaml` · migration 054 · three test suites.
+
+### Modified
+`.dockerignore`, `.github/workflows/deploy-staging.yml`, `core/api/main.py`, `core/worker.py`,
+`core/scheduler.py`, `core/common/config.py`, `core/runtime/{model_registry,model_catalog,routing}.py`,
+`scripts/eval_models.py`, `secrets/README.md`, `infra/db/BACKUP_RESTORE.md`, 8 test files.
+
+### What was actually broken
+1. **`env=prod` refused nothing.** Sessions would have been signed with `dev-only-insecure-secret`
+   and Meta webhooks validated against `dev-whatsapp-app-secret` — both published in this repo,
+   both failing silently.
+2. **The deploy workflow would have shipped the development stack** (`--reload`, source bind mount,
+   `growth_operator:growth_operator`) to a public host.
+3. **Both Anthropic registry models were retired**; four persisted routes pointed at them.
+4. **The JSONB fallback list** kept dead models even after the primary column was repointed — a
+   fallback that fails turns one outage into a silent double failure.
+5. **`roles.sql` hardcodes the runtime password**, so a production initdb would have created
+   `app_rw` with a published credential.
+6. **`DEFAULT_CHOICE = MODEL_CATALOG[0]`** — the default model was whichever sorted first, and had
+   been a retired model for months.
+7. **`.dockerignore` lacked `.venv`** in my first draft — `COPY . .` would have overwritten the
+   container's Linux venv with macOS binaries. Caught before commit; pinned by a test.
+
+### Model registry (verified against vendor docs, 2026-08-13)
+| Model | Status |
+|---|---|
+| `claude-3-5-sonnet-20241022` | RETIRED 2025-10-28 → `claude-sonnet-5` |
+| `claude-3-5-haiku-20241022` | RETIRED 2026-02-19 → `claude-haiku-4-5-20251001` |
+| `deepseek-chat` / `deepseek-reasoner` | RETIRED 2026-07-24 → `deepseek-v4-flash` / `-pro` |
+| `gpt-4o`, `gpt-4o-mini` | DEPRECATED but callable — retained, marked, never preferred |
+| `gpt-5-nano`, `gpt-5.4-nano`, `gpt-5.6-sol` | CURRENT |
+| `claude-haiku-4-5-20251001`, `claude-sonnet-5`, `claude-opus-5` | CURRENT |
+| `deepseek-v4-flash`, `deepseek-v4-pro` | CURRENT (peak rates from 2026-08-16) |
+
+### Commands run
+`uv run ruff check .` PASS · `uv run mypy core` PASS (235) · `mypy migrations` PASS ·
+`scripts/guards.py` PASS · `uv run pytest` **1938 passed, 4 skipped, 3 failed** (the 3 are
+BLOCKERS #36, stale-dev-DB only) · alembic down/up PASS, single head `d53fdc8c9b82` ·
+fresh-DB CI-order run: 33 isolation + 873 integration PASS · web+web-ops lint/tsc/build PASS ·
+`gitleaks detect` PASS (357 commits, no leaks) · frontend build guard proven in both directions.
+
+### Not done (deliberately)
+No droplet, DNS, Meta resource, template submission, SMTP account, LLM account, live send or paid
+model call. Terraform untouched — manual provisioning plus repo-controlled compose is the approved
+pilot path.
+
+### Next recommended action
+Founder review, then the founder-action checklist in the activation report (host, DNS, age key,
+secrets file, SMTP, one LLM key, Meta assets). PILOT-1D-T can begin against Meta test assets once
+`api.vaylorn.com` is reachable.

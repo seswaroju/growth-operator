@@ -8,6 +8,27 @@ Do not replace this file with a new ticket until the founder explicitly
 selects and approves the next ticket.
 
 ---
+## PILOT-1A · Live Vaylorn pilot environment (engineering prerequisites) — **Completed — awaiting founder review** (2026-08-13)
+
+Branch `feature/pilot-1a-live-environment`. **Migration 054** (repoint routes off retired models).
+
+Prepares deployment; provisions nothing. No droplet, no DNS, no Meta resources, no external sends,
+no paid calls — all founder-owned and untouched.
+
+**Three findings worth the founder's attention:**
+1. **Both Anthropic models in the registry were RETIRED**, not merely stale — Sonnet 3.5 on
+   2025-10-28, Haiku 3.5 on 2026-02-19 — and four database routes pointed at them. The first real
+   API call would have failed during the first live smoke. Migration 052 had "fixed" these ids once
+   by adding date suffixes, which made them well-formed and no more callable.
+2. **`roles.sql` hardcodes `PASSWORD 'app_rw'`.** Mounting it in production would have created the
+   runtime role with a credential published in this repository. Production now uses
+   `roles-prod.sh`, and the deploy verifies `app_rw` exists AND lacks BYPASSRLS.
+3. **The fallback chain named a retired model**, so the fail-safe would itself have failed.
+
+**Still founder-blocked (unchanged):** droplet, DNS, age key + `secrets/prod.enc.yaml`, SMTP
+account, LLM key(s), Meta assets. See the activation report.
+
+---
 ## PILOT-1C · Complete ghost-recovery vertical slice — **COMPLETE (code)** (2026-08-13)
 
 **Merged to `main` and CI green.** Merge `5c531f1`; `main` at `32cb1f5`; migration head

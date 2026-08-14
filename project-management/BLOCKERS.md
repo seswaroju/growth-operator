@@ -488,3 +488,38 @@ either way by accident.
 live-proven until PILOT-1D/1E exercises all six of: real Meta/WABA, real approved template, real
 handset, real provider credential, real delivery receipt, real customer reply. Expected to close
 there. Blocks real-pilot acceptance until then.
+
+## #38 — Model registry drift is only caught by hand (OPEN — low, recurring)
+
+**Opened** 2026-08-13 (PILOT-1A). Two vendors retired four models while this repository kept
+offering them, and one earlier migration "fixed" the ids without noticing they were gone. A model id
+is a fact about someone else's live service; nothing in CI can verify it without making paid calls,
+which is correctly out of scope for CI.
+
+Mitigations shipped: `RETIRED_MODEL_IDS` refuses known-dead ids, `current_models()` separates
+current from deprecated, and a test refuses any retired id appearing anywhere in `core/`, `scripts/`
+or `verticals/`. None of that detects the *next* retirement.
+
+**Next action:** re-verify the registry against vendor documentation before each live activation,
+and record the check date in the registry docstring (it now carries one). Consider a quarterly
+reminder. Not automatable without paid calls.
+
+## #39 — `evals` CI job is a placeholder echo (NON-BLOCKING — CI hardening)
+
+**Opened** 2026-08-13, per founder ruling. `.github/workflows/ci.yml` runs
+`echo "eval harness not wired yet"`. The real harness (`scripts/eval_models.py`) exists and runs
+mocked by default, `--live` for real paid calls. Live vendor evals must stay OUT of normal CI.
+
+Explicitly **not** on the critical path. Recorded so the green `evals` badge is not mistaken for
+evidence that evaluations run.
+
+## #40 — Production hosting is provisioned by hand (ACCEPTED — by design for Pilot-1)
+
+**Opened** 2026-08-13. Founder ruling: DigitalOcean BLR1, 2 vCPU / 4 GiB, manually provisioned, with
+repository-controlled Docker Compose deployment. Terraform is deliberately **not** rewritten to
+provision one pilot host; IaC returns when a second reproducible environment is needed.
+
+Consequence to accept knowingly: the host's own configuration (firewall, SSH, age key placement,
+cron) is not reproducible from this repository. Documented in `secrets/README.md` and
+`infra/db/BACKUP_RESTORE.md`. Supersedes the Hetzner assumption in #10 — Hetzner has no India
+region, so `infra/terraform/staging/` remains un-applied scaffolding.
