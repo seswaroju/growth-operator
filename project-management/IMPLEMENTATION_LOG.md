@@ -6547,3 +6547,30 @@ pilot path.
 Founder review, then the founder-action checklist in the activation report (host, DNS, age key,
 secrets file, SMTP, one LLM key, Meta assets). PILOT-1D-T can begin against Meta test assets once
 `api.vaylorn.com` is reachable.
+
+### PILOT-1A — merge + post-merge verification (2026-08-14, appended)
+
+**Merge** `de2c55b` (--no-ff, five logical commits preserved) · **final main** `3215b38` ·
+**migration head** `d53fdc8c9b82` · **CI** `31805475813` success (lint, test, isolation, migrate,
+evals, secret-scan) · **Deploy staging** `31805475778` success (guard passes, deploy correctly
+skipped).
+
+**Pre-merge metadata correction (founder ruling).** `gpt-4o-mini` was labelled `deprecated`;
+OpenAI's lifecycle documentation marks `gpt-4o` deprecated and does not currently say that of
+`gpt-4o-mini`. Lifecycle gained a third state, `legacy` — callable, previous generation, not
+preferred, and no claim about the vendor's intentions. Migration 054 unchanged. The placeholder
+default is now named explicitly and is `claude-sonnet-5`, chosen over the cheaper Haiku 4.5 purely
+on retirement horizon; Haiku and Opus stay available for benchmarking and as the quality ceiling.
+No permanent default declared.
+
+**One post-merge regression, attributable to PILOT-1A, fixed:** BLOCKERS #41 — the deploy guard ran
+`uv` without installing it.
+
+**Verified from merged main:** prod image builds and runs as uid 10001 · compose validates, only
+Caddy publishes ports · Caddy config valid · no dev compose, no `--reload`, no source mounts on the
+deploy path · Postgres and Redis publish nothing · Redis requires a password · runtime and migrator
+URLs differ · `NOBYPASSRLS` in both role bootstraps · 12 refusals on default prod, fully-configured
+prod starts, dev unaffected · every route and JSONB fallback references a selectable model ·
+frontend bundles clean of localhost · 106 PILOT-1A tests pass.
+
+**Status:** PILOT-1A CODE-COMPLETE = YES, DEPLOYED = NO.
