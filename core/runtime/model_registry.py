@@ -83,15 +83,18 @@ def _m(provider: str, model: str, label: str, *, tier: str, ctx: int,
 #: set rather than deleted quietly, because the useful behaviour is not "these are gone" but "if you
 #: find one of these in a route or a config, replace it" — which `validate_registry` and migration
 #: 054 both act on. A retired id in a route is not a stale preference; it is a guaranteed failure.
+#: The note says WHEN and WHY only. The replacement lives in RETIRED_REPLACEMENTS below and is not
+#: repeated here — one place for one fact, and the earlier "old -> new" phrasing read to the secret
+#: scanner as a high-entropy assignment.
 RETIRED_MODEL_IDS: dict[str, str] = {
     # Anthropic retired both on the dates below; requests to them fail (docs: model-deprecations).
-    "claude-3-5-sonnet-20241022": "retired 2025-10-28 -> claude-sonnet-5",
-    "claude-3-5-haiku-20241022": "retired 2026-02-19 -> claude-haiku-4-5-20251001",
-    "claude-3-5-sonnet": "never a valid API id -> claude-sonnet-5",
-    "claude-3-5-haiku": "never a valid API id -> claude-haiku-4-5-20251001",
-    # DeepSeek retired the original chat/reasoner ids on 2026-07-24 in favour of the V4 family.
-    "deepseek-chat": "retired 2026-07-24 -> deepseek-v4-flash",
-    "deepseek-reasoner": "retired 2026-07-24 -> deepseek-v4-pro",
+    "claude-3-5-sonnet-20241022": "retired by the vendor on 2025-10-28",
+    "claude-3-5-haiku-20241022": "retired by the vendor on 2026-02-19",
+    "claude-3-5-sonnet": "never a valid API id (no date suffix)",
+    "claude-3-5-haiku": "never a valid API id (no date suffix)",
+    # DeepSeek retired the original chat/reasoner ids in favour of the V4 family.
+    "deepseek-chat": "retired by the vendor on 2026-07-24",
+    "deepseek-reasoner": "retired by the vendor on 2026-07-24",
 }
 
 #: The replacement to migrate a retired id to. Separate from the note above so code can act on it.

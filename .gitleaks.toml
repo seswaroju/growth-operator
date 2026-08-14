@@ -26,6 +26,13 @@ regexes = [
   # reach. Anchored on that exact English phrase — a real key could not contain it, so this
   # cannot mask a leak.
   '''credential, unknown/disabled''',
+  # core/runtime/model_registry.py (PILOT-1A): the `generic-api-key` heuristic read the retired-id
+  # note `"claude-3-5-haiku": "never a valid API id -> claude-haiku-4-5-20251001"` as an assignment
+  # and extracted the MODEL NAME as the "secret". No secret is or was present — both strings are
+  # public model identifiers printed in vendor documentation. The mapping was reworded on the tree
+  # so it cannot recur, but the phrase remains in commit f403ab6 and the scan covers full history,
+  # which rewording forward cannot reach. Anchored on the exact English phrase.
+  '''API id -> claude-haiku-4-5-20251001"''',
 ]
 paths = [
   # SOPS-encrypted secrets are safe to commit BY DESIGN (that is the whole point of SOPS). Their
