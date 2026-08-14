@@ -117,13 +117,49 @@ def test_at_least_two_vendors_offer_a_current_model() -> None:
 # ---- lifecycle handling -------------------------------------------------------------------------
 
 
-def test_deprecated_models_remain_callable_but_are_not_preferred() -> None:
-    """gpt-4o and gpt-4o-mini are still listed by OpenAI, so an existing configuration keeps
-    working; they are simply not what a new pilot should be steered onto."""
-    deprecated = {m.model for m in MODELS if m.lifecycle == "deprecated"}
-    assert deprecated == {"gpt-4o", "gpt-4o-mini"}
-    assert deprecated <= {m.model for m in approved_models()}
-    assert not deprecated & {m.model for m in current_models()}
+def test_older_models_remain_callable_but_are_not_preferred() -> None:
+    """Both remain listed by OpenAI, so an existing configuration keeps working; neither is what a
+    new pilot should be steered onto."""
+    older = {m.model for m in MODELS if m.lifecycle in ("legacy", "deprecated")}
+    assert older == {"gpt-4o", "gpt-4o-mini"}
+    assert older <= {m.model for m in approved_models()}
+    assert not older & {m.model for m in current_models()}
+
+
+def test_only_vendor_documented_deprecation_is_called_deprecated() -> None:
+    """OpenAI's lifecycle documentation marks gpt-4o deprecated and does not currently say that of
+    gpt-4o-mini. Labelling the latter deprecated would be this repository asserting a vendor
+    decision the vendor has not made — the same class of error as keeping a retired id, pointed the
+    other way. `legacy` says what is true: older generation, still callable, not preferred."""
+    assert get_model("openai", "gpt-4o").lifecycle == "deprecated"
+    assert get_model("openai", "gpt-4o-mini").lifecycle == "legacy"
+
+
+def test_the_pilot_anthropic_candidate_has_the_longer_horizon() -> None:
+    """Founder ruling: prefer Sonnet 5 over the cheaper Haiku 4.5 purely on retirement horizon —
+    a pilot that has to swap models mid-flight has spent its attention on the wrong problem."""
+    from core.runtime.model_registry import PILOT_ANTHROPIC_CANDIDATE, RETIREMENT_HORIZON
+
+    assert PILOT_ANTHROPIC_CANDIDATE == "claude-sonnet-5"
+    assert not is_retired(PILOT_ANTHROPIC_CANDIDATE)
+    assert PILOT_ANTHROPIC_CANDIDATE in {m.model for m in current_models()}
+    assert RETIREMENT_HORIZON["claude-sonnet-5"] > RETIREMENT_HORIZON["claude-haiku-4-5-20251001"]
+
+
+def test_haiku_and_opus_remain_available_for_benchmarking() -> None:
+    """Neither is deleted: Haiku is the low-cost evaluation candidate and Opus the quality
+    ceiling. A near horizon is a reason to prefer something else, not to remove a model."""
+    available = {m.model for m in approved_models()}
+    assert {"claude-haiku-4-5-20251001", "claude-opus-5"} <= available
+
+
+def test_no_permanent_default_is_declared() -> None:
+    """The placeholder is a placeholder. The real decision is the cheapest model that clears the
+    quality bar on Vaylorn's own corpus, and that evidence does not exist yet."""
+    from pathlib import Path
+
+    catalog = (Path(__file__).resolve().parents[2] / "core/runtime/model_catalog.py").read_text()
+    assert "placeholder" in catalog.lower() or "No permanent Vaylorn default" in catalog
 
 
 def test_current_models_are_a_strict_subset_of_approved() -> None:

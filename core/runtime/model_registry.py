@@ -35,7 +35,12 @@ QualityTier = str  # cheap | normal | strong
 #: Where a model sits in its vendor's lifecycle. This is not decoration: a `retired` id is one the
 #: vendor REFUSES, so a route pointing at one fails on every request. PILOT-1A found four such
 #: routes in the database, all pointing at Anthropic models retired months earlier.
-Lifecycle = Literal["current", "deprecated"]
+#: Three states, because "not what a new pilot should use" and "the vendor has announced its end"
+#: are different claims and only one of them is ours to make.
+#:   current    — the vendor's present generation; what a new deployment should be offered
+#:   legacy     — callable and NOT documented as deprecated; an older generation, non-preferred
+#:   deprecated — the vendor's own lifecycle documentation says so
+Lifecycle = Literal["current", "legacy", "deprecated"]
 
 
 @dataclass(frozen=True)
@@ -51,9 +56,9 @@ class ModelDefinition:
     cost_per_1k_in: Decimal | None = None
     cost_per_1k_out: Decimal | None = None
     quality_tier: QualityTier = "normal"
-    #: `deprecated` models still answer, so an existing configuration keeps working, but they are
-    #: never the preferred choice for a new deployment. Retired models are absent entirely — see
-    #: RETIRED_MODEL_IDS.
+    #: `legacy` and `deprecated` models still answer, so an existing configuration keeps working,
+    #: but neither is a preferred choice for a new deployment. Only `deprecated` asserts that the
+    #: VENDOR has said so. Retired models are absent entirely — see RETIRED_MODEL_IDS.
     lifecycle: Lifecycle = "current"
     #: The official vendor page that proves this exact API id, checked on `verified_on`. Recorded
     #: per model rather than in a comment because "where did this id come from?" is the question
@@ -156,14 +161,17 @@ MODELS: tuple[ModelDefinition, ...] = (
        tier="strong", ctx=1_050_000, cin="0.005", cout="0.030",
        caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION},
        source="https://developers.openai.com/api/docs/models/gpt-5.6-sol"),
-    # Still listed on OpenAI's pricing page, so an existing configuration keeps working — but
-    # marked, so a new pilot is never steered onto a 2024 model by default.
-    _m("openai", "gpt-4o", "GPT-4o (legacy)",
+    # Both remain listed and callable, so an existing configuration keeps working — but neither is
+    # offered to a new pilot. The two carry DIFFERENT statuses on purpose: OpenAI's lifecycle
+    # documentation marks gpt-4o deprecated, and does not currently say that of gpt-4o-mini.
+    # Calling it deprecated anyway would be this repository asserting a vendor decision the vendor
+    # has not made — the same class of error as keeping a retired id, pointed the other way.
+    _m("openai", "gpt-4o", "GPT-4o (deprecated)",
        tier="strong", ctx=128_000, cin="0.0025", cout="0.010",
        caps={TEXT, TOOL_CALLING, STRUCTURED_OUTPUT, VISION}, lifecycle="deprecated",
        source="https://developers.openai.com/api/docs/pricing"),
-    _m("openai", "gpt-4o-mini", "GPT-4o mini (legacy)",
-       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006", lifecycle="deprecated",
+    _m("openai", "gpt-4o-mini", "GPT-4o mini (previous generation)",
+       tier="cheap", ctx=128_000, cin="0.00015", cout="0.0006", lifecycle="legacy",
        source="https://developers.openai.com/api/docs/pricing"),
 
     # --- deepseek (the SAME openai_compatible adapter, a different vendor) ---------------------
@@ -190,6 +198,14 @@ RETIREMENT_HORIZON: dict[str, str] = {
     "claude-sonnet-5": "not sooner than 2027-06-30",
     "claude-opus-5": "not sooner than 2027-07-24",
 }
+
+#: The Anthropic model Pilot-1 prefers where one must be chosen before evaluation data exists
+#: (founder ruling, 2026-08-14). Sonnet 5 rather than the cheaper Haiku 4.5 purely on horizon:
+#: Haiku's published floor is about two months out, and a pilot that has to swap models mid-flight
+#: has spent its attention on the wrong problem. Haiku stays available and is expected in the
+#: benchmark; Opus 5 stays available as the quality ceiling. **This is a placeholder, not a
+#: declared default** — that decision belongs to evaluation against the real corpus.
+PILOT_ANTHROPIC_CANDIDATE = "claude-sonnet-5"
 
 _BY_PAIR: dict[tuple[str, str], ModelDefinition] = {(m.provider, m.model): m for m in MODELS}
 
@@ -253,9 +269,9 @@ def approved_models() -> tuple[ModelDefinition, ...]:
 
 
 def current_models() -> tuple[ModelDefinition, ...]:
-    """What a NEW deployment should be offered. Deprecated models remain callable and remain in
-    `approved_models()` so an existing configuration keeps working; they are simply not what anyone
-    should be steered onto today."""
+    """What a NEW deployment should be offered. Legacy and deprecated models remain callable and
+    remain in `approved_models()` so an existing configuration keeps working; neither is what
+    anyone should be steered onto today."""
     return tuple(m for m in approved_models() if m.lifecycle == "current")
 
 

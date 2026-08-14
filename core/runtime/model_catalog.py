@@ -66,9 +66,15 @@ MODEL_CATALOG: tuple[ModelChoice, ...] = _catalog()
 #: Anthropic had already retired. It now resolves to the first **current** model, which at minimum
 #: cannot be something a vendor refuses to serve.
 def _default_choice() -> ModelChoice:
-    from core.runtime.model_registry import current_models
+    from core.runtime.model_registry import PILOT_ANTHROPIC_CANDIDATE, current_models
 
     current = {m.model for m in current_models()}
+    # Named explicitly rather than taken from list order. Before PILOT-1A this was
+    # `MODEL_CATALOG[0]`, so reordering the registry silently changed what every store defaulted
+    # to — and for months that default was a model Anthropic had already retired.
+    for choice in MODEL_CATALOG:
+        if choice.model == PILOT_ANTHROPIC_CANDIDATE and choice.model in current:
+            return choice
     for choice in MODEL_CATALOG:
         if choice.model in current:
             return choice
