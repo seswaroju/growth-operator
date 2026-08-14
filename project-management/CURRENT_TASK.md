@@ -8,6 +8,32 @@ Do not replace this file with a new ticket until the founder explicitly
 selects and approves the next ticket.
 
 ---
+## PILOT-1D-L · Local live proof — **REPOSITORY READY** (2026-08-14)
+
+    PILOT-1D-L   REPOSITORY READY = YES
+                 REAL LLM PROVEN = NO
+                 META TRANSPORT PROVEN = NO
+                 REAL PRIYA ROUNDTRIP PROVEN = NO
+
+Branch `feature/pilot-1d-l-local-live-proof`. **No migration. No external call of any kind** — no
+LLM request, no Meta call, no tunnel started, no VPS, no DNS, no message to anyone.
+
+Prepared: `scripts/webhook_ingress.py` (publishes only `GET|POST /webhooks/whatsapp`; the
+application's other 142 paths return 404), `scripts/bootstrap-host.sh` (one command for a fresh
+Ubuntu VPS), `runbooks/FIRST_PILOT_DEPLOY.md`, `runbooks/LOCAL_LIVE_PROOF.md`.
+
+Runbooks live in the repository, not `docs/` — that is a read-only symlink to the vault (CLAUDE.md
+§4), and a runbook followed while a merchant waits should sit with the scripts it invokes.
+
+**Measured cutover dry-run** on a disposable Ubuntu container, pruned builder cache: ~66s of
+software deployment end to end (packages 14s, sops 2s, Docker 17s, cold image build 20s, DB init +
+role 4s, 70 migrations 1s, API ready 2s, worker 6s), `/readyz` reporting postgres, redis and
+migration_head all true. A 2 vCPU droplet will be several times slower and still well inside the
+30-minute target.
+
+**Next:** founder supplies one LLM key, then one step at a time per the local live-proof runbook.
+
+---
 ## PILOT-1A · Live Vaylorn pilot environment (engineering prerequisites) — **CODE-COMPLETE** (2026-08-14)
 
     PILOT-1A   CODE-COMPLETE = YES   DEPLOYED = NO
