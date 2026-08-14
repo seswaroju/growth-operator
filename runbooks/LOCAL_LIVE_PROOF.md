@@ -89,15 +89,27 @@ owner. Watching a real model hit that path is worth more than any unit test of i
 repository).*
 
 ```bash
-make dev                                    # api on :8000, worker, scheduler, postgres, redis
-cloudflared tunnel --url http://localhost:8000
+make dev                                          # api :8000, worker, scheduler, postgres, redis
+uv run python scripts/webhook_ingress.py          # webhook-only ingress on :8080
+cloudflared tunnel --url http://localhost:8080    # NOTE: 8080, not 8000
 ```
 
-Prints `https://<random>.trycloudflare.com`. That is the only thing exposed: port 8000, outbound
-connection, no router change, no port forwarding. Postgres and Redis stay bound to localhost.
+**Point the tunnel at 8080, never 8000.** The application publishes 143 paths, including
+`/v1/admin/tenants`, `/docs`, `/openapi.json` and the OTP routes. Tunnelling it directly would put
+all of them on a public HTTPS URL — and a random URL is not an access control: it appears in
+Cloudflare's logs, in Meta's configuration, and in whatever terminal printed it.
 
-**The URL changes on every restart.** Meta's callback must be reconfigured each time — annoying,
-and the correct trade for a test-only tunnel.
+The ingress publishes exactly one path and two methods (`GET`/`POST /webhooks/whatsapp`) and returns
+a bare 404 for everything else. It forwards the raw body byte-for-byte and the
+`X-Hub-Signature-256` header untouched — Meta signs the raw bytes, so any re-encoding would make
+every real webhook fail as a forgery. It authenticates nothing itself; verification stays in the
+application, where it belongs.
+
+Prints `https://<random>.trycloudflare.com`. Outbound connection only — no router change, no port
+forwarding. Postgres and Redis stay bound to localhost and are never published.
+
+**The URL changes on every restart.** Reconfigure Meta's callback each session: annoying, and the
+correct trade for a test-only tunnel. Stop the tunnel when the session ends.
 
 ---
 
@@ -112,7 +124,8 @@ and the correct trade for a test-only tunnel.
 - [ ] App Secret → `GROWTH_OPERATOR_WHATSAPP_APP_SECRET`
 - [ ] verify token you choose → both `.env` and Meta
 
-Callback URL: `https://<tunnel>/webhooks/whatsapp`, subscribe **messages**.
+Callback URL: `https://<tunnel>/webhooks/whatsapp`, subscribe **messages**. That path is the only
+one the tunnel serves; anything else Meta (or anyone else) requests returns 404.
 
 Meta calls `GET` with `hub.verify_token`; Vaylorn echoes the challenge only on an exact match. Every
 `POST` is HMAC-SHA256 verified against the app secret over the raw body — the tunnel proves nothing
@@ -125,7 +138,7 @@ about authenticity and is not trusted to.
 Message the Meta test number from your handset.
 
 ```
-handset → Meta → tunnel → localhost:8000/webhooks/whatsapp → webhook_events → normalizer → contact/conversation/message
+handset → Meta → tunnel → ingress :8080 → app :8000/webhooks/whatsapp → webhook_events → normalizer → contact/conversation/message
 ```
 
 Verify: signature accepted, `webhook_events` row, contact + conversation + message under the right
@@ -201,6 +214,7 @@ Only then is the physical PILOT-1C gap closed.
 | Provider-agnostic Priya makes a real call | ☐ |
 | Meta test Cloud API works | ☐ |
 | Real webhook reaches the Mac over HTTPS | ☐ |
+| Tunnel published the webhook path only | ☐ |
 | Handset receives a real WhatsApp message | ☐ |
 | Handset reply reaches Vaylorn | ☐ |
 | Real Priya conversational round trip | ☐ |
