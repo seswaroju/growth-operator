@@ -489,6 +489,21 @@ live-proven until PILOT-1D/1E exercises all six of: real Meta/WABA, real approve
 handset, real provider credential, real delivery receipt, real customer reply. Expected to close
 there. Blocks real-pilot acceptance until then.
 
+## #41 — Deploy guard used `uv` without installing it (RESOLVED 2026-08-14)
+
+**Opened and resolved** 2026-08-14. The new `guard` job in `deploy-staging.yml` ran
+`uv run python -c ...` with no `setup-uv` step, so it failed with `uv: command not found` on every
+push to main — and unlike the old workflow, which skipped entirely when `STAGING_ENABLED` was unset,
+the guard runs unconditionally by design. The founder's inbox found it before any test did.
+
+Nothing was wrong with what the guard checks; it never got to check anything. That is the worst
+failure mode for a safeguard: a red build that looks exactly like the violation it exists to detect.
+
+**Resolution:** the guard uses `python3` and the standard library only (merge `3215b38`). Two tests
+added — one asserts no workflow job anywhere uses `uv` without installing it, the other pins the
+guard to the standard library. Both catch a class of bug that passes locally, where `uv` is always
+on PATH.
+
 ## #38 — Model registry drift is only caught by hand (OPEN — low, recurring)
 
 **Opened** 2026-08-13 (PILOT-1A). Two vendors retired four models while this repository kept

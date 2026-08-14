@@ -8,7 +8,19 @@ Do not replace this file with a new ticket until the founder explicitly
 selects and approves the next ticket.
 
 ---
-## PILOT-1A · Live Vaylorn pilot environment (engineering prerequisites) — **Completed — awaiting founder review** (2026-08-13)
+## PILOT-1A · Live Vaylorn pilot environment (engineering prerequisites) — **CODE-COMPLETE** (2026-08-14)
+
+    PILOT-1A   CODE-COMPLETE = YES   DEPLOYED = NO
+    PILOT-1B   CODE-COMPLETE = YES   REAL LLM PROVEN = NO
+    PILOT-1C   CODE-COMPLETE = YES   PHYSICAL RECOVERY PROVEN = NO
+    PILOT-1D   NOT COMPLETE — founder/external activation next
+
+**Vaylorn is not live.** Production deployment artifacts existing is not the same as a deployment
+existing. No droplet, no DNS, no secrets on a host, no Meta assets, no live LLM call, no message
+sent to anyone.
+
+Merged `de2c55b`; final main `3215b38`; migration head `d53fdc8c9b82`; CI `31805475813` and Deploy
+staging `31805475778` both green.
 
 Branch `feature/pilot-1a-live-environment`. **Migration 054** (repoint routes off retired models).
 
