@@ -53,7 +53,6 @@ class CatalogItemIn(BaseModel):
     attributes: dict[str, Any] = {}
     sku: str | None = None
     description: str | None = None
-    media: list[str] | None = None
     base_price_minor: int | None = None
     currency: str = "INR"
     availability: str = "in_stock"
@@ -62,7 +61,6 @@ class CatalogItemIn(BaseModel):
 class CatalogItemPatch(BaseModel):
     title: str | None = None
     description: str | None = None
-    media: list[str] | None = None
     base_price_minor: int | None = None
     currency: str | None = None
     availability: str | None = None

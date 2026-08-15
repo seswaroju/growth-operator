@@ -8,9 +8,9 @@ database had 1171 plans, 1010 from a single helper.
 The ongoing leak is fixed at its source in `tests/conftest.py`. This removes what is already there.
 
 **Development only, and it checks.** Three independent conditions must hold: `env=dev`, a database
-URL that is not obviously remote, and an explicit `--yes`. Deleting a merchant's store is not
-something a flag should be able to do by accident, so the refusals are deliberately hard to argue
-past rather than convenient to bypass.
+URL that is not obviously remote, and ids named explicitly on the command line. Deleting a store is
+not something a flag should be able to do by accident, so the refusals are deliberately hard to
+argue past rather than convenient to bypass.
 
 **Canonical plans are never touched.** Recover, Grow and Scale are code-managed commercial truth
 (PLAN-3/PLAN-4); a cleanup script is not the right place to remove them, and if this script could,
@@ -20,9 +20,15 @@ someone would eventually run it in the wrong terminal.
 audit history is reported and skipped: it is more likely to be a demo tenant the founder built than
 a stray fixture, and a cleanup tool that guesses wrong destroys work.
 
-    uv run python scripts/dev_purge_fixtures.py                 # dry run — shows what would go
-    uv run python scripts/dev_purge_fixtures.py --yes           # delete fixture plans
-    uv run python scripts/dev_purge_fixtures.py --stores --yes  # also delete fixture stores
+**Discovery and destruction are separate.** A dry run finds rows that *look* like fixtures by name
+and prints their ids. Deleting requires naming those ids explicitly. Prefix matching is a good way
+to find candidates and a bad way to authorise destruction: `Alpha`, `Beta` and `TB` are fixture
+names today and are perfectly plausible names for a real store, and five history-table counts are
+not enough evidence to delete somebody's tenant. So the script will not act on its own guess.
+
+    uv run python scripts/dev_purge_fixtures.py --stores           # dry run — prints candidate ids
+    uv run python scripts/dev_purge_fixtures.py --plan-ids a,b,c   # delete exactly these
+    uv run python scripts/dev_purge_fixtures.py --store-ids d,e    # delete exactly these
 """
 
 from __future__ import annotations
@@ -100,7 +106,13 @@ async def _fixture_orgs(conn: asyncpg.Connection) -> list[tuple[asyncpg.Record, 
     return out
 
 
-async def main_async(*, apply: bool, stores: bool) -> None:
+def _parse_ids(raw: str) -> list[str]:
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+async def main_async(
+    *, stores: bool, plan_ids: list[str], store_ids: list[str]
+) -> None:
     conn = await asyncpg.connect(_refuse_unless_dev())
     try:
         # Stores first: which ones go decides which plan references still count.
@@ -122,9 +134,35 @@ async def main_async(*, apply: bool, stores: bool) -> None:
         for p in referenced:
             print(f"  SKIP {p['name']}: {p['subs']} subscription(s) outside this purge")
 
-        if not apply:
-            print("\ndry run. re-run with --yes to delete.")
+        if not plan_ids and not store_ids:
+            print("\nDRY RUN — nothing deleted.")
+            print("To delete, name the ids explicitly (they are printed above):")
+            if deletable:
+                print("  --plan-ids " + ",".join(str(p["id"]) for p in deletable[:3])
+                      + ("," if len(deletable) > 3 else ""))
+            if doomed_orgs:
+                print("  --store-ids " + ",".join(str(o) for o in doomed_orgs[:3])
+                      + ("," if len(doomed_orgs) > 3 else ""))
             return
+
+        # Only ids the founder named, and only if discovery already classified them as disposable.
+        # The intersection matters: an explicit id is authorisation, and the discovery check is
+        # still the safety net that refuses a store holding real conversation history.
+        deletable_ids = {str(p["id"]) for p in deletable}
+        doomed_ids = {str(o) for o in doomed_orgs}
+        chosen_plans = [pid for pid in plan_ids if pid in deletable_ids]
+        chosen_stores = [sid for sid in store_ids if sid in doomed_ids]
+        for pid in plan_ids:
+            if pid not in deletable_ids:
+                print(f"  REFUSED plan {pid}: not a disposable fixture in this database")
+        for sid in store_ids:
+            if sid not in doomed_ids:
+                print(f"  REFUSED store {sid}: not an empty fixture store in this database")
+        if not chosen_plans and not chosen_stores:
+            print("\nnothing to do — no named id passed the safety checks.")
+            return
+        deletable = [p for p in deletable if str(p["id"]) in set(chosen_plans)]
+        doomed_orgs = [o for o in doomed_orgs if str(o) in set(chosen_stores)]
 
         # One transaction: a half-purged graph (plans gone, stores left) is worse than either
         # outcome, and would be tedious to reason about afterwards.
@@ -139,8 +177,7 @@ async def main_async(*, apply: bool, stores: bool) -> None:
             if deletable:
                 await conn.execute("DELETE FROM billing_plans WHERE id = ANY($1::uuid[])",
                                    [p["id"] for p in deletable])
-        print(f"\ndeleted {len(deletable)} plan(s)"
-              + (f" and {len(doomed_orgs)} store(s)" if stores else ""))
+        print(f"\ndeleted {len(deletable)} plan(s) and {len(doomed_orgs)} store(s)")
         remaining = await conn.fetchval("SELECT count(*) FROM billing_plans")
         print(f"plans remaining: {remaining}")
     finally:
@@ -149,11 +186,17 @@ async def main_async(*, apply: bool, stores: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Purge leftover test fixtures (local dev only).")
-    ap.add_argument("--yes", action="store_true", help="actually delete (default: dry run)")
     ap.add_argument("--stores", action="store_true",
-                    help="also purge fixture stores that hold no history")
+                    help="include fixture stores in discovery")
+    ap.add_argument("--plan-ids", default="",
+                    help="comma-separated plan ids to DELETE (from a dry run)")
+    ap.add_argument("--store-ids", default="",
+                    help="comma-separated store ids to DELETE (from a dry run)")
     args = ap.parse_args()
-    asyncio.run(main_async(apply=args.yes, stores=args.stores))
+    store_ids = _parse_ids(args.store_ids)
+    asyncio.run(main_async(
+        stores=args.stores or bool(store_ids),
+        plan_ids=_parse_ids(args.plan_ids), store_ids=store_ids))
 
 
 if __name__ == "__main__":

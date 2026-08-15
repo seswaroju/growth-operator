@@ -18,6 +18,23 @@ import uuid
 from typing import Any, Protocol
 from uuid import UUID
 
+#: S3 error codes that genuinely mean "there is no such object". Everything else — AccessDenied, a
+#: signature failure, a 5xx — is an outage or a misconfiguration, and must NOT be reported as a
+#: missing image: "this item has no photograph" and "the object store is refusing us" call for
+#: completely different responses, and conflating them hides a broken deployment behind an empty
+#: placeholder that looks like ordinary product data.
+_ABSENT_CODES = frozenset({"NoSuchKey", "NoSuchBucket", "404", "NotFound"})
+
+
+class StorageUnavailable(Exception):
+    """The object store could not answer. Distinct from an absent object on purpose."""
+
+    def __init__(self, operation: str, code: str):
+        self.operation = operation
+        self.code = code
+        # No key, no bucket, no credential — this message reaches logs.
+        super().__init__(f"object storage {operation} failed: {code}")
+
 
 class MediaStore(Protocol):
     async def put(self, key: str, data: bytes, *, mime: str) -> str:
@@ -117,8 +134,12 @@ class S3Store:
 
             try:
                 obj = self._client().get_object(Bucket=self.bucket, Key=key)
-            except ClientError:
-                return None
+            except ClientError as exc:
+                code = str(exc.response.get("Error", {}).get("Code", ""))
+                if code in _ABSENT_CODES:
+                    return None
+                # AccessDenied, an expired credential or a 5xx is an outage, not an empty item.
+                raise StorageUnavailable("get", code or "unknown") from exc
             return bytes(obj["Body"].read())
 
         return await asyncio.to_thread(_get)
@@ -129,19 +150,36 @@ class S3Store:
 
             try:
                 self._client().delete_object(Bucket=self.bucket, Key=key)
-            except ClientError:
-                return  # already gone — deletion is idempotent
+            except ClientError as exc:
+                code = str(exc.response.get("Error", {}).get("Code", ""))
+                if code in _ABSENT_CODES:
+                    return  # already gone — deletion is idempotent
+                # Raised, not swallowed. The caller's cleanup path logs it as an orphan; silently
+                # reporting success would mean a permissions failure looked like a tidy database.
+                raise StorageUnavailable("delete", code or "unknown") from exc
 
         await asyncio.to_thread(_delete)
 
 
 def default_store() -> MediaStore:
-    """The configured store. Simulated unless media storage is explicitly enabled, so a developer
-    who has not started MinIO still gets a working upload path."""
+    """The configured store. Simulated only in dev.
+
+    `SimulatedStore` keeps bytes in **process memory**, which is fine on a laptop and unacceptable
+    anywhere else: production runs `uvicorn --workers 2`, so an image uploaded into worker A would
+    404 from worker B, and every restart would lose the lot. A merchant's product photographs
+    vanishing on deploy is not a degraded mode, it is data loss — so outside dev this refuses to
+    hand back an in-memory store rather than quietly providing one.
+    """
     from core.common.config import get_settings
+    from core.common.safety import NON_DEV_ENVS
 
     settings = get_settings()
     if not settings.media_storage_enabled:
+        if settings.env in NON_DEV_ENVS:
+            raise StorageUnavailable(
+                "configure",
+                "media_storage_enabled is false outside dev — process memory is not durable "
+                "storage; configure the S3-compatible object store")
         return _SIM_STORE
     return S3Store(
         endpoint_url=settings.s3_endpoint_url, region=settings.s3_region,

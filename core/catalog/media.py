@@ -17,6 +17,14 @@ session and lands in logs, history and referrer headers.
 **Only derivatives are served.** The uploaded original is retained privately (it is the merchant's
 photograph and re-deriving from it later beats asking them to upload again) but has no merchant-
 facing route. What customers and the browser see is the normalised, EXIF-stripped derivative.
+
+**Archiving an item retains its image and its association.** Archive is soft deletion — a record of
+something that happened, kept so history stays readable — and destroying the photograph would make
+that history worse without freeing anything a pilot cares about. An archived item that is restored
+comes back complete rather than blank, and a merchant who archives an item by mistake has lost
+nothing. Bytes are removed only by an explicit image removal or a replacement, both of which are a
+deliberate act on that image. Nothing in this module deletes on archive, and nothing should be added
+that does without an actual retention requirement saying so.
 """
 
 from __future__ import annotations
@@ -56,15 +64,20 @@ class StoredImage:
     height: int
     mime: str
 
-    def as_media(self) -> list[str]:
-        """What goes into `catalog_items.media`.
+    def as_media(self, item_id: UUID) -> list[str]:
+        """What goes into `catalog_items.media` — and therefore into every API response.
 
-        Kept as `list[str]` so multi-image support can arrive without a schema change, and stored
-        as an internal `vaylorn-media://` reference rather than a bucket path: the storage backend
-        is an implementation detail, and a row that hardcodes `s3://` is a row that has to be
-        rewritten the day storage moves.
+        A **logical application path**, never a storage key. The first version stored
+        `vaylorn-media://{org_id}/catalog/{uuid}.jpg`, which put the bucket layout and the org
+        namespace into `CatalogItemOut` and straight into the browser. Storage keys are private
+        infrastructure metadata: publishing them tells an attacker exactly what to ask an
+        object store for, and pins the API response to a storage backend we might change.
+
+        The real keys live in `media_keys`, which no response model reads.
+
+        Still `list[str]` so multi-image support arrives without a schema change.
         """
-        return [f"vaylorn-media://{self.primary_key}"]
+        return [f"/v1/catalog/items/{item_id}/image"]
 
 
 async def _item_exists(session: AsyncSession, org_id: UUID, item_id: UUID) -> bool:
@@ -88,12 +101,25 @@ async def _current_keys(session: AsyncSession, org_id: UUID, item_id: UUID) -> d
 async def attach(
     session: AsyncSession, org_id: UUID, item_id: UUID, *, data: bytes, declared_mime: str | None,
 ) -> StoredImage:
-    """Validate, derive, store, and associate. Raises `ItemNotFound` or `ImageRejected`.
+    """Validate, derive, store, associate, **and commit**. Raises `ItemNotFound`/`ImageRejected`.
 
-    Order matters. New objects are written **before** the association is updated and the old ones
-    are removed only **after** it commits, so a failure anywhere leaves the item pointing at bytes
-    that exist. The opposite order can leave a merchant looking at a broken image, which is worse
-    than briefly holding one orphan.
+    Committing here rather than in the router is deliberate, and it is the only way the ordering
+    invariant can hold. Postgres and object storage cannot participate in one transaction, so the
+    order of operations *is* the correctness argument:
+
+        write NEW objects → stage association → COMMIT → only then delete OLD objects
+
+    The first version deleted the old objects before the router committed. If that commit then
+    failed, the rollback restored an association pointing at bytes that no longer existed — the
+    merchant's product photograph would simply be gone, with the database insisting it was there.
+    Deleting only after a successful commit means a failure anywhere leaves the OLD association and
+    the OLD bytes both intact, which is the state the merchant expects.
+
+    On commit failure the NEW objects are removed instead: they are unreferenced by definition, and
+    leaving them would accumulate exactly the orphans this module is careful about.
+
+    No attempt is made to fake atomicity across the two systems. The guarantee is narrower and
+    honest: **the database never references bytes that have been deleted.**
     """
     if not await _item_exists(session, org_id, item_id):
         raise ItemNotFound
@@ -121,13 +147,24 @@ async def attach(
     await session.execute(
         text("UPDATE catalog_items SET media = CAST(:m AS jsonb), "
              "media_keys = CAST(:k AS jsonb) WHERE id = :i AND org_id = :o"),
-        {"m": json.dumps(stored.as_media()), "k": json.dumps({
+        {"m": json.dumps(stored.as_media(item_id)), "k": json.dumps({
             "primary": primary_key, "thumbnail": thumbnail_key, "original": original_key,
             "width": derived.width, "height": derived.height, "mime": derived.mime}),
          "i": str(item_id), "o": str(org_id)})
 
-    # Old objects last, and never fatally: the association is already correct, so a storage hiccup
-    # here costs disk, not correctness. Logged so orphans are visible rather than silent.
+    try:
+        await session.commit()
+    except Exception:
+        # The association never landed, so the new objects are unreferenced. Remove them and leave
+        # the previous image exactly as it was.
+        await session.rollback()
+        await _discard(
+            {"primary": primary_key, "thumbnail": thumbnail_key, "original": original_key},
+            reason="commit_failed")
+        raise
+
+    # Only now. The association is durable, so nothing can serve the old objects any more, and a
+    # storage hiccup here costs disk rather than correctness.
     await _discard(previous, reason="replaced")
     return stored
 
@@ -159,10 +196,11 @@ async def read(
 
 
 async def remove(session: AsyncSession, org_id: UUID, item_id: UUID) -> bool:
-    """Clear the association and delete the objects. True when there was an image to remove.
+    """Clear the association, **commit**, then delete the objects. True when there was an image.
 
-    Association first: once the row no longer references the objects, nothing can serve them, and
-    a failure deleting bytes leaves an orphan rather than a broken item.
+    Same ordering rule as `attach`, for the same reason: if the bytes went first and the commit then
+    failed, the row would still claim an image that no longer exists. Deleting after the commit
+    means a failure leaves the image intact and the merchant simply tries again.
     """
     if not await _item_exists(session, org_id, item_id):
         raise ItemNotFound
@@ -173,6 +211,12 @@ async def remove(session: AsyncSession, org_id: UUID, item_id: UUID) -> bool:
         text("UPDATE catalog_items SET media = '[]'::jsonb, media_keys = NULL "
              "WHERE id = :i AND org_id = :o"),
         {"i": str(item_id), "o": str(org_id)})
+    try:
+        await session.commit()
+    except Exception:
+        # Nothing was deleted yet, so the image is still whole and still referenced.
+        await session.rollback()
+        raise
     await _discard(keys, reason="removed")
     return True
 

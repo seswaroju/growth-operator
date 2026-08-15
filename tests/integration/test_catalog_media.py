@@ -281,3 +281,153 @@ async def test_a_rejected_upload_leaves_the_existing_image_intact(stores: TwoSto
     keys = await stores.conn.fetchval(
         "SELECT media_keys FROM catalog_items WHERE id=$1", stores.item_a)
     assert json.loads(keys)["primary"] == good.primary_key
+
+
+# ---- commit-failure ordering (review §1) --------------------------------------------------------
+
+
+class _CommitFails:
+    """A session whose commit raises, wrapping a real one so every other call behaves normally.
+
+    Fault injection rather than a mock of the whole module: the ordering guarantee is about what
+    survives a failure at one exact point, and a stubbed session would not exercise the real
+    statements that ran before it.
+    """
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+    async def commit(self) -> None:
+        raise RuntimeError("injected commit failure")
+
+
+async def test_a_failed_commit_on_replace_leaves_the_original_image_readable(
+    stores: TwoStores
+) -> None:
+    """The defect this replaces: old objects were deleted before the router committed, so a failed
+    commit rolled the association back to bytes that no longer existed — the merchant's photograph
+    silently gone, with the database insisting it was there."""
+    from core.media import default_store
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        original = await catalog_media.attach(
+            s, stores.a, stores.item_a, data=_photo((1000, 800)), declared_mime="image/jpeg")
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        with pytest.raises(RuntimeError, match="injected commit failure"):
+            await catalog_media.attach(
+                _CommitFails(s), stores.a, stores.item_a,  # type: ignore[arg-type]
+                data=_photo((1400, 600)), declared_mime="image/jpeg")
+
+    # The original association survived...
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        still = await catalog_media.read(s, stores.a, stores.item_a, variant="primary")
+    assert still is not None, "the replacement failed and took the original image with it"
+    # ...and so did its bytes.
+    assert await default_store().get(original.primary_key) is not None
+
+
+async def test_a_failed_commit_on_replace_does_not_leave_the_new_objects_behind(
+    stores: TwoStores
+) -> None:
+    """They are unreferenced by definition, so they are removed rather than accumulated."""
+    from core.media import default_store
+
+    written: list[str] = []
+    store = default_store()
+    real_put = store.put
+
+    async def recording_put(key: str, data: bytes, *, mime: str) -> str:
+        written.append(key)
+        return await real_put(key, data, mime=mime)
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        await catalog_media.attach(
+            s, stores.a, stores.item_a, data=_photo(), declared_mime="image/jpeg")
+    written.clear()
+
+    store.put = recording_put  # type: ignore[method-assign]
+    try:
+        async with org_scoped_session(stores.a) as s:
+            await set_org_context(s, stores.a)
+            with pytest.raises(RuntimeError):
+                await catalog_media.attach(
+                    _CommitFails(s), stores.a, stores.item_a,  # type: ignore[arg-type]
+                    data=_photo((900, 900)), declared_mime="image/jpeg")
+    finally:
+        store.put = real_put  # type: ignore[method-assign]
+
+    assert written, "the failing attempt should have written new objects"
+    for key in written:
+        assert await store.get(key) is None, f"orphan left behind: {key}"
+
+
+async def test_a_failed_commit_on_remove_leaves_the_image_intact(stores: TwoStores) -> None:
+    """Nothing is deleted until the removal is durable, so a failure means the merchant simply
+    tries again rather than losing the photograph to a half-finished operation."""
+    from core.media import default_store
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        stored = await catalog_media.attach(
+            s, stores.a, stores.item_a, data=_photo(), declared_mime="image/jpeg")
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        with pytest.raises(RuntimeError, match="injected commit failure"):
+            await catalog_media.remove(
+                _CommitFails(s), stores.a, stores.item_a)  # type: ignore[arg-type]
+
+    assert await default_store().get(stored.primary_key) is not None
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        assert await catalog_media.read(s, stores.a, stores.item_a, variant="primary") is not None
+
+
+# ---- the API never returns a storage key (review §3) --------------------------------------------
+
+
+async def test_the_stored_media_reference_is_a_logical_path_not_a_storage_key(
+    stores: TwoStores
+) -> None:
+    """`media` goes straight into `CatalogItemOut` and therefore into the browser. It used to hold
+    `vaylorn-media://{org_id}/catalog/{uuid}.jpg`, publishing the bucket layout and the org
+    namespace to every client."""
+    import json
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        stored = await catalog_media.attach(
+            s, stores.a, stores.item_a, data=_photo(), declared_mime="image/jpeg")
+
+    media = json.loads(await stores.conn.fetchval(
+        "SELECT media FROM catalog_items WHERE id=$1", stores.item_a))
+    assert media == [f"/v1/catalog/items/{stores.item_a}/image"]
+
+    blob = json.dumps(media)
+    assert str(stores.a) not in blob, "the org namespace leaked into the API response"
+    assert stored.primary_key not in blob
+    for marker in ("s3://", "vaylorn-media://", "sim://", "catalog-original"):
+        assert marker not in blob
+
+
+async def test_the_private_keys_stay_in_media_keys(stores: TwoStores) -> None:
+    """They still have to live somewhere — just not anywhere a response model reads."""
+    import json
+
+    async with org_scoped_session(stores.a) as s:
+        await set_org_context(s, stores.a)
+        stored = await catalog_media.attach(
+            s, stores.a, stores.item_a, data=_photo(), declared_mime="image/jpeg")
+
+    keys = json.loads(await stores.conn.fetchval(
+        "SELECT media_keys FROM catalog_items WHERE id=$1", stores.item_a))
+    assert keys["primary"] == stored.primary_key
+    assert keys["original"] == stored.original_key

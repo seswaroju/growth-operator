@@ -29,7 +29,7 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
 from PIL.Image import Resampling
 
 #: Accepted by the catalog image endpoint. Verified after decoding.
@@ -41,6 +41,14 @@ ALLOWED_UPLOAD_MIME: frozenset[str] = frozenset({"image/jpeg", "image/png", "ima
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024        # 10 MB — comfortably above any phone photograph
 MAX_PIXELS = 50_000_000                    # 50 MP decoded, ~8000×6000; a bomb is orders above this
+
+#: Pillow's own bomb guard, aligned with the explicit cap and left switched on as a second layer.
+#: The explicit check reads the declared header size; this one catches a file whose header lied.
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+
+#: A truncated file must raise rather than silently yield a half-decoded image — a partial product
+#: photograph published to customers is worse than a clear rejection.
+ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 PRIMARY_MAX_EDGE = 1600                    # fits inside 1600×1600, aspect preserved
 THUMBNAIL_MAX_EDGE = 400
@@ -76,15 +84,30 @@ class Derivatives:
     mime: str = OUTPUT_MIME
 
 
-def _open(data: bytes) -> Image.Image:
+def _open_header(data: bytes) -> Image.Image:
+    """Parse the header only. `Image.open` is lazy: it reads enough to know the format and size
+    without decompressing pixels, which is what makes a cheap size check possible."""
     try:
-        image = Image.open(io.BytesIO(data))
-        image.load()  # forces a real decode — `open` alone only reads the header
+        return Image.open(io.BytesIO(data))
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ImageRejected(
             "not_an_image",
             "That file isn't a readable image. Upload a JPEG, PNG or WebP.") from exc
-    return image
+
+
+def _decode(image: Image.Image) -> None:
+    """Force the real decode, once the declared size has already been accepted."""
+    try:
+        image.load()
+    except Image.DecompressionBombError as exc:
+        # Pillow's own guard, kept as a second layer beneath the explicit cap: it catches shapes
+        # the header did not honestly declare.
+        raise ImageRejected(
+            "too_many_pixels", "That image is too large to process safely.") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ImageRejected(
+            "not_an_image",
+            "That file isn't a readable image. Upload a JPEG, PNG or WebP.") from exc
 
 
 def _reject_bombs(image: Image.Image) -> None:
@@ -113,14 +136,18 @@ def validate(data: bytes, *, declared_mime: str | None = None) -> Image.Image:
         raise ImageRejected(
             "unsupported_type", "Upload a JPEG, PNG or WebP image.")
 
-    image = _open(data)
-    # The decoded format, not the extension or the header the browser sent.
+    # Header first. The pixel cap is checked against the DECLARED dimensions before anything is
+    # decompressed — a 230 KB PNG declaring 9000×9000 must be refused without ever materialising
+    # 81 megapixels in memory, which is the whole point of the limit. Checking after `load()`
+    # would mean paying the exact cost the cap exists to avoid.
+    image = _open_header(data)
     if (image.format or "").upper() not in ALLOWED_FORMATS:
         raise ImageRejected(
             "unsupported_format",
             f"That file decodes as {image.format or 'an unknown format'}. "
             "Upload a JPEG, PNG or WebP image.")
     _reject_bombs(image)
+    _decode(image)
     return image
 
 

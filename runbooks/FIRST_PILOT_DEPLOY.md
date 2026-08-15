@@ -67,8 +67,14 @@ much cheaper here than half-deployed.
 ### 4. Host environment · ~2 min
 
 Create `/etc/vaylorn.env`, mode `0600`, defining: `POSTGRES_USER`, `POSTGRES_PASSWORD`,
-`APP_RW_PASSWORD`, `REDIS_PASSWORD`, `ACME_EMAIL`, `GROWTH_OPERATOR_DATABASE_URL` (as `app_rw`),
-`GROWTH_OPERATOR_DATABASE_MIGRATOR_URL` (as the owner), `GROWTH_OPERATOR_REDIS_URL`.
+`APP_RW_PASSWORD`, `REDIS_PASSWORD`, `ACME_EMAIL`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`,
+`GROWTH_OPERATOR_DATABASE_URL` (as `app_rw`), `GROWTH_OPERATOR_DATABASE_MIGRATOR_URL` (as the
+owner), `GROWTH_OPERATOR_REDIS_URL`.
+
+`MINIO_ROOT_*` are the object-store credentials for catalog product images. MinIO runs on the
+internal Docker network with **no published port** — not even the console — so it is unreachable
+from the internet regardless of the host firewall. Use a generated password; the vendor defaults
+appear in every MinIO tutorial.
 
 Each is declared `${VAR:?}` in the compose file, so a missing one **fails the deploy loudly**
 rather than starting on a placeholder.

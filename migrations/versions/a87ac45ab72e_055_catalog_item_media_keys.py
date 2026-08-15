@@ -2,11 +2,13 @@
 
 DEMO-UX-1. One additive, nullable column: `catalog_items.media_keys jsonb`.
 
-**Why a column rather than reusing `media`.** `media text[]` is the *display* reference the API
-already returns to the browser. The storage keys are a different thing: internal object paths that
-identify bytes in a private bucket. Packing them into the same array would mean parsing them back
-out on every read, and — worse — returning them to the client, which is exactly the coupling this
-feature removes. A client that can see a storage key is one step from a client that supplies one.
+**Why a column rather than reusing `media`.** `media` is a **jsonb array** — an earlier draft of
+this note said `text[]`, which was simply wrong; the column has always been jsonb. It holds the
+*display* reference the API returns to the browser. Storage keys are a different thing: internal
+object paths identifying bytes in a private bucket. Packing them into the same array would mean
+parsing them back out on every read and — worse — returning them to the client, which is exactly
+the coupling this feature removes. A client that can see a storage key is one step from a client
+that supplies one.
 
 Nullable and unbacked, so every existing row keeps its current meaning: an item with no image has
 `NULL`, which is what all of them have today. No backfill, no default, no rewrite.

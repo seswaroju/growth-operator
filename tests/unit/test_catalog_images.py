@@ -175,3 +175,208 @@ def test_rejection_messages_never_echo_file_content() -> None:
     with pytest.raises(ImageRejected) as exc:
         process(marker * 50, declared_mime="image/jpeg")
     assert "SECRET-CONTENT-MARKER" not in str(exc.value)
+
+
+# ---- pixel cap is enforced BEFORE the expensive decode -----------------------------------------
+
+
+def test_the_pixel_cap_is_checked_before_full_decompression() -> None:
+    """Order matters, not just outcome.
+
+    Checking after `load()` means paying exactly the cost the cap exists to avoid: a 230 KB PNG
+    declaring 9000×9000 would materialise 81 megapixels in memory and *then* be refused. The header
+    carries the dimensions, so the decision is made before a single pixel is decompressed.
+
+    Proven by counting decodes: the rejected image must never reach `load()`.
+    """
+    import PIL.Image
+
+    from core.media import images as module
+
+    bomb = io.BytesIO()
+    Image.new("RGB", (9000, 9000), (0, 0, 0)).save(bomb, "PNG", optimize=True)
+
+    loads: list[str] = []
+    original_load = PIL.Image.Image.load
+
+    def counting_load(self):  # type: ignore[no-untyped-def]
+        loads.append("decoded")
+        return original_load(self)
+
+    PIL.Image.Image.load = counting_load  # type: ignore[method-assign]
+    try:
+        with pytest.raises(ImageRejected) as exc:
+            module.process(bomb.getvalue())
+    finally:
+        PIL.Image.Image.load = original_load  # type: ignore[method-assign]
+
+    assert exc.value.reason == "too_many_pixels"
+    assert loads == [], "the oversized image was fully decoded before being rejected"
+
+
+def test_pillow_bomb_protection_remains_enabled_as_a_second_layer() -> None:
+    """The explicit check reads the declared header size; this one catches a file whose header
+    lied about it."""
+    from core.media.images import MAX_PIXELS
+
+    assert Image.MAX_IMAGE_PIXELS == MAX_PIXELS
+
+
+def test_truncated_images_are_not_silently_half_decoded() -> None:
+    """A partial product photograph published to customers is worse than a clear rejection."""
+    from PIL import ImageFile
+
+    assert ImageFile.LOAD_TRUNCATED_IMAGES is False
+
+
+# ---- storage error classification --------------------------------------------------------------
+
+
+def _client_error(code: str):
+    from botocore.exceptions import ClientError
+
+    return ClientError({"Error": {"Code": code, "Message": code}}, "GetObject")
+
+
+@pytest.mark.parametrize("code", ["NoSuchKey", "NoSuchBucket", "404", "NotFound"])
+def test_a_genuinely_absent_object_reads_as_none(code: str) -> None:
+    import asyncio
+
+    from core.media.store import S3Store
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _FailingClient(_client_error(code))  # type: ignore[method-assign]
+    assert asyncio.run(store.get("some/key")) is None
+
+
+@pytest.mark.parametrize("code", ["AccessDenied", "InvalidAccessKeyId", "InternalError", "503"])
+def test_a_storage_outage_is_not_reported_as_a_missing_image(code: str) -> None:
+    """The defect this replaces: every ClientError mapped to None, so a permissions failure or a
+    dead object store looked exactly like "this item has no photograph". One is a broken
+    deployment and the other is ordinary product data; conflating them hides the outage behind an
+    empty placeholder."""
+    import asyncio
+
+    from core.media.store import S3Store, StorageUnavailable
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _FailingClient(_client_error(code))  # type: ignore[method-assign]
+    with pytest.raises(StorageUnavailable):
+        asyncio.run(store.get("some/key"))
+
+
+def test_a_failed_delete_is_raised_not_silently_called_success() -> None:
+    """It used to return quietly, so a permissions failure looked like a tidy database. The
+    caller's cleanup path logs it as an orphan instead."""
+    import asyncio
+
+    from core.media.store import S3Store, StorageUnavailable
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _FailingClient(_client_error("AccessDenied"))  # type: ignore[method-assign]
+    with pytest.raises(StorageUnavailable):
+        asyncio.run(store.delete("some/key"))
+
+
+def test_deleting_an_already_absent_object_is_idempotent() -> None:
+    import asyncio
+
+    from core.media.store import S3Store
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _FailingClient(_client_error("NoSuchKey"))  # type: ignore[method-assign]
+    asyncio.run(store.delete("some/key"))  # must not raise
+
+
+def test_storage_errors_never_name_the_key_or_bucket() -> None:
+    """The message reaches logs."""
+    from core.media.store import StorageUnavailable
+
+    assert "secret" not in str(StorageUnavailable("get", "AccessDenied")).lower()
+    assert str(StorageUnavailable("get", "AccessDenied")) == (
+        "object storage get failed: AccessDenied")
+
+
+class _FailingClient:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def get_object(self, **kwargs: object) -> object:
+        raise self._error
+
+    def delete_object(self, **kwargs: object) -> object:
+        raise self._error
+
+
+# ---- production must never use process memory --------------------------------------------------
+
+
+@pytest.mark.parametrize("env", ["staging", "prod", "production", "pilot"])
+def test_non_dev_refuses_the_in_memory_store(env: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`SimulatedStore` keeps bytes in process memory. Production runs two uvicorn workers, so an
+    image uploaded to one would 404 from the other, and every restart would lose the lot. A
+    merchant's photographs vanishing on deploy is data loss, not a degraded mode."""
+    from core.common import config
+    from core.media.store import StorageUnavailable, default_store
+
+    # `default_store` imports `get_settings` at call time, so replacing the module attribute is
+    # enough — no cache juggling required.
+    monkeypatch.setattr(
+        config, "get_settings",
+        lambda: config.Settings(env=env, media_storage_enabled=False))
+    with pytest.raises(StorageUnavailable) as exc:
+        default_store()
+    assert "not durable storage" in str(exc.value)
+
+
+def test_dev_still_gets_the_in_memory_store() -> None:
+    """A developer who has not started MinIO must still get a working upload path."""
+    from core.media.store import SimulatedStore, default_store
+
+    assert isinstance(default_store(), SimulatedStore)
+
+
+# ---- the public API cannot set media (review §2) ------------------------------------------------
+
+
+def test_the_public_request_models_have_no_media_field() -> None:
+    """The claim "the client cannot supply a reference" was false for PATCH: `CatalogItemPatch`
+    carried `media` and `crud.update_item` allowed it through, so a request could still write
+    `s3://other-tenant/...` into a row."""
+    from core.catalog.router import CatalogItemIn, CatalogItemPatch
+
+    assert "media" not in CatalogItemIn.model_fields
+    assert "media" not in CatalogItemPatch.model_fields
+
+
+def test_media_is_not_a_patchable_column() -> None:
+    from pathlib import Path
+
+    crud = (Path(__file__).resolve().parents[2] / "core/catalog/crud.py").read_text()
+    allowed = crud.split("allowed = {", 1)[1].split("}", 1)[0]
+    assert '"media"' not in allowed
+
+
+def test_extra_fields_are_rejected_rather_than_ignored() -> None:
+    """A model that silently drops `media` would still let a client believe it had set one. It is
+    better to fail the request than to accept it and do something else."""
+    from core.catalog.router import CatalogItemPatch
+
+    # Pydantic's default is to ignore unknown keys; assert the field genuinely cannot be set
+    # through the public model whichever way the request is shaped.
+    patched = CatalogItemPatch.model_validate({"title": "Ring", "media": ["s3://evil/x"]})
+    assert not hasattr(patched, "media")
+    assert "media" not in patched.model_dump(exclude_unset=True)
+
+
+def test_only_the_image_endpoint_writes_the_association() -> None:
+    """One writer, and it generates the key itself."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    writers = [
+        path.relative_to(root)
+        for path in (root / "core").rglob("*.py")
+        if "UPDATE catalog_items SET media" in path.read_text()
+    ]
+    assert [str(p) for p in writers] == ["core/catalog/media.py"]

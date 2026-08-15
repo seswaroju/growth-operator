@@ -135,13 +135,13 @@ def test_purge_refuses_a_non_local_database() -> None:
     assert '"localhost"' in source and '"127.0.0.1"' in source
 
 
-def test_purge_is_a_dry_run_by_default() -> None:
+def test_purge_is_a_dry_run_unless_ids_are_named() -> None:
+    """Deleting only what was explicitly named is the whole safety posture of this tool."""
     tree = ast.parse(PURGE.read_text())
     main = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main")
-    assert "--yes" in ast.unparse(main)
-    # Deleting only when explicitly asked is the whole safety posture of this tool.
-    assert "apply=args.yes" in ast.unparse(main)
-    assert "dry run" in PURGE.read_text()
+    body = ast.unparse(main)
+    assert "--plan-ids" in body and "--store-ids" in body
+    assert "DRY RUN" in PURGE.read_text()
 
 
 def test_canonical_plans_are_never_purged() -> None:
@@ -190,3 +190,32 @@ def test_no_production_web_surface_exposes_the_purge() -> None:
 def test_no_frontend_references_the_purge(app: str) -> None:
     for path in (ROOT / app / "src").rglob("*.ts*"):
         assert "dev_purge" not in path.read_text()
+
+
+# ---- destruction requires explicit ids (review §7) ----------------------------------------------
+
+
+def test_destruction_requires_explicitly_named_ids() -> None:
+    """Discovery and destruction are separate concerns.
+
+    Prefix matching is a good way to *find* candidates and a bad way to *authorise* deleting them:
+    `Alpha`, `Beta` and `TB` are fixture names today and perfectly plausible names for a real
+    store, and five history-table counts are not enough evidence to destroy somebody's tenant. The
+    script will not act on its own guess."""
+    source = PURGE.read_text()
+    assert "--plan-ids" in source and "--store-ids" in source
+    assert "--yes" not in source, "a blanket confirmation flag is exactly what was removed"
+    assert "DRY RUN — nothing deleted." in source
+
+
+def test_named_ids_are_still_checked_against_the_safety_rules() -> None:
+    """An explicit id is authorisation, not a bypass: discovery still refuses a store holding real
+    conversation history, so a mistyped id cannot destroy a demo tenant."""
+    source = PURGE.read_text()
+    assert "not a disposable fixture in this database" in source
+    assert "not an empty fixture store in this database" in source
+
+
+def test_a_dry_run_prints_the_ids_needed_to_act() -> None:
+    """Otherwise the safety measure is just an obstacle, and obstacles get worked around."""
+    assert "To delete, name the ids explicitly" in PURGE.read_text()
