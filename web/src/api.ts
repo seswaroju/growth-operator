@@ -826,3 +826,59 @@ export function getRecoverySummary(token: string): Promise<RecoverySummary> {
 export function getRecoveryAttempts(token: string): Promise<RecoveryAttempt[]> {
   return authed<RecoveryAttempt[]>("/v1/leads/recovery/attempts", token);
 }
+
+// ---- Catalog product images (DEMO-UX-1) ------------------------------------
+// The browser sends BYTES, never a storage reference. The server generates object keys and owns
+// the association; a client-supplied reference would be a cross-tenant read primitive.
+
+export interface CatalogImage {
+  item_id: string;
+  width: number;
+  height: number;
+  image_url: string;
+  thumbnail_url: string;
+}
+
+export async function uploadCatalogImage(
+  token: string, itemId: string, file: File,
+): Promise<CatalogImage> {
+  const body = new FormData();
+  body.append("file", file);
+  // No Content-Type header: the browser must set the multipart boundary itself, and `authed`
+  // forces application/json, so this call does its own fetch.
+  const res = await fetch(`${API_BASE}/v1/catalog/items/${itemId}/image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body,
+  });
+  if (!res.ok) {
+    // The server's 422 carries a merchant-readable reason ("that file is 14 MB"); surface it
+    // rather than a generic failure.
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail ?? `Upload failed (${res.status})`);
+  }
+  return (await res.json()) as CatalogImage;
+}
+
+export async function deleteCatalogImage(token: string, itemId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/v1/catalog/items/${itemId}/image`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404) throw new Error(`Couldn't remove the image (${res.status})`);
+}
+
+/**
+ * Image endpoints are authenticated, so a plain <img src> cannot fetch them — the browser sends no
+ * Authorization header. Fetch the bytes and hand the element an object URL instead. Callers must
+ * revoke it on unmount or the blob leaks for the life of the page.
+ */
+export async function fetchCatalogImageObjectUrl(
+  token: string, itemId: string, variant: "image" | "thumbnail",
+): Promise<string | null> {
+  const res = await fetch(`${API_BASE}/v1/catalog/items/${itemId}/${variant}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}

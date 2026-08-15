@@ -27,6 +27,9 @@ dependencies = [
     "zstandard>=0.23",
     "clamd>=1.0",
     "boto3>=1.35",
+    # Catalog product images (DEMO-UX-1): decode validation, EXIF orientation, resize
+    # and thumbnailing. Founder-approved. MIT-style licence, no service, no network.
+    "pillow>=11.0",
     "langgraph>=0.2,<0.3",
     "python-multipart>=0.0.32",
     # Error/exception tracking client for a SELF-HOSTED GlitchTip (Sentry ingest protocol).
@@ -92,7 +95,7 @@ ignore_missing_imports = true
 
 # Media adapter clients (clamd / boto3) ship no type stubs (BLOCKERS #12).
 [[tool.mypy.overrides]]
-module = ["clamd.*", "boto3.*", "botocore.*"]
+module = ["clamd.*", "boto3.*", "botocore.*", "PIL.*"]
 ignore_missing_imports = true
 
 # openpyxl (xlsx import, MVP-078) ships no type stubs.

@@ -538,3 +538,46 @@ Consequence to accept knowingly: the host's own configuration (firewall, SSH, ag
 cron) is not reproducible from this repository. Documented in `secrets/README.md` and
 `infra/db/BACKUP_RESTORE.md`. Supersedes the Hetzner assumption in #10 — Hetzner has no India
 region, so `infra/terraform/staging/` remains un-applied scaffolding.
+
+## #42 — `submit_template()` has no product caller (OPEN — blocks PILOT-1D-R)
+
+**Opened** 2026-08-14 (DEMO-UX-1 audit, founder-recorded as a PILOT-1D-R blocker).
+
+The WhatsApp template lifecycle is complete in code except for the step that starts it:
+
+```
+pack install  -> message_templates (provider_status='draft')
+submit_template() -> Meta            <-- NO CALLER ANYWHERE
+Meta status webhook -> apply_status_update() -> 'approved'
+GET /v1/channels/whatsapp/templates -> merchant campaign UI (filters on 'approved')
+```
+
+`submit_template()` exists and is correct; nothing invokes it. So no template can ever reach
+`approved`, and the merchant's campaign selector is empty by construction. That is not a UI defect —
+DEMO-UX-1 made the empty state explicit rather than papering over it.
+
+**Required before the real ghost-recovery pilot:** an operator can review a seeded draft → submit it
+to Meta explicitly → observe pending/approved/rejected → the merchant's campaign UI sees it.
+
+**Deliberately not built in DEMO-UX-1.** This is the smallest operator submission surface, not a
+template design suite, and it must not be built by guessing — it needs the real Meta account.
+No Meta call was made.
+
+## #43 — Tests share the founder's development database (OPEN — technical debt: TEST-DB-ISOLATION)
+
+**Opened** 2026-08-14 (DEMO-UX-1, founder-recorded).
+
+`pytest` runs against the same Postgres the founder develops against. Fixtures that leaked rows
+therefore polluted a working environment — 1171 billing plans and 189 organizations, which made the
+operator console's plan list unusable and is the likely cause of BLOCKERS #36 (rate-ingestion tests
+that fail on the dev database and pass on a fresh one).
+
+DEMO-UX-1 fixed the leak at its source and made cleanup ownership-based, so the suite no longer
+accumulates. It did **not** fix the sharing, which is the underlying condition.
+
+**Desired invariant:** development database ≠ test database, or tests run against a disposable
+ephemeral database (a template database cloned per session, or a container per run).
+
+**Not implemented here** by founder instruction: the current fix is safe on its own, so the larger
+refactor does not need to ride along with a demo-polish ticket. Worth doing before the test suite
+grows further — every fixture written in the meantime is written against the wrong assumption.

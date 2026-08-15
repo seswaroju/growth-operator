@@ -108,6 +108,23 @@ INVENTORY: tuple[CapabilityEnforcement, ...] = (
         _gate("http.catalog.items.create", "http", "mutation",
               "requires_feature", "test_runtime_enforcement.py::test_catalog_write_gated",
               "POST /v1/catalog/items"),
+        # DEMO-UX-1 product images. Gated rather than exempted as "own records": storing and
+        # serving a merchant's photographs is ongoing paid service, and a cancelled store should
+        # not keep an image CDN running on our disk.
+        _gate("http.catalog.items.image_upload", "http", "mutation",
+              "requires_feature", "test_catalog_media.py::test_upload_requires_the_catalog_plan",
+              "POST /v1/catalog/items/{item_id}/image"),
+        _gate("http.catalog.items.image_read", "http", "historical_data_read",
+              "requires_feature + tenant-scoped item resolve",
+              "test_catalog_media.py::test_another_tenant_cannot_read_the_image",
+              "GET /v1/catalog/items/{item_id}/image"),
+        _gate("http.catalog.items.thumbnail_read", "http", "historical_data_read",
+              "requires_feature + tenant-scoped item resolve",
+              "test_catalog_media.py::test_another_tenant_cannot_read_the_image",
+              "GET /v1/catalog/items/{item_id}/thumbnail"),
+        _gate("http.catalog.items.image_delete", "http", "mutation",
+              "requires_feature", "test_catalog_media.py::test_remove_clears_association",
+              "DELETE /v1/catalog/items/{item_id}/image"),
         _gate("http.catalog.items.update", "http", "mutation",
               "requires_feature", "test_runtime_enforcement.py::test_catalog_write_gated",
               "PATCH /v1/catalog/items/{item_id}"),

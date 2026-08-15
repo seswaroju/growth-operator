@@ -10,6 +10,7 @@ These tests cover the fix and the guardrails on the cleanup tool. Nothing here t
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -26,42 +27,95 @@ def test_the_shared_helper_owns_the_rows_it_creates() -> None:
     """`entitle_org` inserts a plan per call. Before this, callers deleted their orgs and
     subscriptions but not the plan — the id was usually discarded — so every run leaked."""
     source = CONFTEST.read_text()
-    assert "TEST_PLAN_PREFIX" in source
+    assert "_CREATED_PLAN_IDS" in source
     assert "_purge_test_plans" in source
-    assert "DELETE FROM billing_plans WHERE name LIKE" in source
 
 
-def test_the_purge_fixture_is_session_scoped_and_automatic() -> None:
-    """A convention every future fixture must remember is a convention that will be forgotten."""
+def test_cleanup_selects_by_id_never_by_name() -> None:
+    """The safety property §8 asks for.
+
+    The first version deleted `WHERE name LIKE 'ent-%'`, which would also have removed a plan the
+    founder happened to call `ent-anything`. Scope is now the set of ids this process inserted: a
+    row it did not create cannot be deleted, whatever it is named. Canonical presets, operator
+    plans and founder plans are all out of reach by construction rather than by careful matching.
+    """
+    source = CONFTEST.read_text()
+    assert "DELETE FROM billing_plans WHERE id = ANY($1::uuid[])" in source
+    assert "DELETE FROM billing_plans WHERE name LIKE" not in source
+    assert "DELETE FROM billing_subscriptions WHERE plan_id = ANY($1::uuid[])" in source
+
+
+def test_cleanup_is_transactional() -> None:
+    """Subscriptions and plans go together or not at all."""
     tree = ast.parse(CONFTEST.read_text())
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_purge_test_plans")
-    # ast.unparse normalises quoting, so compare against the normalised form.
+    assert "async with conn.transaction():" in ast.unparse(fn)
+
+
+def test_cleanup_does_nothing_when_this_process_created_nothing() -> None:
+    """A run that inserted no plans must not open a connection or delete anything at all."""
+    tree = ast.parse(CONFTEST.read_text())
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_purge_test_plans")
+    body = ast.unparse(fn)
+    assert "if not _CREATED_PLAN_IDS:" in body
+    assert body.index("if not _CREATED_PLAN_IDS:") < body.index("asyncpg.connect")
+
+
+def test_the_purge_fixture_is_session_scoped_and_automatic() -> None:
+    """A convention every future fixture must remember is one that will be forgotten."""
+    tree = ast.parse(CONFTEST.read_text())
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_purge_test_plans")
     decorator = ast.unparse(fn.decorator_list[0]).replace("'", '"')
     assert "autouse=True" in decorator and 'scope="session"' in decorator
 
 
 def test_subscriptions_are_removed_before_their_plans() -> None:
     """The foreign key refuses otherwise, and a subscription outliving its plan would be worse
-    than the leak it replaced."""
+    than the leak this fixes."""
     source = CONFTEST.read_text()
-    subs = source.index("DELETE FROM billing_subscriptions WHERE plan_id IN")
-    plans = source.index("DELETE FROM billing_plans WHERE name LIKE")
+    subs = source.index("DELETE FROM billing_subscriptions WHERE plan_id = ANY")
+    plans = source.index("DELETE FROM billing_plans WHERE id = ANY")
     assert subs < plans
 
 
 def test_teardown_never_fails_the_suite() -> None:
     """A database unreachable at teardown must not turn a green run red."""
-    source = CONFTEST.read_text()
-    assert "teardown hygiene must never fail the suite" in source
+    assert "teardown hygiene must never fail the suite" in CONFTEST.read_text()
 
 
-def test_the_campaigns_fixture_removes_its_own_plan() -> None:
+def test_the_campaigns_fixture_removes_its_own_plan_by_id() -> None:
     campaigns = (ROOT / "tests/integration/test_campaigns.py").read_text()
-    assert 'DELETE FROM billing_plans WHERE name LIKE' in campaigns
+    assert "DELETE FROM billing_plans WHERE id = $1" in campaigns
     subs = campaigns.index("DELETE FROM billing_subscriptions WHERE org_id")
     orgs = campaigns.index("DELETE FROM organizations WHERE id")
     assert subs < orgs, "subscriptions must go before the organizations they reference"
+
+
+def test_no_fixture_deletes_plans_by_a_hardcoded_name_pattern() -> None:
+    """Swept across the whole suite. The distinction that matters is ownership, not syntax.
+
+    A **hardcoded** pattern — `"ent-%"`, `"CampPlan-%"` — matches every row every run has ever
+    created, plus any row the founder happened to name that way. That is what accumulated 1136
+    plans and what made cleanup dangerous.
+
+    A **per-run tag** passed as a parameter (`f"{tag}%"` where `tag` is generated at fixture setup)
+    can only match rows that run inserted. That is ownership expressed through a unique name
+    instead of an id, and it is safe.
+
+    So this forbids a literal pattern and permits an interpolated one.
+    """
+    literal_pattern = re.compile(r'"[A-Za-z][\w.-]*%"')
+    offenders: list[str] = []
+    for path in (ROOT / "tests").rglob("*.py"):
+        if path.name == Path(__file__).name:
+            continue  # this file necessarily contains the strings it forbids
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            if "DELETE FROM billing_plans" in line and literal_pattern.search(line):
+                offenders.append(f"{path.relative_to(ROOT)}:{number} {line.strip()[:60]}")
+    assert not offenders, f"plan deletion by a hardcoded name pattern: {offenders}"
 
 
 # ---- the purge tool refuses to be dangerous ----------------------------------------------------
