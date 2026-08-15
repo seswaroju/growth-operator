@@ -44,7 +44,7 @@ fi
 
 # --- long-running processes ---------------------------------------------------------------
 if command -v docker >/dev/null 2>&1 && [ -f "$COMPOSE" ]; then
-  for svc in api worker scheduler postgres redis caddy; do
+  for svc in api worker scheduler postgres redis minio caddy; do
     state="$(docker compose -f "$COMPOSE" ps --format '{{.State}}' "$svc" 2>/dev/null | head -1)"
     case "$state" in
       running) ok "$svc is running" ;;

@@ -153,6 +153,31 @@ function CreateForm({ token }: { token: string }) {
     },
   });
 
+  // Zero approved templates is the NORMAL state for a store that has not completed Meta template
+  // approval yet — not an error, and not something the merchant can fix from this screen. Showing
+  // an enabled selector containing only "Select a template…" reads as broken software; saying
+  // plainly what is missing and who resolves it does not.
+  const noTemplates = !templates.isLoading && !templates.isError && approved.length === 0;
+
+  if (noTemplates) {
+    return (
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold text-ink">New campaign</h2>
+        <div className="mt-3 rounded-xl border border-line bg-line-2/40 p-4">
+          <p className="text-sm font-medium text-ink">No approved WhatsApp templates available.</p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+            WhatsApp campaigns can only send a template Meta has approved — that is Meta's rule for
+            messaging customers outside an open conversation, not a Vaylorn restriction.
+          </p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-2">
+            Contact your Vaylorn operator to set one up. Campaign creation is unavailable until an
+            approved template exists.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-4">
       <form onSubmit={(e) => { e.preventDefault(); if (name && tpl) create.mutate(); }}>
@@ -169,11 +194,16 @@ function CreateForm({ token }: { token: string }) {
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium text-muted">Approved template</span>
-            <select value={tpl} onChange={(e) => setTpl(e.target.value)} className={fieldClasses("w-56")}>
+            <select
+              value={tpl}
+              onChange={(e) => setTpl(e.target.value)}
+              disabled={templates.isLoading}
+              className={fieldClasses("w-64")}
+            >
               <option value="">Select a template…</option>
               {approved.map((t) => (
                 <option key={`${t.template_key}:${t.language}`} value={t.template_key}>
-                  {t.template_key} ({t.language})
+                  {t.template_key} ({t.language}) · approved
                 </option>
               ))}
             </select>
@@ -187,9 +217,9 @@ function CreateForm({ token }: { token: string }) {
             {create.isPending ? "Creating…" : "Create draft"}
           </button>
         </div>
-        {approved.length === 0 && !templates.isLoading && (
-          <p className="mt-2.5 text-[11px] text-muted">
-            No approved WhatsApp templates yet — marketing campaigns can only send an approved template.
+        {templates.isError && (
+          <p className="mt-2.5 text-xs text-danger">
+            Couldn't load templates — {(templates.error as Error).message}
           </p>
         )}
         {create.isError && (

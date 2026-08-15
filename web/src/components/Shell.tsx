@@ -32,20 +32,26 @@ export default function Shell() {
   return (
     <div className="min-h-screen bg-porcelain text-ink">
       <header className="border-b border-line bg-surface">
+        {/* `min-w-0` on the left group and `shrink-0` on the account group are what keep logout
+            inside the frame. Without them the ~12-link nav cannot shrink, so at ordinary desktop
+            widths it pushes the account controls past the container edge and the sign-out button
+            appears to float outside the header. */}
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-6">
+            <div className="flex shrink-0 items-center gap-2.5">
               <div className="grid h-9 w-9 place-items-center rounded-lg bg-ink text-porcelain shadow-card">
                 <Mark className="h-[18px] w-[18px]" />
               </div>
               <div className="leading-tight">
-                <div className="font-serif text-[15px] font-medium tracking-tight">Growth Operator</div>
+                <div className="font-serif text-[15px] font-medium tracking-tight">Vaylorn</div>
                 <div className="text-[11px] text-muted">{org ? org.name : "No store"}</div>
               </div>
             </div>
             {/* Literal typed <Link>s gated per-permission — the same set (and order) as
                 lib/roles NAV, whose gating logic is unit-tested via visibleNav. */}
-            <nav className="flex items-center gap-0.5">
+            {/* Scrolls horizontally within its own box rather than widening the header. */}
+            <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto
+              [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <Link to="/" className={navLink} activeProps={navActive} activeOptions={{ exact: true }}>
                 Home
               </Link>
@@ -99,7 +105,7 @@ export default function Shell() {
               )}
             </nav>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <NotificationBell />
             <div className="flex items-center gap-2.5">
               <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-[13px]

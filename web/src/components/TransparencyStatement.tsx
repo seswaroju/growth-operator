@@ -73,7 +73,7 @@ export default function TransparencyStatement() {
       )}
 
       <p className="mt-3 text-[11px] text-muted">
-        Return is your store's revenue this month divided by what you invested with Growth Operator —
+        Return is your store's revenue this month divided by what you invested with Vaylorn —
         a simple ratio over your own data, not a causal claim.
       </p>
     </Card>

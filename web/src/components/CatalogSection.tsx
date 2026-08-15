@@ -14,6 +14,7 @@ import { hasPermission } from "../lib/roles";
 import { availabilityLabel, AVAILABILITY_LABEL, AVAILABILITY_STYLE, priceLabel, rupeesToMinor } from "../lib/catalog";
 import { buttonClasses, fieldClasses } from "../lib/ui";
 import { Box, Plus } from "./icons";
+import { CatalogImage } from "./CatalogImage";
 import { Card, EmptyState, PageHeader } from "./ui";
 
 const AVAILABILITY_OPTIONS = Object.keys(AVAILABILITY_LABEL);
@@ -199,6 +200,13 @@ function ItemCard({ item, canWrite, token }: { item: CatalogItem; canWrite: bool
           <span className="shrink-0 font-serif text-base font-medium tnum text-ink">{priceLabel(item)}</span>
         </div>
         {item.description && <p className="mt-2 line-clamp-2 text-xs text-muted">{item.description}</p>}
+        {/* The photograph a customer will see. Only merchants who can edit the catalog can change
+            it; everyone else sees the thumbnail read-only via the same authenticated endpoint. */}
+        {canWrite && (
+          <div className="mt-3">
+            <CatalogImage itemId={item.id} hasImage={item.media.length > 0} />
+          </div>
+        )}
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
           <Badge label={availabilityLabel(item.availability)} className={AVAILABILITY_STYLE[item.availability] ?? "bg-line-2 text-ink-2"} />
           {attrs.map(([k, v]) => (

@@ -24,6 +24,22 @@ from typing import Any, Protocol
 from core.channels.whatsapp.meta_client import MetaClient
 from core.common.config import get_settings
 
+# Storage lives in `core.media` (DEMO-UX-1). It was never WhatsApp-specific — a generic S3 client
+# had simply ended up inside a channel adapter — and the catalog needs the same primitive. A
+# catalog importing from `channels.whatsapp` would state something false about the architecture.
+#
+# Re-exported here so every existing importer of this module keeps working unchanged. WhatsApp
+# behaviour is untouched: same classes, same settings, same `default_store()` semantics. The shared
+# `MediaStore` additionally offers `get`/`delete`; nothing in this file uses them.
+from core.media import MediaStore, S3Store, SimulatedStore, default_store
+
+__all__ = [
+    "ClamavScanner", "MediaDescriptor", "MediaRejected", "MediaScanError", "MediaScanner",
+    "MediaStore", "S3Store", "SimulatedScanner", "SimulatedStore", "default_scanner",
+    "default_store", "ingest_inbound_media", "media_ref",
+]
+
+
 # Tight platform allowlist (pack-extensible later): customer photos, catalog images, PDFs.
 ALLOWED_MIME: frozenset[str] = frozenset(
     {"image/jpeg", "image/png", "image/webp", "application/pdf"}
@@ -48,12 +64,6 @@ class MediaScanner(Protocol):
         ...
 
 
-class MediaStore(Protocol):
-    async def put(self, key: str, data: bytes, *, mime: str) -> str:
-        """Persist bytes and return a storage reference."""
-        ...
-
-
 class SimulatedScanner:
     """Dev/test AV scanner: clean unless configured otherwise. NEVER for production."""
 
@@ -66,19 +76,6 @@ class SimulatedScanner:
             raise MediaScanError("simulated scanner unavailable")
         return not self._infected
 
-
-class SimulatedStore:
-    """Dev/test object store — keeps bytes in-process and returns a sim:// ref."""
-
-    def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
-
-    async def put(self, key: str, data: bytes, *, mime: str) -> str:
-        self.objects[key] = data
-        return f"sim://media/{key}"
-
-
-_SIM_STORE = SimulatedStore()  # shared so a stored ref is retrievable within a process
 
 
 class ClamavScanner:
@@ -104,57 +101,11 @@ class ClamavScanner:
             raise MediaScanError(f"clamav scan failed: {exc}") from exc
 
 
-class S3Store:
-    """Real object store over an S3-compatible endpoint (MinIO in dev, AWS S3 in prod)."""
-
-    def __init__(
-        self, *, endpoint_url: str | None, region: str, bucket: str,
-        access_key: str, secret_key: str,
-    ) -> None:
-        self.endpoint_url = endpoint_url
-        self.region = region
-        self.bucket = bucket
-        self.access_key = access_key
-        self.secret_key = secret_key
-
-    def _client(self) -> Any:
-        import boto3
-
-        return boto3.client(
-            "s3", endpoint_url=self.endpoint_url, region_name=self.region,
-            aws_access_key_id=self.access_key, aws_secret_access_key=self.secret_key,
-        )
-
-    async def put(self, key: str, data: bytes, *, mime: str) -> str:
-        def _put() -> str:
-            from botocore.exceptions import ClientError
-
-            client = self._client()
-            try:
-                client.head_bucket(Bucket=self.bucket)
-            except ClientError:
-                client.create_bucket(Bucket=self.bucket)
-            client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=mime)
-            return f"s3://{self.bucket}/{key}"
-
-        return await asyncio.to_thread(_put)
-
-
 def default_scanner() -> MediaScanner:
     s = get_settings()
     if s.media_av_enabled:
         return ClamavScanner(s.clamav_host, s.clamav_port)
     return SimulatedScanner()
-
-
-def default_store() -> MediaStore:
-    s = get_settings()
-    if s.media_storage_enabled:
-        return S3Store(
-            endpoint_url=s.s3_endpoint_url, region=s.s3_region, bucket=s.s3_bucket,
-            access_key=s.s3_access_key, secret_key=s.s3_secret_key,
-        )
-    return _SIM_STORE
 
 
 @dataclass

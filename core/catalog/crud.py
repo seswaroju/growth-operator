@@ -293,7 +293,15 @@ async def update_item(
         raise PreconditionFailed("If-Match does not match current version")
     old_attributes = dict(current["attributes"] or {})
 
-    allowed = {"title", "description", "media", "base_price_minor", "currency", "availability",
+    # `media` is deliberately absent (DEMO-UX-1). Image association is owned by the server and
+    # changed only through the catalog image endpoints, which generate the storage key themselves.
+    # While `media` was patchable, a request could write `s3://other-tenant/...` or
+    # `http://attacker/...` straight into a row — an SSRF and cross-tenant read primitive in one
+    # field — and the claim that the client cannot supply a reference was simply false for PATCH.
+    #
+    # Trusted internal callers (`core.catalog.media`) write the column directly rather than through
+    # this patch path, so ingestion and image upload are unaffected.
+    allowed = {"title", "description", "base_price_minor", "currency", "availability",
                "attributes", "status", "sku"}
     fields = {k: v for k, v in patch.items() if k in allowed}
     pack_id, ver, json_schema, projection = await _item_schema(session, item_id)

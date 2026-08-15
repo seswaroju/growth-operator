@@ -28,7 +28,7 @@ export default function Shell() {
                 <Mark className="h-[18px] w-[18px]" />
               </div>
               <div className="leading-tight">
-                <div className="font-serif text-[15px] font-medium tracking-tight">Growth Operator</div>
+                <div className="font-serif text-[15px] font-medium tracking-tight">Vaylorn</div>
                 <div className="text-[11px] text-accent-ink">Operator console</div>
               </div>
             </div>

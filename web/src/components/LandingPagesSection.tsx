@@ -230,7 +230,7 @@ export default function LandingPagesSection() {
         <EmptyState
           icon={<Grid className="h-6 w-6" />}
           title="No landing pages yet"
-          hint="When you run an ad, Growth Operator builds the page it points to — you choose the layout."
+          hint="When you run an ad, Vaylorn builds the page it points to — you choose the layout."
         />
       )}
       {data && data.length > 0 && (

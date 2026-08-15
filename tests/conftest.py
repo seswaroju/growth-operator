@@ -48,6 +48,27 @@ ALL_CAPABILITIES = [
 ]
 
 
+#: Plan ids this process created through `entitle_org`, removed when the session ends.
+#:
+#: Before DEMO-UX-1 the helper created a `billing_plans` row per call and cleaned up nothing.
+#: Callers deleted their own orgs and subscriptions — the plan id was usually discarded — so each
+#: `pytest` run left one row behind per call. The founder's development database had accumulated
+#: **1010** of them, which is why the operator console's plan list was unusable.
+#:
+#: Fixed here rather than in each caller: the helper creates the row, so the helper owns removing
+#: it. A convention every future fixture must remember is one that will be forgotten.
+#:
+#: **Ownership, not names.** The first version deleted `WHERE name LIKE 'ent-%'`, which would also
+#: have removed a plan the founder happened to call `ent-anything`. A test suite must never be a
+#: garbage collector for someone's working database, so cleanup is now restricted to ids this
+#: process inserted: a row it did not create is a row it cannot delete, whatever it is called.
+_CREATED_PLAN_IDS: set[object] = set()
+
+#: Retained only so the naming stays recognisable in a database someone is looking at by hand.
+#: It is NOT how cleanup selects rows.
+TEST_PLAN_PREFIX = "ent-"
+
+
 async def entitle_org(
     conn: object, org_id: object, *, capabilities: list[str] | None = None,
     agents: list[str] | None = None, name: str | None = None,
@@ -56,6 +77,9 @@ async def entitle_org(
 
     `conn` is an asyncpg connection. Written as a helper rather than a fixture because the suites
     that need it build their worlds in very different shapes.
+
+    The plan is removed at session end (`_purge_test_plans`), selected by the id recorded here —
+    never by name.
     """
     import json
     import uuid as _uuid
@@ -70,7 +94,8 @@ async def entitle_org(
     await conn.execute(  # type: ignore[attr-defined]
         "INSERT INTO billing_plans (id, name, price_minor, features, config, max_managers, "
         "max_staff) VALUES ($1,$2,1,'[]'::jsonb,$3::jsonb,5,20)",
-        plan_id, name or f"ent-{plan_id.hex[:10]}", json.dumps(config))
+        plan_id, name or f"{TEST_PLAN_PREFIX}{plan_id.hex[:10]}", json.dumps(config))
+    _CREATED_PLAN_IDS.add(plan_id)
     await conn.execute(  # type: ignore[attr-defined]
         "INSERT INTO billing_subscriptions (org_id, plan_id, status) VALUES ($1,$2,'active') "
         "ON CONFLICT DO NOTHING",
@@ -109,3 +134,47 @@ def _classify_fixture_tools() -> Iterator[None]:
     yield
     for name in added:
         TOOL_PLAN_EXEMPT.pop(name, None)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _purge_test_plans() -> Iterator[None]:
+    """Remove the plans THIS PROCESS created, once, when the session ends.
+
+    Session-scoped and autouse so no test or fixture has to remember.
+
+    Scope is the set of ids `entitle_org` inserted — not a name pattern. A row this process did not
+    create cannot be deleted here regardless of what it is called, so a canonical preset, an
+    operator's custom plan, or a founder plan that happens to share the test naming style are all
+    untouchable by construction rather than by careful matching.
+
+    One transaction: subscriptions first, or the foreign key refuses the delete, and a subscription
+    surviving its plan would be worse than the leak this fixes.
+
+    Best-effort — a database unreachable at teardown must not turn a green run red.
+    """
+    yield
+    if not _CREATED_PLAN_IDS:
+        return
+
+    import asyncio
+
+    import asyncpg
+
+    from core.common.config import get_settings
+
+    async def _purge() -> None:
+        dsn = get_settings().database_migrator_url.replace("+asyncpg", "")
+        conn = await asyncpg.connect(dsn, timeout=5)
+        ids = list(_CREATED_PLAN_IDS)
+        try:
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM billing_subscriptions WHERE plan_id = ANY($1::uuid[])", ids)
+                await conn.execute("DELETE FROM billing_plans WHERE id = ANY($1::uuid[])", ids)
+        finally:
+            await conn.close()
+
+    try:
+        asyncio.run(_purge())
+    except Exception:  # noqa: BLE001 - teardown hygiene must never fail the suite
+        pass
