@@ -359,3 +359,54 @@ def test_the_deploy_guard_needs_nothing_beyond_the_standard_library() -> None:
     assert "python3 -c" in run
     for heavyweight in ("uv run", "pip install", "npm "):
         assert heavyweight not in run
+
+
+# ---- MinIO is a production dependency, not an optional extra ------------------------------------
+
+
+def test_object_storage_is_present_and_private(compose: dict) -> None:
+    """Catalog images have no durable fallback outside dev, so storage is part of the deployment."""
+    minio = compose["services"]["minio"]
+    assert "ports" not in minio, "MinIO must not publish a port — not even the console"
+    assert any("miniodata" in v for v in minio["volumes"]), "storage must survive a restart"
+    assert minio["networks"] == ["internal"]
+
+
+def test_the_object_store_image_is_pinned() -> None:
+    """`:latest` means two deploys a month apart run different object stores with no record of the
+    change — the same reproducibility argument that applies to the application image."""
+    image = yaml.safe_load(COMPOSE_PROD.read_text())["services"]["minio"]["image"]
+    assert image.endswith(("RELEASE.2025-09-07T16-13-09Z",)) or "RELEASE." in image
+    assert not image.endswith(":latest")
+
+
+def test_application_services_wait_for_storage(compose: dict) -> None:
+    """An application that starts before storage is ready starts broken."""
+    depends = compose["x-app"]["depends_on"]
+    assert depends["minio"]["condition"] == "service_healthy"
+    for service in ("postgres", "redis"):
+        assert depends[service]["condition"] == "service_healthy"
+
+
+def test_the_deploy_starts_and_waits_for_storage() -> None:
+    text = DEPLOY.read_text()
+    assert "up -d postgres redis minio" in text
+    start = text.index("up -d postgres redis minio")
+    migrate = text.index("alembic upgrade head")
+    assert start < migrate
+    assert "for svc in postgres redis minio" in text
+
+
+def test_the_health_check_reports_storage() -> None:
+    """`pilot-health-check` must call the deployment unhealthy when required storage is down."""
+    health = (ROOT / "scripts/pilot-health-check.sh").read_text()
+    assert "minio" in health
+    services = health.split("for svc in ", 1)[1].split(";", 1)[0]
+    assert "minio" in services
+
+
+def test_no_antivirus_was_added_alongside_storage(compose: dict) -> None:
+    """Catalog derivatives are decoded and re-encoded by Pillow, which discards anything that is
+    not pixels. Inbound customer attachments are a different threat model with their own scanner,
+    and this ticket was not an invitation to start a ClamAV project."""
+    assert "clamav" not in compose["services"]

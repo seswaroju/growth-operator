@@ -39,15 +39,20 @@ echo "==> [2/7] building the application image"
 dc build api
 
 echo "==> [3/7] starting data services"
-# Explicitly, and waited for. On a first install this creates the volume and runs the initdb role
+# Explicitly, and waited for. On a first install this creates the volumes and runs the initdb role
 # bootstrap; on a repeat deploy it is a no-op that returns immediately.
-dc up -d postgres redis
-for i in $(seq 1 60); do
-  if [ "$(dc ps --format '{{.Health}}' postgres 2>/dev/null | head -1)" = "healthy" ]; then break; fi
-  [ "$i" = "60" ] && { echo "FATAL: Postgres did not become healthy" >&2; dc logs --tail 40 postgres >&2; exit 1; }
-  sleep 2
+#
+# MinIO is here rather than treated as optional: catalog images have no durable fallback outside
+# dev, so an application that starts before storage is ready starts broken.
+dc up -d postgres redis minio
+for svc in postgres redis minio; do
+  for i in $(seq 1 60); do
+    if [ "$(dc ps --format '{{.Health}}' "$svc" 2>/dev/null | head -1)" = "healthy" ]; then break; fi
+    [ "$i" = "60" ] && { echo "FATAL: $svc did not become healthy" >&2; dc logs --tail 40 "$svc" >&2; exit 1; }
+    sleep 2
+  done
+  echo "$svc healthy"
 done
-echo "postgres healthy"
 
 echo "==> [4/7] verifying the runtime role"
 # The role is created by an initdb script, which runs only on a FRESH volume. On an existing volume

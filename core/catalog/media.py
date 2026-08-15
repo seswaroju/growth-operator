@@ -136,31 +136,40 @@ async def attach(
     thumbnail_key = object_key(org_id, "catalog", suffix=".jpg")
     original_key = object_key(org_id, "catalog-original")
 
-    await store.put(primary_key, derived.primary, mime=derived.mime)
-    await store.put(thumbnail_key, derived.thumbnail, mime=derived.mime)
-    await store.put(original_key, data, mime=declared_mime or derived.mime)
-
-    stored = StoredImage(
-        primary_key=primary_key, thumbnail_key=thumbnail_key, original_key=original_key,
-        width=derived.width, height=derived.height, mime=derived.mime)
-
-    await session.execute(
-        text("UPDATE catalog_items SET media = CAST(:m AS jsonb), "
-             "media_keys = CAST(:k AS jsonb) WHERE id = :i AND org_id = :o"),
-        {"m": json.dumps(stored.as_media(item_id)), "k": json.dumps({
-            "primary": primary_key, "thumbnail": thumbnail_key, "original": original_key,
-            "width": derived.width, "height": derived.height, "mime": derived.mime}),
-         "i": str(item_id), "o": str(org_id)})
-
+    # Every key that reaches storage is recorded as it is written, not assumed from the plan. The
+    # earlier version only cleaned up after a failed commit, so a thumbnail PUT that failed after
+    # the primary succeeded — or a failing UPDATE — left the written objects behind forever. The
+    # invariant is simpler than a list of cases: **anything written before a successful commit is
+    # removed if that commit does not happen.**
+    written: list[str] = []
     try:
+        for key, payload, mime in (
+            (primary_key, derived.primary, derived.mime),
+            (thumbnail_key, derived.thumbnail, derived.mime),
+            (original_key, data, declared_mime or derived.mime),
+        ):
+            await store.put(key, payload, mime=mime)
+            written.append(key)
+
+        stored = StoredImage(
+            primary_key=primary_key, thumbnail_key=thumbnail_key, original_key=original_key,
+            width=derived.width, height=derived.height, mime=derived.mime)
+
+        await session.execute(
+            text("UPDATE catalog_items SET media = CAST(:m AS jsonb), "
+                 "media_keys = CAST(:k AS jsonb) WHERE id = :i AND org_id = :o"),
+            {"m": json.dumps(stored.as_media(item_id)), "k": json.dumps({
+                "primary": primary_key, "thumbnail": thumbnail_key, "original": original_key,
+                "width": derived.width, "height": derived.height, "mime": derived.mime}),
+             "i": str(item_id), "o": str(org_id)})
+
         await session.commit()
     except Exception:
-        # The association never landed, so the new objects are unreferenced. Remove them and leave
-        # the previous image exactly as it was.
+        # Covers a partial PUT, a failing UPDATE and a failing COMMIT alike. The association never
+        # became durable, so everything written here is unreferenced: remove it and leave the
+        # previous image exactly as the merchant left it.
         await session.rollback()
-        await _discard(
-            {"primary": primary_key, "thumbnail": thumbnail_key, "original": original_key},
-            reason="commit_failed")
+        await _discard_keys(written, reason="attach_failed")
         raise
 
     # Only now. The association is durable, so nothing can serve the old objects any more, and a
@@ -221,6 +230,16 @@ async def remove(session: AsyncSession, org_id: UUID, item_id: UUID) -> bool:
     return True
 
 
+async def _discard_keys(keys: list[str], *, reason: str) -> None:
+    """Delete a list of raw keys, best effort. Never raises — see `_discard`."""
+    store = default_store()
+    for key in keys:
+        try:
+            await store.delete(key)
+        except Exception:  # noqa: BLE001 - cleanup must not mask the original failure
+            logger.warning("catalog.media.orphan: key=%s reason=%s", key, reason)
+
+
 async def _discard(keys: dict[str, Any], *, reason: str) -> None:
     """Delete stored objects, best effort.
 
@@ -229,12 +248,6 @@ async def _discard(keys: dict[str, Any], *, reason: str) -> None:
     swept later rather than accumulating invisibly — which is the failure this whole ticket exists
     to stop repeating.
     """
-    store = default_store()
-    for name in ("primary", "thumbnail", "original"):
-        key = keys.get(name)
-        if not key:
-            continue
-        try:
-            await store.delete(str(key))
-        except Exception:  # noqa: BLE001 - cleanup must not fail a completed operation
-            logger.warning("catalog.media.orphan: %s key=%s reason=%s", name, key, reason)
+    await _discard_keys(
+        [str(keys[name]) for name in ("primary", "thumbnail", "original") if keys.get(name)],
+        reason=reason)

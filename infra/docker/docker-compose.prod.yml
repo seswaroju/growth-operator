@@ -58,6 +58,11 @@ x-app: &app
       condition: service_healthy
     redis:
       condition: service_healthy
+    # Catalog images have no fallback outside dev — `default_store()` refuses process memory — so
+    # storage is a startup dependency, not an optional extra. A later MinIO outage does NOT take
+    # the API's liveness down: only image routes fail, and the rest of Vaylorn keeps serving.
+    minio:
+      condition: service_healthy
   networks:
     - internal
 
@@ -111,7 +116,12 @@ services:
       - internal
 
   minio:
-    image: minio/minio:latest
+    # Pinned, like every other production image here. `:latest` means two deploys a month apart run
+    # different object stores with no record of the change — the same reproducibility argument that
+    # applies to the application image applies to the thing holding merchants' photographs.
+    # Verified locally: this tag reports RELEASE.2025-09-07T16-13-09Z. Moving it is a deliberate
+    # review, not a side effect of redeploying.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     # No `ports:`. The API reaches it at `minio:9000` on the internal network; 9000 and 9001 are
     # never published, so the object store and its console are unreachable from the internet even

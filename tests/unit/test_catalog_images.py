@@ -238,8 +238,9 @@ def _client_error(code: str):
     return ClientError({"Error": {"Code": code, "Message": code}}, "GetObject")
 
 
-@pytest.mark.parametrize("code", ["NoSuchKey", "NoSuchBucket", "404", "NotFound"])
+@pytest.mark.parametrize("code", ["NoSuchKey", "404", "NotFound"])
 def test_a_genuinely_absent_object_reads_as_none(code: str) -> None:
+    """`NoSuchBucket` is deliberately not in this list — see the missing-bucket test below."""
     import asyncio
 
     from core.media.store import S3Store
@@ -249,7 +250,8 @@ def test_a_genuinely_absent_object_reads_as_none(code: str) -> None:
     assert asyncio.run(store.get("some/key")) is None
 
 
-@pytest.mark.parametrize("code", ["AccessDenied", "InvalidAccessKeyId", "InternalError", "503"])
+@pytest.mark.parametrize(
+    "code", ["AccessDenied", "InvalidAccessKeyId", "InternalError", "503", "NoSuchBucket"])
 def test_a_storage_outage_is_not_reported_as_a_missing_image(code: str) -> None:
     """The defect this replaces: every ClientError mapped to None, so a permissions failure or a
     dead object store looked exactly like "this item has no photograph". One is a broken
@@ -357,16 +359,34 @@ def test_media_is_not_a_patchable_column() -> None:
     assert '"media"' not in allowed
 
 
-def test_extra_fields_are_rejected_rather_than_ignored() -> None:
-    """A model that silently drops `media` would still let a client believe it had set one. It is
-    better to fail the request than to accept it and do something else."""
-    from core.catalog.router import CatalogItemPatch
+@pytest.mark.parametrize("model_name", ["CatalogItemIn", "CatalogItemPatch"])
+def test_a_client_supplied_media_field_is_rejected_not_ignored(model_name: str) -> None:
+    """The previous version of this test proved the opposite of its name.
 
-    # Pydantic's default is to ignore unknown keys; assert the field genuinely cannot be set
-    # through the public model whichever way the request is shaped.
-    patched = CatalogItemPatch.model_validate({"title": "Ring", "media": ["s3://evil/x"]})
-    assert not hasattr(patched, "media")
-    assert "media" not in patched.model_dump(exclude_unset=True)
+    Pydantic ignores unknown keys by default, so `{"media": ["s3://..."]}` was accepted and quietly
+    dropped — the client would believe it had set an image reference while the server had discarded
+    it. A caller acting on that belief is a worse outcome than a 422, so the models forbid extras.
+    """
+    from pydantic import ValidationError
+
+    import core.catalog.router as router
+
+    model = getattr(router, model_name)
+    payload = {"media": ["s3://other-tenant/secret.jpg"]}
+    if model_name == "CatalogItemIn":
+        payload |= {"title": "Ring", "price_mode": "static"}
+    with pytest.raises(ValidationError) as exc:
+        model.model_validate(payload)
+    assert "media" in str(exc.value)
+
+
+@pytest.mark.parametrize("model_name", ["CatalogItemIn", "CatalogItemPatch"])
+def test_the_public_models_forbid_unknown_fields_generally(model_name: str) -> None:
+    """Not a `media`-shaped special case: any field the API does not define is refused, so the next
+    server-owned column cannot be silently accepted either."""
+    import core.catalog.router as router
+
+    assert getattr(router, model_name).model_config.get("extra") == "forbid"
 
 
 def test_only_the_image_endpoint_writes_the_association() -> None:
@@ -380,3 +400,68 @@ def test_only_the_image_endpoint_writes_the_association() -> None:
         if "UPDATE catalog_items SET media" in path.read_text()
     ]
     assert [str(p) for p in writers] == ["core/catalog/media.py"]
+
+
+def test_a_missing_bucket_is_an_outage_not_an_absent_image() -> None:
+    """A missing bucket means every image is unreachable, not this one. Reporting it as an
+    ordinary empty item would make a wiped deployment look like an unfilled catalog."""
+    import asyncio
+
+    from core.media.store import S3Store, StorageUnavailable
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _FailingClient(_client_error("NoSuchBucket"))  # type: ignore[method-assign]
+    with pytest.raises(StorageUnavailable):
+        asyncio.run(store.get("some/key"))
+
+
+def test_access_denied_on_head_bucket_does_not_trigger_bucket_creation() -> None:
+    """Wrong credentials are not answered by trying to create a bucket — that is both futile and
+    alarming, and it turned an auth failure into a confusing second error."""
+    import asyncio
+
+    from core.media.store import S3Store, StorageUnavailable
+
+    created: list[str] = []
+
+    class _Denied:
+        def head_bucket(self, **kwargs: object) -> object:
+            raise _client_error("AccessDenied")
+
+        def create_bucket(self, **kwargs: object) -> object:
+            created.append("created")
+            return {}
+
+        def put_object(self, **kwargs: object) -> object:
+            return {}
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _Denied()  # type: ignore[method-assign]
+    with pytest.raises(StorageUnavailable):
+        asyncio.run(store.put("k", b"x", mime="image/jpeg"))
+    assert created == [], "an auth failure must not be answered by creating a bucket"
+
+
+def test_a_genuinely_absent_bucket_is_created_on_put() -> None:
+    """The one condition under which creating it is right."""
+    import asyncio
+
+    from core.media.store import S3Store
+
+    created: list[str] = []
+
+    class _Fresh:
+        def head_bucket(self, **kwargs: object) -> object:
+            raise _client_error("NoSuchBucket")
+
+        def create_bucket(self, **kwargs: object) -> object:
+            created.append("created")
+            return {}
+
+        def put_object(self, **kwargs: object) -> object:
+            return {}
+
+    store = S3Store(endpoint_url=None, region="r", bucket="b", access_key="k", secret_key="s")
+    store._client = lambda: _Fresh()  # type: ignore[method-assign]
+    asyncio.run(store.put("k", b"x", mime="image/jpeg"))
+    assert created == ["created"]

@@ -23,7 +23,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.catalog import crud, search
@@ -48,6 +48,12 @@ router = APIRouter(prefix="/v1/catalog", tags=["catalog"])
 
 
 class CatalogItemIn(BaseModel):
+    # Unknown fields are REJECTED, not ignored. Pydantic's default would accept
+    # `{"media": ["s3://..."]}` and silently drop it, so a client would believe it had set an
+    # image reference while the server had quietly discarded it — a caller acting on that belief
+    # is a worse outcome than a 422. Media is associated only through the image endpoints.
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(..., min_length=1)
     price_mode: str = Field(..., pattern="^(static|computed)$")
     attributes: dict[str, Any] = {}
@@ -59,6 +65,12 @@ class CatalogItemIn(BaseModel):
 
 
 class CatalogItemPatch(BaseModel):
+    # Unknown fields are REJECTED, not ignored. Pydantic's default would accept
+    # `{"media": ["s3://..."]}` and silently drop it, so a client would believe it had set an
+    # image reference while the server had quietly discarded it — a caller acting on that belief
+    # is a worse outcome than a 422. Media is associated only through the image endpoints.
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = None
     description: str | None = None
     base_price_minor: int | None = None
@@ -304,7 +316,9 @@ async def upload_item_image(
     except images.ImageRejected as exc:
         # 422 with the merchant-facing reason: they can act on "that file is 14 MB", not on a 500.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    await session.commit()
+    # No commit here. `attach` owns the commit boundary because the ordering guarantee depends on
+    # it — see core/catalog/media.py. A second commit could fail after the upload was already
+    # durable, reporting a 500 for an operation that succeeded.
     return CatalogImageOut(
         item_id=item_id, width=stored.width, height=stored.height,
         image_url=f"/v1/catalog/items/{item_id}/image",
@@ -359,4 +373,4 @@ async def delete_item_image(
         await catalog_media.remove(session, _require_org(current), item_id)
     except catalog_media.ItemNotFound:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "catalog item not found") from None
-    await session.commit()
+    # `remove` owns its commit, for the same reason as `attach`.

@@ -18,12 +18,20 @@ import uuid
 from typing import Any, Protocol
 from uuid import UUID
 
-#: S3 error codes that genuinely mean "there is no such object". Everything else — AccessDenied, a
-#: signature failure, a 5xx — is an outage or a misconfiguration, and must NOT be reported as a
-#: missing image: "this item has no photograph" and "the object store is refusing us" call for
-#: completely different responses, and conflating them hides a broken deployment behind an empty
-#: placeholder that looks like ordinary product data.
-_ABSENT_CODES = frozenset({"NoSuchKey", "NoSuchBucket", "404", "NotFound"})
+#: Codes that genuinely mean "there is no such object". Everything else — AccessDenied, a signature
+#: failure, a 5xx — is an outage or a misconfiguration and must NOT be reported as a missing image:
+#: "this item has no photograph" and "the object store is refusing us" call for completely different
+#: responses, and conflating them hides a broken deployment behind an empty placeholder.
+#:
+#: `NoSuchBucket` is deliberately NOT here. A missing bucket means the deployment is misconfigured
+#: or the storage has been wiped — every image is unreachable, not this one — and reporting that as
+#: an ordinary empty item would make a catastrophe look like a catalog nobody had filled in yet.
+_ABSENT_CODES = frozenset({"NoSuchKey", "404", "NotFound"})
+
+#: Only these mean "the bucket is not there yet", which is the sole condition under which creating
+#: it is the right move. An AccessDenied on `head_bucket` means our credentials are wrong, and
+#: answering that by trying to create the bucket is both futile and alarming.
+_BUCKET_ABSENT_CODES = frozenset({"NoSuchBucket", "404", "NotFound"})
 
 
 class StorageUnavailable(Exception):
@@ -120,7 +128,12 @@ class S3Store:
             client = self._client()
             try:
                 client.head_bucket(Bucket=self.bucket)
-            except ClientError:
+            except ClientError as exc:
+                code = str(exc.response.get("Error", {}).get("Code", ""))
+                if code not in _BUCKET_ABSENT_CODES:
+                    # Wrong credentials, no permission, or the provider is down. Creating a bucket
+                    # is not the answer to any of those.
+                    raise StorageUnavailable("head_bucket", code or "unknown") from exc
                 client.create_bucket(Bucket=self.bucket)
             client.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=mime)
             return f"s3://{self.bucket}/{key}"

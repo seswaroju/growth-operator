@@ -114,8 +114,8 @@ did not re-run. Create it with `infra/db/roles-prod.sh` (needs `APP_RW_PASSWORD`
 scripts/pilot-health-check.sh
 ```
 
-✅ `pilot looks healthy` — API up and ready, TLS date, all six containers running, Postgres/Redis
-reachable, schema at head.
+✅ `pilot looks healthy` — API up and ready, TLS date, all seven containers running (api, worker,
+scheduler, postgres, redis, **minio**, caddy), Postgres/Redis reachable, schema at head.
 
 ### 8. DNS · ~2 min, then waiting
 

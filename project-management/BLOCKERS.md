@@ -581,3 +581,23 @@ ephemeral database (a template database cloned per session, or a container per r
 **Not implemented here** by founder instruction: the current fix is safe on its own, so the larger
 refactor does not need to ride along with a demo-polish ticket. Worth doing before the test suite
 grows further — every fixture written in the meantime is written against the wrong assumption.
+
+## #44 — MINIO/OFFSITE-MEDIA-BACKUP (OPEN — blocks PILOT-1E production acceptance)
+
+**Opened** 2026-08-14 (DEMO-UX-1 final review, founder-recorded).
+
+`scripts/backup-nightly.sh` dumps PostgreSQL, encrypts it and ships it off-site. Catalog product
+images do **not** live in PostgreSQL — after DEMO-UX-1 the originals and both derivatives live in
+MinIO on the droplet, on a Docker volume with no backup at all.
+
+So a restored database would come back pointing at object keys whose bytes were lost with the host.
+The catalog would look intact and every product photograph would be a broken image, which is a
+worse failure than an obvious one: nothing would alert, and the merchant would find out from a
+customer.
+
+**Not implemented here** by founder instruction — this correction round was scoped to the review
+findings, and bolting a second backup subsystem onto it would have widened it well past that.
+
+**Required before PILOT-1E production acceptance.** Likely the smallest form: `mc mirror` (or
+`aws s3 sync`) of the bucket into the same encrypted off-site destination the database dump already
+uses, on the same nightly schedule, with the restore drill extended to prove an image comes back.
