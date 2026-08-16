@@ -932,3 +932,73 @@ provider-specific logic. This stays provider-neutral.
   still authorizes the *action*.
 - Preflight needs the same policy inputs as the engine. Sharing that evaluation path is what stops
   the two drifting apart and quietly disagreeing.
+
+## #52 — APPROVAL-PARK OBSERVABILITY: log successful run parking at the mediation gate (OPEN — observability only)
+
+**Recorded** 2026-08-16. **Not implemented.** Not causal to any physical test — the runtime behaved
+correctly in every observed case; only the record of it was silent.
+
+### Problem
+
+A real Priya execution went event → Priya → DeepSeek → planner → `messages.send` policy evaluation →
+Tier-2 approval park, entirely correctly. The worker log ended at:
+
+```
+INFO:core.runtime.planner:planner: routed intent=greeting -> concierge/qualify
+```
+
+and said nothing further. Nothing recorded that the run had **deliberately** parked.
+
+A healthy approval park is therefore visually indistinguishable from a worker crash, a runtime hang,
+a mediation failure, or a dispatch failure. All five produce the same thing in the log: silence after
+the planner line. Establishing which had actually happened took database forensics across
+`agent_runs`, `agent_steps`, `approvals`, `event_outbox`, `messages` and a read-only re-run of the
+approval engine — to confirm the system had done exactly the right thing.
+
+That is the cost being paid here: the most common *correct* outcome of the mediation gate is the one
+the log cannot distinguish from a failure.
+
+### Desired behaviour
+
+One structured INFO line at the point a run intentionally parks, carrying safe identifiers only:
+
+```
+run parked for approval: run_id=… approval_id=… tool=… tier=…
+```
+
+Optionally the action family or a reason category, if it can be obtained safely at that point.
+
+**Never log:** message bodies, prompts, model output, phone numbers, access tokens, secrets, or raw
+approval payloads. The line exists so an operator can tell "parked" from "died" — it needs
+identifiers to look things up with, not content.
+
+### Scope boundary
+
+Observability only. This ticket must not alter approval semantics, tier computation, quiet hours,
+the autonomy overlay, #50 `matched_rules` behaviour, or anything about how `messages.send` executes.
+If implementing it requires changing any of those, that is a different ticket.
+
+---
+
+### PILOT-1D-L evidence note — 2026-08-16
+
+The latest real execution (run `a46f2d71-4c66-4b58-9d6d-0d1e7c6dda31`, event
+`8ba85018-9acc-4bf7-be15-3652a4f363c2`) proved:
+
+- the repaired jewelry reply rules resolve **Tier 1** — all three matched as contributors
+- the autonomy **quiet-hours** floor correctly raised the effective tier to **2**
+- an approval was created (`6888072e-a9ee-4f3c-aeca-e6dccb9a79bd`, pending)
+- **no** outbound message row was created
+- Meta was correctly **not** called — zero Graph API requests
+- all services (worker, API, webhook ingress, cloudflared, Postgres, Redis) remained healthy
+
+Ratna's timezone is `Asia/Kolkata` with a quiet window of **21:00–08:00**. The run landed at
+20:22:33 UTC = **01:52 IST**, inside that window, so parking was correct rather than a defect.
+
+**The physical autonomous send must be repeated outside the 21:00–08:00 Asia/Kolkata quiet window.**
+
+**Correction on the record:** the "gold pendant" message was **not** present in `webhook_events` —
+a search for `%pendant%` returned zero rows, and the newest actual event still carried
+`"Hi, can someone help me?"`. No pendant test occurred; nothing in this repository should be read as
+claiming one did. Whether that message was never sent or never delivered by Meta is unresolved and
+is the one fact in this trace that cannot be established from the machine.
