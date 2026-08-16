@@ -646,3 +646,43 @@ unrelated behaviour change ships unreviewed.
 CP-5 `priya.reason` tunable-node mismatch in this patch"). Logged so it is not lost now that the
 routing path around it has been touched — the PILOT-1D-L change corrects *what is sent* to the
 provider and does not alter node naming or tunables.
+
+## #47 — WhatsApp webhook normalizer had no production caller (RESOLVED 2026-08-16)
+
+**Opened and resolved** 2026-08-16 during PILOT-1D-L physical Meta proof.
+
+`core/channels/whatsapp/normalizer.py::normalize_pending()` was complete and correct — contacts,
+conversations, inbound messages, `msg.received.v1`, delivery statuses, STOP handling — and **nothing
+in production ever called it**. A grep for callers found the function's own module and the tests,
+and nothing else. The automatic live path therefore ended one step in:
+
+    real handset → Meta → Cloudflare → FastAPI → webhook_events → *stop*
+
+A real customer message sat in Postgres until someone ran the function by hand, which is exactly
+what we had been doing without registering it as a gap.
+
+**Why a full green suite never caught it.** Every normalizer test called `normalize_pending()`
+itself. Each one supplied the missing production caller as part of its own arrangement, so the suite
+proved the function worked and could not, even in principle, notice that no one ran it. Physical
+ingress was the first thing that did not bring its own caller.
+
+**Fixed** by a worker-owned loop, `run_normalizer()`, started by `run_worker()` alongside the outbox
+publisher and the consumers — no new process, no new service. Making it multi-worker-safe required
+correcting how a webhook is claimed: the previous shape selected pending rows in one session and
+processed them in another, so adding `FOR UPDATE` to that select would have locked nothing (the
+lock dies with the session that took it, before any work happens). Candidate discovery now takes no
+locks at all, and each candidate is re-checked and locked with `FOR UPDATE SKIP LOCKED` inside the
+transaction that normalizes it and writes `processed_at`.
+
+No migration and no new column. `processed_at` is deliberately **not** pre-set to reserve a row:
+that would mean a crash mid-normalization left a webhook marked done that never was, silently
+discarding a real customer message. A failure rolls back, the lock releases, and the webhook stays
+pending.
+
+**Resolved on evidence:** `tests/integration/test_whatsapp_normalizer_orchestration.py` (8 tests)
+drives the loop rather than the function, and both concurrency tests were confirmed to fail against
+unlocked code and pass against the fix (5 runs each way).
+
+**Still unproven, deliberately:** the end-to-end physical chain. This closes the code gap; the live
+proof is a separate act — a new message from the founder handset with the real worker running and
+no manual invocation. Until that happens #37 stays open.

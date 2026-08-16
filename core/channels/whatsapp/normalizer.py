@@ -15,6 +15,7 @@ MVP-034 gates (it mints its own audit capability).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -303,32 +304,81 @@ async def _mark_processed(session: AsyncSession, event_id: UUID) -> None:
     )
 
 
+#: Whether a `webhook_events` row is this normalizer's to process. Written once and interpolated
+#: into both the candidate scan and the claiming re-check, so the two cannot drift — if they did,
+#: the scan could hand out a row the claim would never accept and the batch would spin on it.
+#: Notably it excludes `message_template_status_update`, which `templates.py` owns.
+_ELIGIBLE = (
+    "provider = 'whatsapp' AND processed_at IS NULL "
+    "AND payload->>'_malformed' IS NULL "
+    "AND coalesce(payload->'entry'->0->'changes'->0->>'field', 'messages') "
+    "    <> 'message_template_status_update'"
+)
+
+
+async def _claim(session: AsyncSession, event_id: UUID) -> dict[str, Any] | None:
+    """Take the row lock for one webhook **in the caller's own transaction**, or return None.
+
+    The lock and the work must share a transaction or the lock protects nothing: a lock taken in
+    one session is released the moment that session ends, which is before any normalization has
+    happened. So this is deliberately not a separate "claim step" — the caller passes the session it
+    is about to normalize with, and the lock lives exactly as long as the work does.
+
+    `SKIP LOCKED` rather than a plain `FOR UPDATE`: a second worker that finds the row already taken
+    should move on to other webhooks, not queue behind this one and then redo work that is about to
+    be committed. Returning None means "someone else has it, or it stopped being eligible" — both
+    are a skip, and neither is an error.
+
+    The eligibility predicate is re-checked here, not trusted from the scan. Between the scan and
+    this statement another worker may have committed `processed_at`; the row would then still be
+    lockable but must not be processed again.
+    """
+    row = (
+        await session.execute(
+            text(f"SELECT id, payload FROM webhook_events WHERE id = :id AND {_ELIGIBLE} "
+                 "FOR UPDATE SKIP LOCKED"),
+            {"id": event_id},
+        )
+    ).mappings().first()
+    return dict(row) if row is not None else None
+
+
 async def normalize_pending(limit: int = 100) -> int:
-    """Process a batch of unprocessed WhatsApp webhooks. Returns the number handled."""
+    """Process a batch of unprocessed WhatsApp webhooks. Returns the number handled.
+
+    Safe to run in several workers at once. The scan below takes no locks — it only proposes
+    candidates — and every candidate is re-checked and locked inside the transaction that normalizes
+    it, so two workers racing the same webhook end with one of them skipping.
+
+    Nothing is marked processed in advance to reserve it. `processed_at` is written by
+    `_normalize_one` in the same transaction as the messages and the outbox row, so a failure
+    anywhere rolls the whole thing back: the lock releases, `processed_at` stays NULL, and the next
+    pass picks the webhook up again. Claiming by pre-setting `processed_at` would invert that — a
+    crash mid-normalization would leave a webhook marked done that never was, and a real customer
+    message would be silently dropped.
+    """
     factory = get_sessionmaker()
     async with factory() as session:
-        rows = (
-            await session.execute(
-                text(
-                    "SELECT id, payload FROM webhook_events "
-                    "WHERE provider = 'whatsapp' AND processed_at IS NULL "
-                    "AND payload->>'_malformed' IS NULL "
-                    # Template-status updates are drained by templates.py, not here.
-                    "AND coalesce(payload->'entry'->0->'changes'->0->>'field', 'messages') "
-                    "    <> 'message_template_status_update' "
-                    "ORDER BY received_at LIMIT :n"
-                ),
-                {"n": limit},
-            )
-        ).mappings().all()
-        events = [(r["id"], r["payload"]) for r in rows]
+        candidates = [
+            r["id"] for r in (
+                await session.execute(
+                    text(f"SELECT id FROM webhook_events WHERE {_ELIGIBLE} "
+                         "ORDER BY received_at LIMIT :n"),
+                    {"n": limit},
+                )
+            ).mappings().all()
+        ]
 
     handled = 0
-    for event_id, payload in events:
+    for event_id in candidates:
         confirms: list[tuple[UUID, UUID]] = []
         async with factory() as session:
             try:
-                confirms = await _normalize_one(session, event_id, payload)
+                claimed = await _claim(session, event_id)
+                if claimed is None:  # another worker has it, or it is no longer eligible
+                    await session.rollback()
+                    continue
+                confirms = await _normalize_one(session, event_id, claimed["payload"])
                 await session.commit()
                 handled += 1
             except Exception:
@@ -339,3 +389,55 @@ async def normalize_pending(limit: int = 100) -> int:
         for org_id, conversation_id in confirms:
             await _send_stop_confirmation(org_id, conversation_id)
     return handled
+
+
+#: How long the runner waits before rescanning when it found nothing. Short enough that a customer
+#: is not left waiting on a poll, long enough that an idle pilot is not scanning Postgres in a tight
+#: loop. A batch that found work does not sleep at all.
+NORMALIZE_POLL_INTERVAL_S = 1.0
+
+
+async def _idle(stop: asyncio.Event | None, seconds: float) -> None:
+    """Wait, but return the moment shutdown is requested. A plain `asyncio.sleep` would keep the
+    worker alive for up to a full poll interval after SIGTERM for no reason."""
+    if stop is None:
+        await asyncio.sleep(seconds)
+        return
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=seconds)
+    except TimeoutError:
+        pass
+
+
+async def run_normalizer(
+    stop: asyncio.Event | None = None,
+    *,
+    poll_interval_s: float = NORMALIZE_POLL_INTERVAL_S,
+    limit: int = 100,
+) -> None:
+    """Long-running loop turning raw webhooks into messages. Owned by `core.worker` (PILOT-1D-L).
+
+    This is the step that was missing. `normalize_pending` existed and worked, but **nothing in
+    production ever called it** — only tests did — so the live path ended at `webhook_events` and a
+    real customer message sat in Postgres until someone ran the function by hand. Physical Meta
+    ingress is what exposed it: every earlier test had been supplying the missing caller itself.
+
+    Drains until empty, then idles. A batch that handled anything immediately tries again, so a
+    burst is drained at full speed rather than one poll interval at a time.
+
+    A failing batch is logged and retried on the next tick rather than raised. This task runs inside
+    the worker's `gather`, so letting an exception out would take down the outbox publisher and
+    every consumer with it — one bad webhook, or one blip on the database, must not stop the process
+    that answers customers. Per-event failures are already isolated inside `normalize_pending`;
+    this covers the scan itself.
+    """
+    logger.info("whatsapp normalizer starting (poll=%.1fs, batch=%d)", poll_interval_s, limit)
+    while not (stop is not None and stop.is_set()):
+        try:
+            handled = await normalize_pending(limit)
+        except Exception:
+            logger.exception("whatsapp normalizer batch failed; retrying after poll interval")
+            handled = 0
+        if handled == 0:
+            await _idle(stop, poll_interval_s)
+    logger.info("whatsapp normalizer stopped")
