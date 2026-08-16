@@ -16,7 +16,7 @@ lower a tier below the core/pack baseline (a tenant may only tighten).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import celpy
@@ -209,6 +209,28 @@ _CAPABILITY_BY_ACTION: dict[str, str] = {
 # Capabilities whose actions go OUT to a customer — the ones quiet hours (C2) apply to.
 _CUSTOMER_FACING_CAPS: frozenset[str] = frozenset({"messaging", "campaigns"})
 
+#: How this action came to happen. Not a description of the message — a statement about who spoke
+#: first, which is what quiet hours actually care about.
+#:
+#: `reactive`  — a customer messaged and the assistant is replying in that conversation.
+#: `proactive` — Vaylorn initiated contact: a recovery nudge, a campaign, a follow-up.
+CommunicationMode = Literal["reactive", "proactive"]
+
+#: Run triggers that mean "a customer just messaged us". Deliberately an allow-list of exact values
+#: set by the platform when it creates a run (`agent_runs.trigger`), never by a model, a tool
+#: argument, or anything a pack can influence. A trigger nobody has classified is treated as
+#: proactive, so a new run type cannot acquire a quiet-hours exemption by being unrecognised.
+REACTIVE_TRIGGERS: frozenset[str] = frozenset({"msg.received"})
+
+#: The safe answer when provenance is unknown. Being wrong in this direction costs an unnecessary
+#: approval; being wrong the other way messages a stranger at 2am.
+DEFAULT_COMMUNICATION_MODE: CommunicationMode = "proactive"
+
+
+def mode_for_trigger(trigger: str | None) -> CommunicationMode:
+    """Classify a run's trigger. The single place the reactive/proactive judgement is made."""
+    return "reactive" if trigger in REACTIVE_TRIGGERS else DEFAULT_COMMUNICATION_MODE
+
 
 def _action_amount_minor(tool: str, params: dict[str, Any]) -> int | None:
     """The money amount an action carries, in minor units: a priced reply's body figure for
@@ -220,11 +242,18 @@ def _action_amount_minor(tool: str, params: dict[str, Any]) -> int | None:
 
 
 async def _autonomy_floor(
-    session: AsyncSession, org_id: UUID, tool: str, params: dict[str, Any]
+    session: AsyncSession, org_id: UUID, tool: str, params: dict[str, Any],
+    communication_mode: CommunicationMode = DEFAULT_COMMUNICATION_MODE,
 ) -> int:
     """The tier the owner's autonomy knob forces for `tool` — `AUTONOMY_REVIEW_TIER` when the global
     pause is on, any relevant capability is below `auto`, or (C1) the action's amount is at or above
-    that capability's `threshold_minor`; else 0 (no effect / full auto)."""
+    that capability's `threshold_minor`; else 0 (no effect / full auto).
+
+    `communication_mode` gates the quiet-hours rule only. Every other branch here — the pause, the
+    per-capability level, the value threshold — applies identically to a reply and to an outreach,
+    because those express what the owner wants the agent to be *allowed* to do, which does not
+    depend on who spoke first.
+    """
     from core.tenancy import settings as tenant_settings  # lazy: avoids an import cycle
 
     if bool((await tenant_settings.resolve(session, org_id, "autonomy.paused")).value):
@@ -246,7 +275,17 @@ async def _autonomy_floor(
             return AUTONOMY_REVIEW_TIER
     # Quiet-hours draft-only (C2): a customer-bound send inside the org's quiet window parks for the
     # owner rather than going out on its own — even a capability left on `auto`.
-    if capabilities & _CUSTOMER_FACING_CAPS:
+    #
+    # **Only for outreach.** Quiet hours exist so a store does not *contact* people at 2am. They
+    # were also stopping the assistant from *answering* someone who messaged at 2am, which is a
+    # different act with the opposite courtesy: the customer chose the hour, is waiting for a reply,
+    # and silence until morning is the rude outcome. A real greeting parked for owner approval this
+    # way (run a46f2d71, 01:52 IST) with every pack rule correctly resolving tier 1.
+    #
+    # The store's opening hours are not the assistant's availability. Actions that need a *human* —
+    # a callback, a handoff, a store visit — still belong inside business hours; those are scheduled
+    # by their own tools and are unaffected by this branch.
+    if capabilities & _CUSTOMER_FACING_CAPS and communication_mode != "reactive":
         from core.tenancy import quiet_hours  # lazy: avoids an import cycle
         if await quiet_hours.is_quiet_now(session, org_id):
             return AUTONOMY_REVIEW_TIER
@@ -256,6 +295,7 @@ async def _autonomy_floor(
 async def evaluate_tool(
     session: AsyncSession, *, org_id: UUID, actor_instance_id: UUID | None, untrusted: bool,
     tool: str, params: dict[str, Any],
+    communication_mode: CommunicationMode = DEFAULT_COMMUNICATION_MODE,
 ) -> Decision:
     """Evaluate a *tool* call against its abstract-action family and return the max-tier decision
     (BLOCKERS #20). `amount_minor` is populated from the message price so the quote-tier CEL
@@ -280,7 +320,7 @@ async def evaluate_tool(
         matched.extend(m)
     # The owner's autonomy knob (Ticket 3.6): a max-tier contributor that forces approval when the
     # capability is not on `auto` (or the plane is paused). Only ever raises the tier.
-    floor = await _autonomy_floor(session, org_id, tool, params)
+    floor = await _autonomy_floor(session, org_id, tool, params, communication_mode)
     if floor > 0:
         contributors.append((floor, "autonomy", [], None, "hold", None))
         matched.append("autonomy")

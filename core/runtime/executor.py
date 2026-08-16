@@ -25,6 +25,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.approvals.engine import mode_for_trigger
 from core.approvals.service import create_approval
 from core.common.config import get_settings
 from core.common.errors import GrowthOperatorError
@@ -153,12 +154,20 @@ def _make_compose(org_id: UUID, instance_id: UUID, persona: str) -> Any:
 
 def _run_context(
     org_id: UUID, run_id: UUID, instance_id: UUID, instance: dict[str, Any], *,
-    approved: frozenset[str] = frozenset(),
+    approved: frozenset[str] = frozenset(), trigger: str | None = None,
 ) -> RunContext:
+    """The trusted context every tool call is judged against.
+
+    `trigger` is the run's own `agent_runs.trigger` — written by the platform when the run is
+    created and never afterwards. It is the only input to the reactive/proactive judgement, which
+    is why that judgement cannot be influenced by a prompt, a model response or a tool argument.
+    Omitting it yields `proactive`, the stricter answer.
+    """
     manifest = dict(instance["permission_manifest"] or {})
     return RunContext(
         org_id=org_id, run_id=run_id, instance_id=instance_id, manifest=manifest,
         manifest_hash=_manifest_hash(instance["permission_manifest"]), approved=approved,
+        communication_mode=mode_for_trigger(trigger),
     )
 
 
@@ -281,7 +290,7 @@ async def start_run(
 
     redis = redis or Redis.from_url(get_settings().redis_url)
     if deps is None:
-        ctx = _run_context(org_id, run_id, agent_instance_id, instance)
+        ctx = _run_context(org_id, run_id, agent_instance_id, instance, trigger=trigger)
         deps = _deps(persona, model=model or RoutingModel(org_id, run_id, redis),
                      execute_tool=_make_proxy_tool(ctx, redis), respond=respond, compose=compose)
     max_steps = int((instance.get("budget_caps") or {}).get("max_steps", DEFAULT_MAX_STEPS))
@@ -319,7 +328,7 @@ async def resume_run(
             await s.execute(
                 text(
                     "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ar.input, "
-                    "  ai.persona_name, ai.budget_caps, ai.permission_manifest "
+                    "  ar.trigger, ai.persona_name, ai.budget_caps, ai.permission_manifest "
                     "FROM agent_runs ar JOIN agent_instances ai ON ai.id = ar.agent_instance_id "
                     "WHERE ar.id = :r"
                 ),
@@ -356,7 +365,8 @@ async def resume_run(
                 "state": {"input": _run_input(run["input"]), "run_id": str(run_id)}}
     if deps is None:
         ctx = _run_context(org_id, run_id, run["agent_instance_id"],
-                           {"permission_manifest": run["permission_manifest"]})
+                           {"permission_manifest": run["permission_manifest"]},
+                           trigger=run["trigger"])
         deps = _deps(run["persona_name"], model=RoutingModel(org_id, run_id, redis),
                      execute_tool=_make_proxy_tool(ctx, redis),
                      compose=_make_compose(org_id, run["agent_instance_id"], run["persona_name"]))
@@ -591,8 +601,8 @@ async def resume_after_approval(
         run = (
             await s.execute(
                 text(
-                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ai.persona_name, "
-                    "  ai.budget_caps, ai.permission_manifest "
+                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ar.trigger, "
+                    "  ai.persona_name, ai.budget_caps, ai.permission_manifest "
                     "FROM agent_runs ar JOIN agent_instances ai ON ai.id = ar.agent_instance_id "
                     "WHERE ar.id = :r"
                 ),
@@ -614,7 +624,7 @@ async def resume_after_approval(
     if decision == "approve":
         ctx = _run_context(
             org_id, run_id, instance_id, {"permission_manifest": run["permission_manifest"]},
-            approved=frozenset({tool}) if tool else frozenset(),
+            approved=frozenset({tool}) if tool else frozenset(), trigger=run["trigger"],
         )
         deps = _deps(run["persona_name"], model=model or RoutingModel(org_id, run_id, redis),
                      execute_tool=_make_proxy_tool(ctx, redis), respond=respond,
@@ -624,7 +634,8 @@ async def resume_after_approval(
         state["response"] = SAFE_CLOSE_TEXT
         state["pending_tool"] = None
         ctx = _run_context(
-            org_id, run_id, instance_id, {"permission_manifest": run["permission_manifest"]})
+            org_id, run_id, instance_id, {"permission_manifest": run["permission_manifest"]},
+            trigger=run["trigger"])
         deps = _deps(run["persona_name"], model=model,
                      execute_tool=_make_proxy_tool(ctx, redis), respond=respond)
 
