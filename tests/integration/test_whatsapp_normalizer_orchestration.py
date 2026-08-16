@@ -177,27 +177,41 @@ async def test_the_worker_wires_the_normalizer_in(scene: Scene) -> None:
 # ---- (2) multi-worker concurrency --------------------------------------------------------------
 
 
-async def test_two_normalizers_racing_one_webhook_produce_one_message(scene: Scene) -> None:
-    """Two workers is the normal production shape, and both will see the same pending row. The
-    row lock is taken in the transaction that does the work, so exactly one of them commits it."""
+async def test_two_normalizers_racing_one_webhook_produce_one_message(
+    scene: Scene, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two workers is the normal production shape, and both will see the same pending row. The row
+    lock is taken in the transaction that does the work, so exactly one of them normalizes it.
+
+    Counted per-event rather than by `normalize_pending`'s return value. That return value is a
+    *batch* count, and on a shared development database other suites leave their own pending
+    webhooks in the same scan window — so a batch count measures unrelated work and made this test
+    fail about once in three runs when it followed the STOP suite. The lock is a per-event
+    guarantee, so the assertion is now per-event too.
+    """
     wamid = await scene.drop_webhook("Racing message")
+    event_id = await _event_id(wamid)
+
+    normalized: list[uuid.UUID] = []
+    real = normalizer._normalize_one
+
+    async def counting(session: Any, eid: uuid.UUID, payload: Any) -> Any:
+        if eid == event_id:
+            normalized.append(eid)
+        return await real(session, eid, payload)
+
+    monkeypatch.setattr(normalizer, "_normalize_one", counting)
 
     # Same batch, at the same time, from independent sessions — the actual race.
-    results = await asyncio.gather(
-        normalizer.normalize_pending(10), normalizer.normalize_pending(10)
-    )
+    await asyncio.gather(normalizer.normalize_pending(10), normalizer.normalize_pending(10))
+
+    assert normalized == [event_id], (
+        f"exactly one worker may normalize this webhook, it ran {len(normalized)} time(s)")
 
     after = await scene.counts(wamid)
     assert after["messages"] == 1, "a customer message must never be ingested twice"
     assert after["events"] == 1, "the planner must not be handed the same message twice"
     assert after["processed_at"] is not None
-
-    # The counts above are NOT proof of the lock on their own — `ON CONFLICT
-    # (provider_message_id) DO NOTHING` would absorb a duplicate even with no locking at all, and
-    # this assertion passes against the unlocked code. What the lock adds is that the duplicate
-    # work never happens: exactly one worker reports the webhook as handled, and the other skips
-    # it rather than re-running contact upsert, conversation open, media fetch and STOP handling.
-    assert sum(results) == 1, f"exactly one worker should handle it, got {results}"
 
 
 async def test_a_racing_worker_skips_rather_than_waits(scene: Scene) -> None:
