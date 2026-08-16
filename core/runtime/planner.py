@@ -27,8 +27,8 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.common.config import get_settings
 from core.events.consumer import consumer
+from core.events.redis_client import event_redis
 from core.packs.taxonomy import Route, Taxonomy, load_taxonomy
 from core.runtime.executor import start_run
 from core.tenancy.middleware import org_scoped_session
@@ -185,7 +185,7 @@ async def _handle(
     contact_id = data.get("contact_id")
     body = str(data.get("body") or "")
     own_redis = redis is None
-    redis = redis or Redis.from_url(get_settings().redis_url)
+    redis = redis or event_redis()
     try:
         async with org_scoped_session(org_id) as s:
             status, slug = await _org_status_and_pack(s, org_id)

@@ -283,6 +283,20 @@ async def start_run(
     )
 
 
+def _run_input(stored: Any) -> dict[str, Any]:
+    """`agent_runs.input` as a dict. jsonb normally decodes to one already, but a driver returning
+    the raw document as text must not silently degrade a resume to an empty input — that is the
+    failure this exists to prevent, so anything unusable becomes `{}` explicitly rather than by
+    accident."""
+    if isinstance(stored, str):
+        try:
+            stored = json.loads(stored)
+        except json.JSONDecodeError:
+            logger.warning("agent_runs.input is not decodable JSON; resuming with empty input")
+            return {}
+    return dict(stored) if isinstance(stored, dict) else {}
+
+
 async def resume_run(
     run_id: UUID, org_id: UUID, *, deps: Deps | None = None, redis: Redis | None = None,
     kill_switch: Any = None,
@@ -294,8 +308,8 @@ async def resume_run(
         run = (
             await s.execute(
                 text(
-                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ai.persona_name, "
-                    "  ai.budget_caps, ai.permission_manifest "
+                    "SELECT ar.status, ar.agent_instance_id, ar.conversation_id, ar.input, "
+                    "  ai.persona_name, ai.budget_caps, ai.permission_manifest "
                     "FROM agent_runs ar JOIN agent_instances ai ON ai.id = ar.agent_instance_id "
                     "WHERE ar.id = :r"
                 ),
@@ -322,9 +336,14 @@ async def resume_run(
         else ({"cursor": step["node"], "state": step["state"], "seq": step["seq"],
                "steps_taken": step["seq"]} if step else None)
     )
-    if ckpt is None:  # nothing ran yet — restart from the top
-        ckpt = {"cursor": None, "state": {"input": {}, "run_id": str(run_id)}, "seq": 0,
-                "steps_taken": 0}
+    if ckpt is None:  # nothing ran yet — restart from the top, from the run's OWN persisted input
+        # `agent_runs.input` is the durable record of what the customer actually said, written when
+        # the run was created. Restarting with `{"input": {}}` — which this did — threw it away and
+        # replayed the run as though the customer had said nothing: the reply would be generated
+        # from the persona alone, on the recovery path, where nobody is watching. Redis holding the
+        # checkpoint is an optimisation; the input was never Redis's to lose.
+        ckpt = {"cursor": None, "seq": 0, "steps_taken": 0,
+                "state": {"input": _run_input(run["input"]), "run_id": str(run_id)}}
     if deps is None:
         ctx = _run_context(org_id, run_id, run["agent_instance_id"],
                            {"permission_manifest": run["permission_manifest"]})

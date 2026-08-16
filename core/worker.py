@@ -23,6 +23,7 @@ from redis.asyncio import Redis
 from core.common.config import get_settings
 from core.events import consumer as consumer_mod
 from core.events.outbox import run_publisher
+from core.events.redis_client import event_redis
 
 logger = logging.getLogger("core.worker")
 
@@ -45,7 +46,9 @@ async def run_worker(
 ) -> None:
     """Run the outbox publisher + every registered consumer until `stop` is set."""
     _install_consumers()
-    redis = redis or Redis.from_url(get_settings().redis_url)
+    # One decoding contract for the event plane — see core/events/redis_client.py. Without it
+    # redis-py returns bytes keys and every consumer fails on `fields["data"]`.
+    redis = redis or event_redis()
     name = consumer_name or f"worker-{os.getpid()}"
     specs = consumer_mod.registered()
     logger.info("worker starting: outbox publisher + %d consumer(s)", len(specs))
@@ -77,7 +80,7 @@ def main() -> None:
     # The worker and scheduler hold the same signing keys and reach the same database as the API,
     # and the worker is the process that actually messages customers — guarding only the API would
     # leave the loudest external effect unguarded.
-    from core.common.config import assert_secrets_available, get_settings
+    from core.common.config import assert_secrets_available
     from core.common.safety import assert_environment_safe
 
     _settings = get_settings()

@@ -13,7 +13,6 @@ replay of the graph never double-sends.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, TypedDict
@@ -58,11 +57,21 @@ class Deps:
 
 def compose_prompt(persona: str, state: RunState) -> tuple[str, str]:
     """A deterministic prompt for the skeleton + its content hash (the run's audit anchor).
-    Real layered composition (MVP-059) wires in later; the hash contract is what matters here."""
-    prompt = (
-        f"[persona:{persona}] [route:{state.get('route_name', '')}]\n"
-        f"input: {json.dumps(state.get('input', {}), sort_keys=True)}"
-    )
+    Real layered composition (MVP-059) wires in later; the hash contract is what matters here.
+
+    **Instructions only — never runtime input.** This previously appended
+    `input: {json of state["input"]}`, which put the customer's own words into the composed prompt.
+    That prompt is what `LlmProvider` sends as the **system** message, so any run that fell back to
+    this skeleton — no active prompt binding, or a composition failure — promoted untrusted customer
+    text into the trusted instruction block. Persona and route are platform-owned; `input` is not,
+    and it reaches the provider through the runtime-input serializer in the user role instead.
+
+    A consequence worth stating: the hash no longer varies with the customer's message. That is the
+    correct contract — it identifies *which instructions* a run used, which is what an auditor needs
+    and what real composition (`compose_render`) already hashed. Two runs of the same route now
+    share an anchor, which is the point of an anchor.
+    """
+    prompt = f"[persona:{persona}] [route:{state.get('route_name', '')}]"
     return prompt, hashlib.sha256(prompt.encode()).hexdigest()
 
 

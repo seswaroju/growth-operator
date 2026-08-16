@@ -473,6 +473,25 @@ That is worth its own small ticket — a test that only passes on a clean databa
 fail for everyone and be diagnosed as a real regression. It is **not** a PILOT-1C blocker and must
 not be attributed to it.
 
+**Exact mechanism identified 2026-08-16** (during PILOT-1D-L; re-confirmed pre-existing by stashing
+the branch and re-running). The `scene` fixture inserts a fresh `rate_sources` row with
+`source_key='ibja_gold'` on every run and never removes it, while the product resolves a source *by
+`source_key`*. On the founder's database one leftover row from an earlier run already exists — it
+currently carries **87** accumulated `rate_snapshots` — so during the test the key matches two rows
+and the product writes against the stale one. `scene.snapshot_count()` filters on the fixture's own
+`source_id` and therefore sees 0.
+
+This also explains the second failure's shape: with no snapshot on the resolved source there is no
+baseline to compare against, so an out-of-bounds value is classified `updated` rather than
+`quarantined`. All three failures are one cause, not three.
+
+Not RLS and not a DSN split — both were checked and ruled out: `rate_snapshots` has neither RLS nor
+an `org_id` column, and `database_url` and `database_migrator_url` point at the same database.
+
+The fix belongs with #43 (TEST-DB-ISOLATION): the fixture should scope resolution to the source it
+created, or run against a per-test database. Deliberately **not** fixed inside PILOT-1D-L, which is
+scoped to the two runtime defects.
+
 ## #37 — A real message has never physically reached a phone (OPEN — blocks real-pilot acceptance)
 
 **Opened** 2026-08-13 (PILOT-1C). The recovery slice is proven end to end against real Postgres up
@@ -601,3 +620,29 @@ findings, and bolting a second backup subsystem onto it would have widened it we
 **Required before PILOT-1E production acceptance.** Likely the smallest form: `mc mirror` (or
 `aws s3 sync`) of the bucket into the same encrypted off-site destination the database dump already
 uses, on the same nightly schedule, with the restore drill extended to prove an image comes back.
+
+## #45 — An agent run reports `status=succeeded` when its send was denied (OPEN — correctness of run status)
+
+**Opened** 2026-08-16 during PILOT-1D-L, at founder request. **Recorded, not fixed** — outside the
+two-defect scope of this patch.
+
+In the live run that exposed the PILOT-1D-L defects, `messages.send` was **denied by manifest
+integrity** and no message was produced, yet the agent run finished with `status=succeeded`. The run
+status currently reflects "the graph reached its terminal node without raising", not "the run
+achieved its purpose".
+
+Why it matters more than it looks: run status is what an operator scans, and what any future alerting
+would key on. A denied send is exactly the event that must not be invisible — it is the difference
+between "the customer was answered" and "the customer was silently not answered". During a pilot this
+would read as a healthy run.
+
+Deliberately **not** addressed here: changing terminal-status semantics affects every consumer of run
+status and needs its own ticket and its own tests, and folding it into a defect patch is how an
+unrelated behaviour change ships unreviewed.
+
+## #46 — Stale CP-5 `priya.reason` tunable-node mismatch (OPEN — carried, untouched)
+
+**Recorded** 2026-08-16. Founder explicitly excluded this from PILOT-1D-L ("do not work on the stale
+CP-5 `priya.reason` tunable-node mismatch in this patch"). Logged so it is not lost now that the
+routing path around it has been touched — the PILOT-1D-L change corrects *what is sent* to the
+provider and does not alter node naming or tunables.

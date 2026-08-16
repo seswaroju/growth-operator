@@ -92,8 +92,26 @@ async def _dedupe_and_handle(spec: ConsumerSpec, envelope: dict[str, Any]) -> No
             raise
 
 
+def stream_field(fields: dict[Any, Any], name: str) -> str:
+    """Read one field from a stream entry regardless of the client's decoding mode.
+
+    Workers construct Redis through `core.events.redis_client.event_redis`, which decodes replies,
+    so this is normally a plain lookup. It exists for the callers that pass their own client — the
+    DLQ replay script, tests, an operator at a REPL — because a consumer that only works when the
+    caller happened to configure decoding is a consumer that fails in production and passes in CI.
+
+    **One boundary, not a conditional everywhere.** Every read of a stream entry goes through here.
+    """
+    if name in fields:
+        return str(fields[name])
+    raw = fields.get(name.encode())
+    if raw is None:
+        raise KeyError(name)
+    return raw.decode() if isinstance(raw, bytes) else str(raw)
+
+
 def _envelope(fields: dict[str, Any]) -> dict[str, Any]:
-    return json.loads(fields["data"])
+    return json.loads(stream_field(fields, "data"))
 
 
 # ---- Retries + dead-letter queue (MVP-029) ---------------------------------
@@ -164,7 +182,7 @@ async def replay_dlq(redis: Redis, event_type: str, limit: int = 100) -> int:
     original = f"gop:events:{event_type}"
     entries: Any = await redis.xrange(dlq, count=limit)
     for entry_id, fields in entries:
-        envelope = json.loads(fields["data"])["envelope"]
+        envelope = json.loads(stream_field(fields, "data"))["envelope"]
         await redis.xadd(original, {"data": json.dumps(envelope)})
         await redis.xdel(dlq, entry_id)
     return len(entries)
