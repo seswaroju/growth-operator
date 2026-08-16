@@ -36,6 +36,7 @@ from core.prompts.registry import get_active_binding
 from core.runtime import failure
 from core.runtime import graph as g
 from core.runtime.graph import Deps, RunState, next_node
+from core.runtime.inference_policy import MODEL_NODE_TIMEOUT_S
 from core.runtime.model import default_model
 from core.runtime.routing import RoutingModel
 from core.tenancy import flags
@@ -44,6 +45,15 @@ from core.tenancy.middleware import org_scoped_session
 logger = logging.getLogger("core.runtime.executor")
 
 NODE_TIMEOUT_S = 30.0
+#: The model node gets its own, larger deadline. Every other node is local work — routing,
+#: composition, a tool call, a send — where 30s is generous. `model_turn` is the only one that
+#: contains a chain of remote calls, and it used to share the same 30s as the single provider
+#: attempt inside it, leaving no margin for the Vaylorn-side work that follows a provider response
+#: (#48). Derived from the attempt budget in `inference_policy`, never written independently here.
+#:
+#: Note what this deadline does *not* cover: the step checkpoint below is written after
+#: `asyncio.wait_for` returns, so checkpoint persistence is outside the bound and outside the
+#: overhead budget sized for it.
 DEFAULT_MAX_STEPS = 40
 KILL_SWITCH_FLAG = "runtime.kill"
 STEP_RETRY_LIMIT = 1  # a failed step is retried once; a 2nd consecutive failure trips the breaker
@@ -410,8 +420,9 @@ async def _drive(
         # respond's external effect is idempotent on the run id (the real send path dedups on it),
         # so a resume that re-runs respond after a crash never double-sends — no pre-claim needed.
         try:
+            node_timeout = MODEL_NODE_TIMEOUT_S if node == g.MODEL_TURN else NODE_TIMEOUT_S
             updates: dict[str, Any] = await asyncio.wait_for(
-                g.NODE_FNS[node](state, deps), timeout=NODE_TIMEOUT_S
+                g.NODE_FNS[node](state, deps), timeout=node_timeout
             )
         except TimeoutError:
             async with org_scoped_session(org_id) as s:

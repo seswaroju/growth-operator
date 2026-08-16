@@ -686,3 +686,60 @@ unlocked code and pass against the fix (5 runs each way).
 **Still unproven, deliberately:** the end-to-end physical chain. This closes the code gap; the live
 proof is a separate act — a new message from the founder handset with the real worker running and
 no manual invocation. Until that happens #37 stays open.
+
+## #48 — Priya inference mode / deadline collision exposed by physical WhatsApp (CODE-RESOLVED 2026-08-16)
+
+**Opened** 2026-08-16 during PILOT-1D-L physical proof, immediately after #47 made the path
+automatic.
+
+**What physically happened.** A new real handset message — "Hi, can someone help me?" — traversed
+the whole chain automatically with no manual `normalize_pending()` call: handset → Meta → webhook →
+`webhook_events` → the new normalizer → `msg.received.v1` → outbox → Redis → planner → Priya run →
+route → compose. The worker log then showed `POST https://api.deepseek.com/v1/chat/completions`
+returning `HTTP/1.1 200 OK`, and the run nevertheless ended:
+
+    run     e1710705-997d-41fe-abaf-04087724b9e6
+    status  interrupted
+    error   {"code": "provider_unavailable", "detail": "model_turn timeout"}
+
+Duration ~30s. Only two `agent_steps` persisted (`route`, `compose`) — no `model_turn`. No
+`costs_lite` row for the run. The run state correctly carried `body`, `task=qualify`,
+`intent=greeting`, `clarify=false`, so the earlier runtime-input-loss defect is confirmed fixed.
+
+**Two proven defects.**
+
+1. *Implicit provider reasoning mode.* The adapter sent only `model`, `max_tokens` and `messages`.
+   DeepSeek V4 defaults thinking ON, so the customer-facing concierge turn was being asked to
+   deliberate over a greeting, with no explicit control either way.
+2. *Equal inner and outer deadlines.* `llm_client.call_provider(timeout=30.0)` sat inside
+   `executor.NODE_TIMEOUT_S = 30.0`. A provider may consume the entire enclosing budget, leaving
+   nothing for route lookup, parsing, adapter normalization, cost telemetry or fallback
+   bookkeeping — so a successful provider response can be discarded by the deadline meant to
+   protect the turn. (Not the executor's step checkpoint: that is written after `asyncio.wait_for`
+   returns and is outside this bound entirely.)
+
+**Explicitly hypotheses, not findings.** It is *not* established that thinking mode caused this
+particular timeout, and it is *not* established that `_log_cost` hung. The absent `costs_lite` row
+is consistent with several stories (the node deadline firing before telemetry ran, telemetry itself
+being slow, or the attempt never returning) and the evidence does not choose between them. Two separate logs now exist — one
+emitted the moment `provider.complete` returns, one after `_log_cost` completes — so the next
+occurrence distinguishes them by which lines are present: both (failure is later), provider only
+(the telemetry/cancellation boundary), or neither (the provider call did not return).
+
+**Fixed by** a platform-controlled `core/runtime/inference_policy.py`: a provider-neutral
+`ReasoningMode` per node (`priya.reason → OFF`, everything else `DEFAULT`), translated to a vendor
+wire field by the selected provider's adapter via a declared `ProviderDefinition.reasoning_control`
+— so DeepSeek receives `{"thinking": {"type": "disabled"}}` and OpenAI, which shares the same
+adapter, receives nothing. Deadlines are now derived rather than independently written:
+`PROVIDER_ATTEMPT_TIMEOUT_S = 20.0`, `MODEL_NODE_TIMEOUT_S = 20 × 2 + 5 = 45.0`, with the model node
+alone taking the larger budget.
+
+No route params, admin API or tenant-writable row can contribute a request-body field;
+`models_admin` still exposes provider and model only.
+
+**CODE-RESOLVED on evidence:** `tests/unit/test_inference_policy.py` (19 tests), confirmed to fail
+against both pre-fix states — deadlines set back to 30/30 (4 failures) and DeepSeek's
+`reasoning_control` removed (3 failures).
+
+**#37 stays OPEN.** No real handset message has yet returned a real Vaylorn-generated WhatsApp
+reply. This closes the code defects; it does not close the physical proof.

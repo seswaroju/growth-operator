@@ -11,7 +11,13 @@ from core.runtime.adapters.base import HttpCall, NormalizedRequest, NormalizedRe
 class AnthropicNativeAdapter:
     name = "anthropic_native"
 
-    def build(self, req: NormalizedRequest, *, endpoint: str, key: str) -> HttpCall:
+    def build(
+        self, req: NormalizedRequest, *, endpoint: str, key: str,
+        reasoning_control: str | None = None,
+    ) -> HttpCall:
+        # Anthropic's definition declares no `reasoning_control`, so nothing is sent and the
+        # vendor default applies. Accepting the argument and ignoring it keeps every adapter to one
+        # signature; a future extended-thinking control would be added here, not branched on above.
         return HttpCall(
             url=f"{endpoint}/v1/messages",
             headers={"x-api-key": key, "anthropic-version": "2023-06-01",

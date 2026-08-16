@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from core.runtime.inference_policy import ReasoningMode
+
 
 @dataclass(frozen=True)
 class NormalizedRequest:
@@ -12,6 +14,9 @@ class NormalizedRequest:
     user: str
     model: str
     max_tokens: int = 1024
+    #: What Vaylorn wants, in provider-neutral terms. The adapter decides whether the selected
+    #: vendor can express it; `DEFAULT` is always expressed by sending nothing.
+    reasoning: ReasoningMode = ReasoningMode.DEFAULT
 
 
 @dataclass(frozen=True)
@@ -51,6 +56,13 @@ class HttpCall:
 class ProviderAdapter(Protocol):
     name: str
 
-    def build(self, req: NormalizedRequest, *, endpoint: str, key: str) -> HttpCall: ...
+    def build(
+        self, req: NormalizedRequest, *, endpoint: str, key: str,
+        reasoning_control: str | None = None,
+    ) -> HttpCall:
+        """Build the vendor request. `reasoning_control` is the selected *provider's* capability
+        (`ProviderDefinition.reasoning_control`), which is what lets one adapter serve several
+        vendors without branching on their names. `None` → send no reasoning field."""
+        ...
 
     def parse(self, raw: dict[str, Any]) -> NormalizedResult: ...

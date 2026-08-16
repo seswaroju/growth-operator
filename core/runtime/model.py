@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from core.common.config import get_settings
+from core.runtime.inference_policy import reasoning_for
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,9 @@ class LlmProvider:
         result = await llm_client.call_provider(
             provider=self.name, model=model, system=system,
             user=render_runtime_input(context) or NO_RUNTIME_INPUT,
+            # Platform policy for this node, not route params. `params` stays an allow-list of two
+            # trusted keys; a vendor body field never originates from a tenant-writable row.
+            reasoning=reasoning_for(node_key),
             required_capabilities=frozenset(params.get("requires") or ()) or None,
         )
         return ModelResult(tool_call=None, text=result.text,

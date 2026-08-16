@@ -25,6 +25,18 @@ from typing import Literal
 
 Adapter = Literal["openai_compatible", "anthropic_native"]
 
+#: How a provider lets a caller control deliberation, when it does at all.
+#:
+#: Needed because one adapter serves several vendors: OpenAI and DeepSeek share
+#: `openai_compatible`, but `thinking` is DeepSeek's field and sending it to OpenAI would be an
+#: unknown body parameter — a rejected request at worst, a silently ignored one at best, and either
+#: way a shared adapter that is no longer portable. Naming the capability on the *provider* keeps
+#: the adapter free of `if provider == "deepseek"`.
+#:
+#: `None` means the provider exposes no control Vaylorn uses, so nothing is sent and the vendor
+#: default applies.
+ReasoningControl = Literal["deepseek_thinking"]
+
 
 @dataclass(frozen=True)
 class ProviderDefinition:
@@ -33,6 +45,9 @@ class ProviderDefinition:
     endpoint: str          # platform-controlled base URL; never operator-supplied
     credential_ref: str    # settings field holding this provider's key — never the key itself
     enabled: bool = True
+    #: Vendor-specific knob for `ReasoningMode`. Absent by default: a new provider sends no
+    #: reasoning field until someone verifies that vendor's wire shape.
+    reasoning_control: ReasoningControl | None = None
 
 
 #: The approved vendors. DeepSeek is deliberately present in v1: it exercises the *same*
@@ -43,7 +58,11 @@ PROVIDERS: tuple[ProviderDefinition, ...] = (
     ProviderDefinition(
         "openai", "openai_compatible", "https://api.openai.com", "llm_key_openai"),
     ProviderDefinition(
-        "deepseek", "openai_compatible", "https://api.deepseek.com", "llm_key_deepseek"),
+        "deepseek", "openai_compatible", "https://api.deepseek.com", "llm_key_deepseek",
+        # V4 defaults thinking ON, so a conversational node pays reasoning latency unless it is
+        # switched off explicitly. OpenAI above carries no control and is therefore untouched by
+        # the same policy through the same adapter.
+        reasoning_control="deepseek_thinking"),
     ProviderDefinition(
         "anthropic", "anthropic_native", "https://api.anthropic.com", "llm_key_anthropic"),
 )
