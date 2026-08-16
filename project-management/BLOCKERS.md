@@ -584,6 +584,62 @@ No Meta call was made.
 
 ## #43 — Tests share the founder's development database (OPEN — technical debt: TEST-DB-ISOLATION)
 
+### Confirmed incident 2026-08-16 — a test corrupted a live pilot store, and it cost a physical proof
+
+This stopped being theoretical. `tests/integration/test_send_loop.py` contained:
+
+```sql
+UPDATE approval_policies SET tier=2 WHERE action_type='action.message.send'
+```
+
+Correct for its own fixture; unbounded against the shared development database. `approval_policies`
+holds **global pack rows with `org_id` NULL**, so the statement reached every pack in the database —
+including Ratna's live jewelry pack `e420d84d-4e3a-4827-842f-8e1a1edcc6c1`. It moved three ordinary
+outbound-message rules from tier 1 to tier 2:
+
+| rule | intended | after the test |
+|---|---|---|
+| Replies in an active customer chat | 1 | 2 |
+| Follow-up nudges | 1 | 2 |
+| Support replies | 1 | 2 |
+
+**Consequence:** at 18:48:53 UTC a real customer's WhatsApp greeting reached Priya, DeepSeek produced
+a correct reply, and the send parked on approval `122fea42-fe6f-44b7-8a22-0c5262cb6f4c` instead of
+going out. The physical proof was lost to a test.
+
+**What was actually wrong, and what was not.** The pack source has said tier 1 in every commit since
+the initial scaffold; the parser produced tier 1; `installer._seed_policies` writes `rule.tier`
+faithfully; `agent_bindings.tier_defaults` for the same pack still held tier 1 throughout. **Only the
+`approval_policies` rows were corrupted.** Nothing in the repository ever expressed tier 2 for these
+rules — which is why reading the source could not explain the database, and why this looked for some
+time like a pack or installer defect.
+
+**A second door into the same room.** `installer._get_or_create_pack` upserts on `(slug, version)`,
+so any test calling `install()` on `verticals/jewelry` receives the **real** pack id rather than a
+fixture's. `tests/integration/test_prompt_activation.py:61` does exactly that, and its teardown then
+*deliberately* leaves the shared rows behind when another org still has the pack installed — which
+Ratna does. That is how these rows came to be re-created at 18:21:02 with no `pack.installed` audit
+(the test also deletes its own audit rows). Tests write into live pilot pack rows as a matter of
+course; the unscoped UPDATE is what made it visible.
+
+**Fixed in this patch (narrow):** the UPDATE is scoped by `pack_id`, and a new `test-policy-writes`
+guard (`scripts/guards.py`) fails any UPDATE/DELETE of `approval_policies` in `tests/` that names
+neither `pack_id` nor `org_id`. `tests/unit/test_jewelry_policy_baseline.py` pins the source
+baseline. Ratna's three rows were repaired by a single targeted UPDATE (3 rows).
+
+**NOT fixed, and why #43 stays OPEN:** the guard stops one syntactic class of accident. It does not
+stop a test from installing into the live pack, from deleting shared rows, or from writing any other
+table. The real fix is an ephemeral per-run database, which is not built here.
+
+**Related test-isolation debt found while investigating:**
+
+- `tests/integration/test_prompt_activation.py` runs
+  `ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable` on the shared database, disabling
+  an append-only integrity control for the duration of a test run.
+- Several fixtures resolve production rows by name (`SELECT id FROM packs WHERE slug='jewelry'`)
+  rather than creating their own.
+
+
 **Opened** 2026-08-14 (DEMO-UX-1, founder-recorded).
 
 `pytest` runs against the same Postgres the founder develops against. Fixtures that leaked rows
@@ -743,3 +799,136 @@ against both pre-fix states — deadlines set back to 30/30 (4 failures) and Dee
 
 **#37 stays OPEN.** No real handset message has yet returned a real Vaylorn-generated WhatsApp
 reply. This closes the code defects; it does not close the physical proof.
+
+## #49 — `_seed_policies` never updates a policy whose source tier changed (OPEN — upgrade defect)
+
+**Recorded** 2026-08-16 during the #43 incident investigation. **Not causal there** — those rows were
+freshly inserted — and deliberately not fixed in that patch.
+
+`core/packs/installer.py::_seed_policies` inserts with
+`WHERE NOT EXISTS (... pack_id, scope, action_type, description)`. The guard does not consider
+`tier`, `cel_expr`, `approver_chain` or `timeout_s`, so editing any of them in a pack's
+`bindings.yaml` and reinstalling leaves the old row in place. The install reports success and the
+database silently keeps the previous policy.
+
+This matters most for the case it is least visible in: lowering a tier in source would appear to
+work everywhere except the database that enforces it. Needs its own ticket — an upsert has to decide
+what happens to an operator's deliberate override, which is a product question, not a SQL one.
+
+## #50 — Approval rows lose `matched_rules` (OPEN — observability debt)
+
+**Recorded** 2026-08-16 at founder request. **Not causal** in the #43 incident and deliberately not
+fixed there.
+
+`core/mediation/proxy.py::_engine_tier()` calls `evaluate_tool(...)` and returns only
+`decision.tier`, discarding `decision.matched_rules`. Every approval therefore persists
+`matched_rules = []`.
+
+Why it is worth fixing: during the #43 investigation the empty list read as evidence that *no policy
+matched*, which pointed at pack visibility, RLS and pack-id mismatches — all of which were fine. An
+approval that recorded which rule parked it would have identified the corrupted row immediately
+instead of after tracing the whole install path. The cost of this debt is measured in wrong turns
+during an incident, not in wrong behaviour.
+
+## #51 — POLICY-PREFLIGHT: determine action authority before expensive model inference (OPEN — future architecture/product ticket, NOT scheduled)
+
+**Recorded** 2026-08-16 at founder request. **Deliberately not implemented.** Revisit only after
+PILOT-1D-L proves the full physical loop: real handset → Meta → Vaylorn → Priya → real model →
+`messages.send` → Meta → real handset reply.
+
+### Problem
+
+The normal execution order today is:
+
+```
+event → LLM inference → proposed tool/action → approval policy evaluation → possible Tier 2/3 parking
+```
+
+When an action is *deterministically* known to need approval before anything is generated, the
+tokens spent producing that content are wasted whenever the owner rejects it.
+
+Where authority is knowable in advance, and where it is not:
+
+| case | knowable before generation? |
+|---|---|
+| ordinary customer reply (`messages.send`) | yes — usually Tier 1 |
+| quote ≥ ₹1,00,000 | yes — the structured amount already decides Tier 2 |
+| any discount | yes — structured quote data establishes Tier 2 |
+| campaign / broadcast (`action.campaign.execute`) | yes — Tier 3 regardless of the copy |
+| angry / legal / refund escalation | **no** — the tier depends on semantic classification of content that does not exist yet |
+
+That last row is why preflight cannot be a simple pre-computation of the final answer.
+
+### Design principle
+
+Decide as much authority as possible **before** spending model tokens, while keeping the existing
+final mediation/policy evaluation **after** the model proposes the actual action:
+
+```
+event / structured intent
+  → deterministic context
+  → POLICY PREFLIGHT
+  → optionally obtain Tier 2/3 approval first
+  → model generation
+  → FINAL POLICY CHECK on the actual generated action + parameters
+  → side effect
+```
+
+### Preflight result shape (illustrative — do not freeze an API from this)
+
+A single integer tier is the wrong return type, because it cannot express "I do not yet know". The
+result needs to carry at least: `minimum_tier`, whether the answer is `exact` given current
+information, whether generated content still `requires_content_evaluation`, the matched
+policy/`reason`, and the action family.
+
+```
+PolicyPreflight: action=messages.send    minimum_tier=1  exact=true
+                 requires_content_evaluation=false  reason=reply_standard
+
+PolicyPreflight: action=messages.send    minimum_tier=1  exact=false
+                 requires_content_evaluation=true
+                 reason="generated content could trigger escalation"
+
+PolicyPreflight: action=campaign.execute minimum_tier=3  exact=true
+                 requires_content_evaluation=false  reason=any_broadcast
+```
+
+### Safety property (the part that must not be got wrong)
+
+**Preflight is an optimization and an early-authorization mechanism. Final mediation remains
+authoritative.** A preflight answer of Tier 1 is a prediction, never a grant.
+
+Worked example: preflight expects an ordinary Tier-1 reply → the model unexpectedly proposes a
+discount → the final policy engine raises the actual action to Tier 2 → it **must not** auto-send
+merely because preflight said Tier 1.
+
+Preflight must never become an authorization bypass. Any implementation that lets a preflight result
+substitute for the final check has reintroduced the exact hazard the approval engine exists to
+prevent.
+
+### Cost model
+
+The saving is **not** on ordinary Tier-1 replies — those still need the model to produce the reply.
+It comes from Tier-2/Tier-3 work that can be rejected *before* generation:
+
+- campaign requested → Tier 3 known deterministically → owner rejects → **zero** campaign-copy
+  inference spent
+- ₹140,000 quote with 5% discount → structured pricing establishes Tier 2 → a deterministic approval
+  card is shown first → only after approval does the model produce polished customer wording
+
+### Non-goals
+
+Do not, under this ticket: redesign approvals, change Tier semantics, change jewelry policy values,
+change the Priya runtime, touch #43/#49/#50, delay the PILOT-1D-L physical proof, or introduce
+provider-specific logic. This stays provider-neutral.
+
+### Open questions for whoever picks this up
+
+- What does the owner see for a pre-generation approval? A deterministic card built from structured
+  data has no generated copy in it, which is a different (and possibly better) review surface than
+  today's "approve this draft".
+- Does an early approval remain valid once the model produces content that changes the action's
+  shape? Probably not — which suggests the early approval authorizes an *intent*, and the final check
+  still authorizes the *action*.
+- Preflight needs the same policy inputs as the engine. Sharing that evaluation path is what stops
+  the two drifting apart and quietly disagreeing.
