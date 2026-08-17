@@ -156,15 +156,25 @@ async def _ingest_media(
     return media_list
 
 
-def _statuses(payload: dict[str, Any]) -> list[tuple[str, str]]:
-    """Yield (provider_message_id, status) for each delivery status in a webhook payload."""
-    out: list[tuple[str, str]] = []
+def _statuses(payload: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Yield (phone_number_id, provider_message_id, status) for each delivery status.
+
+    The `phone_number_id` is carried alongside deliberately: it is the only thing in a status
+    webhook that identifies *whose* message the provider is talking about, and the tenant has to be
+    known before an RLS-protected row can be touched. A status whose change block has no metadata
+    is skipped rather than applied without an owner — exactly as `_messages` does.
+    """
+    out: list[tuple[str, str, str]] = []
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
-            for st in change.get("value", {}).get("statuses", []):
+            value = change.get("value", {})
+            pnid = value.get("metadata", {}).get("phone_number_id")
+            if not pnid:
+                continue
+            for st in value.get("statuses", []):
                 pmid, status = st.get("id"), st.get("status")
                 if pmid and status:
-                    out.append((str(pmid), str(status)))
+                    out.append((str(pnid), str(pmid), str(status)))
     return out
 
 
@@ -177,22 +187,47 @@ _RECORDED_STATUSES = {"delivered", "failed"}
 async def _apply_statuses(session: AsyncSession, payload: dict[str, Any]) -> None:
     """Apply provider delivery statuses to the message and any recovery attempt behind it.
 
-    Matched on `provider_message_id` — the provider's own identifier for its own statement. The
-    org is derived from the matched message row, never from the webhook: a payload cannot name the
-    tenant whose records it updates."""
+    **Tenant context first (#53).** This previously issued its `UPDATE messages` before any
+    `set_org_context`, and `messages` carries `FORCE ROW LEVEL SECURITY` whose policy is
+    `org_id = current_setting('app.org_id')`. With no context set that comparison is NULL, so the
+    row was invisible, the UPDATE matched zero rows, `RETURNING org_id` gave None, and the loop
+    skipped on — silently. Meta reported `delivered` for real pilot messages and the rows stayed
+    `sent`; `recovery_attempts.mark_delivered` was never reached either, so PILOT-1C's recovery
+    lifecycle could not observe the delivery it depends on. Nothing failed loudly, which is why it
+    survived: a status webhook that changes nothing looks exactly like one that had nothing to
+    change.
+
+    **Where the tenant comes from.** Not from the payload's own say-so. `phone_number_id` is used
+    as a *lookup key* into our own `channels` table via `resolve_channel`, the same trusted
+    ownership path inbound messages already use — the org is whatever Vaylorn recorded as owning
+    that number. A webhook cannot name a tenant; it can only identify a number we then look up. The
+    UPDATE is additionally scoped by that `org_id`, so tenant isolation does not rest on RLS alone.
+
+    Statuses for an unknown number are skipped: an unowned number is not ours to act on.
+    """
     from core.customers import recovery_attempts
     from core.tenancy.repository import set_org_context
 
-    for provider_message_id, status in _statuses(payload):
+    for phone_number_id, provider_message_id, status in _statuses(payload):
         if status not in _RECORDED_STATUSES:
             continue
-        org_id = (await session.execute(
-            text("UPDATE messages SET status = :st WHERE provider_message_id = :pm "
-                 "AND status <> :st RETURNING org_id"),
-            {"st": status, "pm": provider_message_id})).scalar_one_or_none()
-        if org_id is None or status != "delivered":
+        resolved = await _resolve_channel(session, phone_number_id)
+        if resolved is None:
+            logger.warning(
+                "status for unknown phone_number_id; skipping (status=%s)", status)
             continue
+        _channel_id, org_id = resolved
+        # Context BEFORE the mutation — this ordering is the whole fix.
         await set_org_context(session, UUID(str(org_id)))
+        updated = (await session.execute(
+            text("UPDATE messages SET status = :st "
+                 "WHERE provider_message_id = :pm AND org_id = :org AND status <> :st "
+                 "RETURNING id"),
+            {"st": status, "pm": provider_message_id, "org": str(org_id)})).scalar_one_or_none()
+        # `status <> :st` makes a repeated webhook a no-op, so a duplicate `delivered` neither
+        # rewrites the row nor re-runs the recovery-lifecycle effect below.
+        if updated is None or status != "delivered":
+            continue
         await recovery_attempts.mark_delivered(
             session, UUID(str(org_id)), provider_message_id=provider_message_id)
 
