@@ -492,7 +492,14 @@ The fix belongs with #43 (TEST-DB-ISOLATION): the fixture should scope resolutio
 created, or run against a per-test database. Deliberately **not** fixed inside PILOT-1D-L, which is
 scoped to the two runtime defects.
 
-## #37 — A real message has never physically reached a phone (OPEN — blocks real-pilot acceptance)
+## #37 — A real message has never physically reached a phone (RESOLVED 2026-08-17 — PHYSICALLY PROVEN)
+
+**Closed 2026-08-17.** A real Priya reply reached the founder's handset and was confirmed visually.
+Meta independently reported `sent → delivered → read`. Full evidence in the PILOT-1D-L record at the
+end of this file. The original open text follows for history.
+
+---
+
 
 **Opened** 2026-08-13 (PILOT-1C). The recovery slice is proven end to end against real Postgres up
 to the provider boundary: gates, guards, RLS, the durable dispatch claim, the lifecycle and the
@@ -582,7 +589,16 @@ to Meta explicitly → observe pending/approved/rejected → the merchant's camp
 template design suite, and it must not be built by guessing — it needs the real Meta account.
 No Meta call was made.
 
-## #43 — Tests share the founder's development database (OPEN — technical debt: TEST-DB-ISOLATION)
+## #43 — Tests share the founder's development database (**STILL OPEN** — technical debt: TEST-DB-ISOLATION)
+
+> **2026-08-17 — explicitly NOT closed by the PILOT-1D-L merge.** The specific `approval_policies`
+> corruption incident below is contained: the offending UPDATE is pack-scoped, a `test-policy-writes`
+> guard fails any unscoped policy write in `tests/`, and Ratna's rows were repaired. **General
+> shared-test-database isolation remains unsolved** — a test calling `install()` on
+> `verticals/jewelry` still receives the live pack id via `ON CONFLICT (slug, version)`, tests still
+> resolve production rows by slug, and `test_prompt_activation` still disables the `audit_log`
+> immutability trigger. Do not read the containment as a resolution.
+
 
 ### Confirmed incident 2026-08-16 — a test corrupted a live pilot store, and it cost a physical proof
 
@@ -703,7 +719,12 @@ CP-5 `priya.reason` tunable-node mismatch in this patch"). Logged so it is not l
 routing path around it has been touched — the PILOT-1D-L change corrects *what is sent* to the
 provider and does not alter node naming or tunables.
 
-## #47 — WhatsApp webhook normalizer had no production caller (RESOLVED 2026-08-16)
+## #47 — WhatsApp webhook normalizer had no production caller (RESOLVED 2026-08-16 — PHYSICALLY PROVEN 2026-08-17)
+
+**Physically proven 2026-08-17.** Webhook `fabc6e5b` was normalized automatically by the worker-owned
+loop with no manual `normalize_pending()` call, producing `msg.received.v1` `a254f4de` 0.9s after
+arrival. See the PILOT-1D-L record at the end of this file.
+
 
 **Opened and resolved** 2026-08-16 during PILOT-1D-L physical Meta proof.
 
@@ -743,7 +764,13 @@ unlocked code and pass against the fix (5 runs each way).
 proof is a separate act — a new message from the founder handset with the real worker running and
 no manual invocation. Until that happens #37 stays open.
 
-## #48 — Priya inference mode / deadline collision exposed by physical WhatsApp (CODE-RESOLVED 2026-08-16)
+## #48 — Priya inference mode / deadline collision exposed by physical WhatsApp (RESOLVED 2026-08-17 — PHYSICALLY PROVEN)
+
+**Physically proven 2026-08-17.** Run `c63ca8d5` completed a DeepSeek turn in **1388ms** against a
+20s attempt budget inside a 45s node deadline, with thinking explicitly disabled, and the run
+finished `succeeded` in 3.1s. The two hypotheses recorded below were never confirmed and are left
+as written — the fix stands on the two code-level defects, both now exercised live.
+
 
 **Opened** 2026-08-16 during PILOT-1D-L physical proof, immediately after #47 made the path
 automatic.
@@ -1002,3 +1029,101 @@ a search for `%pendant%` returned zero rows, and the newest actual event still c
 `"Hi, can someone help me?"`. No pendant test occurred; nothing in this repository should be read as
 claiming one did. Whether that message was never sent or never delivered by Meta is unresolved and
 is the one fact in this trace that cannot be established from the machine.
+
+---
+
+# PILOT-1D-L — PHYSICAL PROOF RECORD (2026-08-17)
+
+**The loop is closed.** A real customer message from a real handset was answered autonomously by
+Priya, sent through Meta, and received on the handset. Confirmed visually by the founder and
+independently by Meta's own delivery receipts.
+
+## The proven chain
+
+```
+real handset
+  → Meta
+  → Cloudflare tunnel
+  → webhook ingress (webhook-only, 404 on everything else)
+  → webhook_events (Postgres)
+  → automatic WhatsApp normalizer (worker-owned, no manual call)
+  → msg.received.v1 → outbox → Redis
+  → worker → planner
+  → Priya → DeepSeek V4 Flash (thinking disabled)
+  → communication_mode = reactive → effective Tier 1 → NO approval
+  → mediation → messages.send
+  → Meta Graph API → HTTP 200 + wamid
+  → real handset receipt CONFIRMED
+```
+
+## Evidence
+
+| Stage | Value |
+|---|---|
+| Inbound webhook | `fabc6e5b-3c86-4f25-acf6-7ab69403e155`, received 01:48:11.336 UTC |
+| Normalized | `processed_at` 01:48:12.256 — 0.9s later, automatic |
+| Event | `msg.received.v1` `a254f4de-6ec7-4a34-87c4-ad9aa1d0be7f`, published + consumed |
+| Run | `c63ca8d5-9ece-487b-85d3-c12de539f297` — **succeeded**, 4 steps, 3.1s, `error = None` |
+| Trigger | `msg.received` |
+| communication_mode | **reactive** (derived from the trigger, not from any model output) |
+| Quiet hours | **ACTIVE** — 01:48 UTC = 07:18 IST, inside Ratna's 21:00–08:00 Asia/Kolkata window |
+| Effective tier | **1** — `reply_standard` fired; the quiet-hours floor contributed nothing |
+| Approval | **none created** |
+| Model | deepseek/deepseek-v4-flash, 1388ms, 594/22 tokens |
+| Reply | "VAYLORN PROOF 002 — Yes, I'm here. How can I help you today?" |
+| Outbound row | `status = sent`, wamid stored |
+| Meta | `POST /<version>/<phone_number_id>/messages` → **HTTP 200 OK** |
+| Handset | **CONFIRMED BY FOUNDER** |
+
+The same run evaluated as `proactive` returns tier 2 — so this is a direct, same-store, same-window
+demonstration that the reactive/proactive distinction is what made autonomous delivery possible.
+
+## Additional evidence — Meta delivery receipts
+
+Meta subsequently reported the full lifecycle for **both** successful sends:
+
+```
+wamid …NzA1MTMA   sent → delivered → read
+wamid …RDBFQ0MA   sent → delivered → read
+```
+
+`read` is machine confirmation that the message was opened on the handset, corroborating the
+founder's visual confirmation. A second message at 01:50 also completed the whole chain, so the
+result is reproducible rather than a single lucky run.
+
+## What this closes
+
+- **#37** — a real message has physically reached a phone. Closed.
+- **#47** — normalization ran automatically; no manual `normalize_pending()` call.
+- **#48** — reasoning explicitly disabled, deadlines correct, 1388ms against a 20s budget.
+- **Reactive quiet-hours semantics** — proven in the only way that counts: live, inside the window.
+
+## What it does NOT close
+
+**#43** remains open — see its entry. The corruption incident is contained; shared-test-database
+isolation is not solved. Also still open: **#45** (a run reports `succeeded` even when the external
+action failed — now with live evidence from PROOF 001's 401), **#46**, **#49**, **#50**, **#51**,
+**#52**, and **#53** below.
+
+## #53 — Delivery status never reaches the message row (OPEN — discovered 2026-08-17)
+
+**Found while recording the proof, pre-existing, NOT introduced by the PILOT-1D-L branch.**
+
+Meta sent `delivered` and `read` webhooks; the normalizer stored and processed them
+(`processed_at` set); and `messages.status` is still `sent` for both proven messages.
+
+Cause, from the code: `core/channels/whatsapp/normalizer.py::_apply_statuses` runs
+
+```sql
+UPDATE messages SET status = :st WHERE provider_message_id = :pm AND status <> :st RETURNING org_id
+```
+
+**before** any `set_org_context`, and `messages` has `FORCE ROW LEVEL SECURITY`. With no
+`app.org_id` set the row is invisible, the UPDATE matches zero rows, `org_id` comes back `None`, and
+the loop `continue`s — so the status is never applied and `recovery_attempts.mark_delivered` is
+never reached either. The tenant-safety reasoning in that docstring is sound; the ordering defeats
+it.
+
+Consequences: `delivered`/`read` are invisible to the owner UI and to ROI reporting, and ghost
+recovery cannot observe a delivery it depends on. Not a merge blocker for PILOT-1D-L — the send path
+itself is proven — but it should be fixed before delivery data is trusted for anything.
