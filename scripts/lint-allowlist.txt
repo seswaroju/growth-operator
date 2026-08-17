@@ -8,4 +8,4 @@
 # Example (kept commented; real entries go below, uncommented):
 #   core/insights/example.py::restaurant   # string appears in a doc URL, not industry logic
 #
-# (no active allowlist entries yet)
+tests/unit/test_lint_guards.py::approval_policies   # justification: the guard's own red-path fixtures. These strings are written into a tmp directory to prove test-policy-writes fires; this file opens no database connection. Narrowly scoped to this one file so a real unscoped write anywhere else in tests/ is still caught.

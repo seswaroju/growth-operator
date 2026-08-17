@@ -22,13 +22,16 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import jsonschema
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:  # annotation only — keeps the existing lazy engine import at the call site
+    from core.approvals.engine import CommunicationMode
 
 from core.audit.writer import AuditEntry
 from core.audit.writer import write as audit_write
@@ -50,6 +53,14 @@ class RunContext:
     actor_id: UUID | None = None
     # Tools already approved for this (resumed) run — the tier gate is skipped for them (MVP-069).
     approved: frozenset[str] = frozenset()
+    #: Whether this run is answering a customer or reaching out to one. Derived by the executor from
+    #: the run's own `trigger`, which the platform sets when it creates the run — so it is runtime
+    #: provenance, not something the model, the prompt or a tool argument can assert. Quiet hours
+    #: read it (see `core/approvals/engine.py::_autonomy_floor`).
+    #:
+    #: Defaults to `proactive`: any caller that has not established provenance keeps the stricter
+    #: behaviour, so an exemption is something you opt into with evidence rather than inherit.
+    communication_mode: CommunicationMode = "proactive"
 
 
 @dataclass
@@ -140,6 +151,8 @@ async def _engine_tier(
     decision = await evaluate_tool(
         session, org_id=ctx.org_id, actor_instance_id=ctx.instance_id,
         untrusted=ctx.untrusted, tool=tool, params=params,
+        # From the run context, never from `params` — `params` is model-authored.
+        communication_mode=ctx.communication_mode,
     )
     return decision.tier
 

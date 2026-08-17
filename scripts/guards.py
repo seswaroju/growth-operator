@@ -29,7 +29,16 @@ CORE = REPO / "core"
 WEB = REPO / "web" / "src"
 ADAPTER_DIR = REPO / "core" / "channels"
 RUNTIME_DIR = REPO / "core" / "runtime"
+TESTS_DIR = REPO / "tests"
 ALLOWLIST = REPO / "scripts" / "lint-allowlist.txt"
+
+#: An UPDATE/DELETE against the shared policy table, wherever the statement starts.
+_POLICY_WRITE = re.compile(r"\b(?:UPDATE|DELETE\s+FROM)\s+approval_policies\b", re.I)
+#: What makes such a write belong to one fixture rather than every tenant on the database.
+_POLICY_SCOPE = re.compile(r"\b(?:pack_id|org_id)\b", re.I)
+#: How far past the statement start to look for that scope. Generous, because these statements are
+#: routinely wrapped across several string literals.
+_POLICY_WINDOW = 400
 
 # Unambiguous vertical nouns only. Generic words that collide with common code/CSS
 # (e.g. "ring" — focus:ring, ring buffer) are deliberately excluded to keep the guard
@@ -140,6 +149,36 @@ def guard_session_set(core: Path = CORE) -> list[Violation]:
     ]
 
 
+def guard_test_policy_writes(tests: Path = TESTS_DIR) -> list[Violation]:
+    """A test may not UPDATE or DELETE `approval_policies` without naming a pack or an org.
+
+    This exists because it already happened. `test_send_loop.py` carried
+    `UPDATE approval_policies SET tier=2 WHERE action_type='action.message.send'` — correct for its
+    own fixture, catastrophic against the founder's shared development database, where it moved a
+    live pilot store's ordinary customer replies from tier 1 to tier 2 and parked a real WhatsApp
+    greeting for approval. `approval_policies` holds **global, org_id-NULL pack rows**, so an
+    unscoped write there reaches every tenant that installed any pack.
+
+    The scan is text-windowed rather than line-by-line because these statements are normally built
+    from several adjacent string literals, and a line-based check would both miss the real thing and
+    flag correctly-scoped SQL whose WHERE clause sits on the next line.
+
+    This is a narrow containment, not a fix for shared-database testing (#43) — it stops one class
+    of accident from recurring silently.
+    """
+    out: list[Violation] = []
+    if not tests.is_dir():
+        return out
+    for f in _py_files(tests):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        for m in _POLICY_WRITE.finditer(text):
+            if _POLICY_SCOPE.search(text[m.start():m.start() + _POLICY_WINDOW]):
+                continue
+            line = text.count("\n", 0, m.start()) + 1
+            out.append(Violation("test-policy-writes", _rel(f), line, m.group(0)))
+    return out
+
+
 def guard_runtime_not_tools(runtime: Path = RUNTIME_DIR) -> list[Violation]:
     return [
         Violation("runtime-not-tools", _rel(f), i, line.strip())
@@ -185,6 +224,7 @@ def run_all() -> tuple[list[Violation], list[str]]:
         guard_send_call_sites,
         guard_session_set,
         guard_runtime_not_tools,
+        guard_test_policy_writes,
     ):
         violations.extend(v for v in guard() if not _excused(v, entries))
     return violations, errors
@@ -205,7 +245,7 @@ def main() -> int:
         return 1
     print(
         "lint guards passed (core-not-verticals, industry-nouns, float-money, "
-        "send-call-sites, session-set-ban, runtime-not-tools)"
+        "send-call-sites, session-set-ban, runtime-not-tools, test-policy-writes)"
     )
     return 0
 

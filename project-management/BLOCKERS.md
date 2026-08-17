@@ -473,7 +473,33 @@ That is worth its own small ticket — a test that only passes on a clean databa
 fail for everyone and be diagnosed as a real regression. It is **not** a PILOT-1C blocker and must
 not be attributed to it.
 
-## #37 — A real message has never physically reached a phone (OPEN — blocks real-pilot acceptance)
+**Exact mechanism identified 2026-08-16** (during PILOT-1D-L; re-confirmed pre-existing by stashing
+the branch and re-running). The `scene` fixture inserts a fresh `rate_sources` row with
+`source_key='ibja_gold'` on every run and never removes it, while the product resolves a source *by
+`source_key`*. On the founder's database one leftover row from an earlier run already exists — it
+currently carries **87** accumulated `rate_snapshots` — so during the test the key matches two rows
+and the product writes against the stale one. `scene.snapshot_count()` filters on the fixture's own
+`source_id` and therefore sees 0.
+
+This also explains the second failure's shape: with no snapshot on the resolved source there is no
+baseline to compare against, so an out-of-bounds value is classified `updated` rather than
+`quarantined`. All three failures are one cause, not three.
+
+Not RLS and not a DSN split — both were checked and ruled out: `rate_snapshots` has neither RLS nor
+an `org_id` column, and `database_url` and `database_migrator_url` point at the same database.
+
+The fix belongs with #43 (TEST-DB-ISOLATION): the fixture should scope resolution to the source it
+created, or run against a per-test database. Deliberately **not** fixed inside PILOT-1D-L, which is
+scoped to the two runtime defects.
+
+## #37 — A real message has never physically reached a phone (RESOLVED 2026-08-17 — PHYSICALLY PROVEN)
+
+**Closed 2026-08-17.** A real Priya reply reached the founder's handset and was confirmed visually.
+Meta independently reported `sent → delivered → read`. Full evidence in the PILOT-1D-L record at the
+end of this file. The original open text follows for history.
+
+---
+
 
 **Opened** 2026-08-13 (PILOT-1C). The recovery slice is proven end to end against real Postgres up
 to the provider boundary: gates, guards, RLS, the durable dispatch claim, the lifecycle and the
@@ -563,7 +589,72 @@ to Meta explicitly → observe pending/approved/rejected → the merchant's camp
 template design suite, and it must not be built by guessing — it needs the real Meta account.
 No Meta call was made.
 
-## #43 — Tests share the founder's development database (OPEN — technical debt: TEST-DB-ISOLATION)
+## #43 — Tests share the founder's development database (**STILL OPEN** — technical debt: TEST-DB-ISOLATION)
+
+> **2026-08-17 — explicitly NOT closed by the PILOT-1D-L merge.** The specific `approval_policies`
+> corruption incident below is contained: the offending UPDATE is pack-scoped, a `test-policy-writes`
+> guard fails any unscoped policy write in `tests/`, and Ratna's rows were repaired. **General
+> shared-test-database isolation remains unsolved** — a test calling `install()` on
+> `verticals/jewelry` still receives the live pack id via `ON CONFLICT (slug, version)`, tests still
+> resolve production rows by slug, and `test_prompt_activation` still disables the `audit_log`
+> immutability trigger. Do not read the containment as a resolution.
+
+
+### Confirmed incident 2026-08-16 — a test corrupted a live pilot store, and it cost a physical proof
+
+This stopped being theoretical. `tests/integration/test_send_loop.py` contained:
+
+```sql
+UPDATE approval_policies SET tier=2 WHERE action_type='action.message.send'
+```
+
+Correct for its own fixture; unbounded against the shared development database. `approval_policies`
+holds **global pack rows with `org_id` NULL**, so the statement reached every pack in the database —
+including Ratna's live jewelry pack `e420d84d-4e3a-4827-842f-8e1a1edcc6c1`. It moved three ordinary
+outbound-message rules from tier 1 to tier 2:
+
+| rule | intended | after the test |
+|---|---|---|
+| Replies in an active customer chat | 1 | 2 |
+| Follow-up nudges | 1 | 2 |
+| Support replies | 1 | 2 |
+
+**Consequence:** at 18:48:53 UTC a real customer's WhatsApp greeting reached Priya, DeepSeek produced
+a correct reply, and the send parked on approval `122fea42-fe6f-44b7-8a22-0c5262cb6f4c` instead of
+going out. The physical proof was lost to a test.
+
+**What was actually wrong, and what was not.** The pack source has said tier 1 in every commit since
+the initial scaffold; the parser produced tier 1; `installer._seed_policies` writes `rule.tier`
+faithfully; `agent_bindings.tier_defaults` for the same pack still held tier 1 throughout. **Only the
+`approval_policies` rows were corrupted.** Nothing in the repository ever expressed tier 2 for these
+rules — which is why reading the source could not explain the database, and why this looked for some
+time like a pack or installer defect.
+
+**A second door into the same room.** `installer._get_or_create_pack` upserts on `(slug, version)`,
+so any test calling `install()` on `verticals/jewelry` receives the **real** pack id rather than a
+fixture's. `tests/integration/test_prompt_activation.py:61` does exactly that, and its teardown then
+*deliberately* leaves the shared rows behind when another org still has the pack installed — which
+Ratna does. That is how these rows came to be re-created at 18:21:02 with no `pack.installed` audit
+(the test also deletes its own audit rows). Tests write into live pilot pack rows as a matter of
+course; the unscoped UPDATE is what made it visible.
+
+**Fixed in this patch (narrow):** the UPDATE is scoped by `pack_id`, and a new `test-policy-writes`
+guard (`scripts/guards.py`) fails any UPDATE/DELETE of `approval_policies` in `tests/` that names
+neither `pack_id` nor `org_id`. `tests/unit/test_jewelry_policy_baseline.py` pins the source
+baseline. Ratna's three rows were repaired by a single targeted UPDATE (3 rows).
+
+**NOT fixed, and why #43 stays OPEN:** the guard stops one syntactic class of accident. It does not
+stop a test from installing into the live pack, from deleting shared rows, or from writing any other
+table. The real fix is an ephemeral per-run database, which is not built here.
+
+**Related test-isolation debt found while investigating:**
+
+- `tests/integration/test_prompt_activation.py` runs
+  `ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable` on the shared database, disabling
+  an append-only integrity control for the duration of a test run.
+- Several fixtures resolve production rows by name (`SELECT id FROM packs WHERE slug='jewelry'`)
+  rather than creating their own.
+
 
 **Opened** 2026-08-14 (DEMO-UX-1, founder-recorded).
 
@@ -601,3 +692,438 @@ findings, and bolting a second backup subsystem onto it would have widened it we
 **Required before PILOT-1E production acceptance.** Likely the smallest form: `mc mirror` (or
 `aws s3 sync`) of the bucket into the same encrypted off-site destination the database dump already
 uses, on the same nightly schedule, with the restore drill extended to prove an image comes back.
+
+## #45 — An agent run reports `status=succeeded` when its send was denied (OPEN — correctness of run status)
+
+**Opened** 2026-08-16 during PILOT-1D-L, at founder request. **Recorded, not fixed** — outside the
+two-defect scope of this patch.
+
+In the live run that exposed the PILOT-1D-L defects, `messages.send` was **denied by manifest
+integrity** and no message was produced, yet the agent run finished with `status=succeeded`. The run
+status currently reflects "the graph reached its terminal node without raising", not "the run
+achieved its purpose".
+
+Why it matters more than it looks: run status is what an operator scans, and what any future alerting
+would key on. A denied send is exactly the event that must not be invisible — it is the difference
+between "the customer was answered" and "the customer was silently not answered". During a pilot this
+would read as a healthy run.
+
+Deliberately **not** addressed here: changing terminal-status semantics affects every consumer of run
+status and needs its own ticket and its own tests, and folding it into a defect patch is how an
+unrelated behaviour change ships unreviewed.
+
+## #46 — Stale CP-5 `priya.reason` tunable-node mismatch (OPEN — carried, untouched)
+
+**Recorded** 2026-08-16. Founder explicitly excluded this from PILOT-1D-L ("do not work on the stale
+CP-5 `priya.reason` tunable-node mismatch in this patch"). Logged so it is not lost now that the
+routing path around it has been touched — the PILOT-1D-L change corrects *what is sent* to the
+provider and does not alter node naming or tunables.
+
+## #47 — WhatsApp webhook normalizer had no production caller (RESOLVED 2026-08-16 — PHYSICALLY PROVEN 2026-08-17)
+
+**Physically proven 2026-08-17.** Webhook `fabc6e5b` was normalized automatically by the worker-owned
+loop with no manual `normalize_pending()` call, producing `msg.received.v1` `a254f4de` 0.9s after
+arrival. See the PILOT-1D-L record at the end of this file.
+
+
+**Opened and resolved** 2026-08-16 during PILOT-1D-L physical Meta proof.
+
+`core/channels/whatsapp/normalizer.py::normalize_pending()` was complete and correct — contacts,
+conversations, inbound messages, `msg.received.v1`, delivery statuses, STOP handling — and **nothing
+in production ever called it**. A grep for callers found the function's own module and the tests,
+and nothing else. The automatic live path therefore ended one step in:
+
+    real handset → Meta → Cloudflare → FastAPI → webhook_events → *stop*
+
+A real customer message sat in Postgres until someone ran the function by hand, which is exactly
+what we had been doing without registering it as a gap.
+
+**Why a full green suite never caught it.** Every normalizer test called `normalize_pending()`
+itself. Each one supplied the missing production caller as part of its own arrangement, so the suite
+proved the function worked and could not, even in principle, notice that no one ran it. Physical
+ingress was the first thing that did not bring its own caller.
+
+**Fixed** by a worker-owned loop, `run_normalizer()`, started by `run_worker()` alongside the outbox
+publisher and the consumers — no new process, no new service. Making it multi-worker-safe required
+correcting how a webhook is claimed: the previous shape selected pending rows in one session and
+processed them in another, so adding `FOR UPDATE` to that select would have locked nothing (the
+lock dies with the session that took it, before any work happens). Candidate discovery now takes no
+locks at all, and each candidate is re-checked and locked with `FOR UPDATE SKIP LOCKED` inside the
+transaction that normalizes it and writes `processed_at`.
+
+No migration and no new column. `processed_at` is deliberately **not** pre-set to reserve a row:
+that would mean a crash mid-normalization left a webhook marked done that never was, silently
+discarding a real customer message. A failure rolls back, the lock releases, and the webhook stays
+pending.
+
+**Resolved on evidence:** `tests/integration/test_whatsapp_normalizer_orchestration.py` (8 tests)
+drives the loop rather than the function, and both concurrency tests were confirmed to fail against
+unlocked code and pass against the fix (5 runs each way).
+
+**Still unproven, deliberately:** the end-to-end physical chain. This closes the code gap; the live
+proof is a separate act — a new message from the founder handset with the real worker running and
+no manual invocation. Until that happens #37 stays open.
+
+## #48 — Priya inference mode / deadline collision exposed by physical WhatsApp (RESOLVED 2026-08-17 — PHYSICALLY PROVEN)
+
+**Physically proven 2026-08-17.** Run `c63ca8d5` completed a DeepSeek turn in **1388ms** against a
+20s attempt budget inside a 45s node deadline, with thinking explicitly disabled, and the run
+finished `succeeded` in 3.1s. The two hypotheses recorded below were never confirmed and are left
+as written — the fix stands on the two code-level defects, both now exercised live.
+
+
+**Opened** 2026-08-16 during PILOT-1D-L physical proof, immediately after #47 made the path
+automatic.
+
+**What physically happened.** A new real handset message — "Hi, can someone help me?" — traversed
+the whole chain automatically with no manual `normalize_pending()` call: handset → Meta → webhook →
+`webhook_events` → the new normalizer → `msg.received.v1` → outbox → Redis → planner → Priya run →
+route → compose. The worker log then showed `POST https://api.deepseek.com/v1/chat/completions`
+returning `HTTP/1.1 200 OK`, and the run nevertheless ended:
+
+    run     e1710705-997d-41fe-abaf-04087724b9e6
+    status  interrupted
+    error   {"code": "provider_unavailable", "detail": "model_turn timeout"}
+
+Duration ~30s. Only two `agent_steps` persisted (`route`, `compose`) — no `model_turn`. No
+`costs_lite` row for the run. The run state correctly carried `body`, `task=qualify`,
+`intent=greeting`, `clarify=false`, so the earlier runtime-input-loss defect is confirmed fixed.
+
+**Two proven defects.**
+
+1. *Implicit provider reasoning mode.* The adapter sent only `model`, `max_tokens` and `messages`.
+   DeepSeek V4 defaults thinking ON, so the customer-facing concierge turn was being asked to
+   deliberate over a greeting, with no explicit control either way.
+2. *Equal inner and outer deadlines.* `llm_client.call_provider(timeout=30.0)` sat inside
+   `executor.NODE_TIMEOUT_S = 30.0`. A provider may consume the entire enclosing budget, leaving
+   nothing for route lookup, parsing, adapter normalization, cost telemetry or fallback
+   bookkeeping — so a successful provider response can be discarded by the deadline meant to
+   protect the turn. (Not the executor's step checkpoint: that is written after `asyncio.wait_for`
+   returns and is outside this bound entirely.)
+
+**Explicitly hypotheses, not findings.** It is *not* established that thinking mode caused this
+particular timeout, and it is *not* established that `_log_cost` hung. The absent `costs_lite` row
+is consistent with several stories (the node deadline firing before telemetry ran, telemetry itself
+being slow, or the attempt never returning) and the evidence does not choose between them. Two separate logs now exist — one
+emitted the moment `provider.complete` returns, one after `_log_cost` completes — so the next
+occurrence distinguishes them by which lines are present: both (failure is later), provider only
+(the telemetry/cancellation boundary), or neither (the provider call did not return).
+
+**Fixed by** a platform-controlled `core/runtime/inference_policy.py`: a provider-neutral
+`ReasoningMode` per node (`priya.reason → OFF`, everything else `DEFAULT`), translated to a vendor
+wire field by the selected provider's adapter via a declared `ProviderDefinition.reasoning_control`
+— so DeepSeek receives `{"thinking": {"type": "disabled"}}` and OpenAI, which shares the same
+adapter, receives nothing. Deadlines are now derived rather than independently written:
+`PROVIDER_ATTEMPT_TIMEOUT_S = 20.0`, `MODEL_NODE_TIMEOUT_S = 20 × 2 + 5 = 45.0`, with the model node
+alone taking the larger budget.
+
+No route params, admin API or tenant-writable row can contribute a request-body field;
+`models_admin` still exposes provider and model only.
+
+**CODE-RESOLVED on evidence:** `tests/unit/test_inference_policy.py` (19 tests), confirmed to fail
+against both pre-fix states — deadlines set back to 30/30 (4 failures) and DeepSeek's
+`reasoning_control` removed (3 failures).
+
+**#37 stays OPEN.** No real handset message has yet returned a real Vaylorn-generated WhatsApp
+reply. This closes the code defects; it does not close the physical proof.
+
+## #49 — `_seed_policies` never updates a policy whose source tier changed (OPEN — upgrade defect)
+
+**Recorded** 2026-08-16 during the #43 incident investigation. **Not causal there** — those rows were
+freshly inserted — and deliberately not fixed in that patch.
+
+`core/packs/installer.py::_seed_policies` inserts with
+`WHERE NOT EXISTS (... pack_id, scope, action_type, description)`. The guard does not consider
+`tier`, `cel_expr`, `approver_chain` or `timeout_s`, so editing any of them in a pack's
+`bindings.yaml` and reinstalling leaves the old row in place. The install reports success and the
+database silently keeps the previous policy.
+
+This matters most for the case it is least visible in: lowering a tier in source would appear to
+work everywhere except the database that enforces it. Needs its own ticket — an upsert has to decide
+what happens to an operator's deliberate override, which is a product question, not a SQL one.
+
+## #50 — Approval rows lose `matched_rules` (OPEN — observability debt)
+
+**Recorded** 2026-08-16 at founder request. **Not causal** in the #43 incident and deliberately not
+fixed there.
+
+`core/mediation/proxy.py::_engine_tier()` calls `evaluate_tool(...)` and returns only
+`decision.tier`, discarding `decision.matched_rules`. Every approval therefore persists
+`matched_rules = []`.
+
+Why it is worth fixing: during the #43 investigation the empty list read as evidence that *no policy
+matched*, which pointed at pack visibility, RLS and pack-id mismatches — all of which were fine. An
+approval that recorded which rule parked it would have identified the corrupted row immediately
+instead of after tracing the whole install path. The cost of this debt is measured in wrong turns
+during an incident, not in wrong behaviour.
+
+## #51 — POLICY-PREFLIGHT: determine action authority before expensive model inference (OPEN — future architecture/product ticket, NOT scheduled)
+
+**Recorded** 2026-08-16 at founder request. **Deliberately not implemented.** Revisit only after
+PILOT-1D-L proves the full physical loop: real handset → Meta → Vaylorn → Priya → real model →
+`messages.send` → Meta → real handset reply.
+
+### Problem
+
+The normal execution order today is:
+
+```
+event → LLM inference → proposed tool/action → approval policy evaluation → possible Tier 2/3 parking
+```
+
+When an action is *deterministically* known to need approval before anything is generated, the
+tokens spent producing that content are wasted whenever the owner rejects it.
+
+Where authority is knowable in advance, and where it is not:
+
+| case | knowable before generation? |
+|---|---|
+| ordinary customer reply (`messages.send`) | yes — usually Tier 1 |
+| quote ≥ ₹1,00,000 | yes — the structured amount already decides Tier 2 |
+| any discount | yes — structured quote data establishes Tier 2 |
+| campaign / broadcast (`action.campaign.execute`) | yes — Tier 3 regardless of the copy |
+| angry / legal / refund escalation | **no** — the tier depends on semantic classification of content that does not exist yet |
+
+That last row is why preflight cannot be a simple pre-computation of the final answer.
+
+### Design principle
+
+Decide as much authority as possible **before** spending model tokens, while keeping the existing
+final mediation/policy evaluation **after** the model proposes the actual action:
+
+```
+event / structured intent
+  → deterministic context
+  → POLICY PREFLIGHT
+  → optionally obtain Tier 2/3 approval first
+  → model generation
+  → FINAL POLICY CHECK on the actual generated action + parameters
+  → side effect
+```
+
+### Preflight result shape (illustrative — do not freeze an API from this)
+
+A single integer tier is the wrong return type, because it cannot express "I do not yet know". The
+result needs to carry at least: `minimum_tier`, whether the answer is `exact` given current
+information, whether generated content still `requires_content_evaluation`, the matched
+policy/`reason`, and the action family.
+
+```
+PolicyPreflight: action=messages.send    minimum_tier=1  exact=true
+                 requires_content_evaluation=false  reason=reply_standard
+
+PolicyPreflight: action=messages.send    minimum_tier=1  exact=false
+                 requires_content_evaluation=true
+                 reason="generated content could trigger escalation"
+
+PolicyPreflight: action=campaign.execute minimum_tier=3  exact=true
+                 requires_content_evaluation=false  reason=any_broadcast
+```
+
+### Safety property (the part that must not be got wrong)
+
+**Preflight is an optimization and an early-authorization mechanism. Final mediation remains
+authoritative.** A preflight answer of Tier 1 is a prediction, never a grant.
+
+Worked example: preflight expects an ordinary Tier-1 reply → the model unexpectedly proposes a
+discount → the final policy engine raises the actual action to Tier 2 → it **must not** auto-send
+merely because preflight said Tier 1.
+
+Preflight must never become an authorization bypass. Any implementation that lets a preflight result
+substitute for the final check has reintroduced the exact hazard the approval engine exists to
+prevent.
+
+### Cost model
+
+The saving is **not** on ordinary Tier-1 replies — those still need the model to produce the reply.
+It comes from Tier-2/Tier-3 work that can be rejected *before* generation:
+
+- campaign requested → Tier 3 known deterministically → owner rejects → **zero** campaign-copy
+  inference spent
+- ₹140,000 quote with 5% discount → structured pricing establishes Tier 2 → a deterministic approval
+  card is shown first → only after approval does the model produce polished customer wording
+
+### Non-goals
+
+Do not, under this ticket: redesign approvals, change Tier semantics, change jewelry policy values,
+change the Priya runtime, touch #43/#49/#50, delay the PILOT-1D-L physical proof, or introduce
+provider-specific logic. This stays provider-neutral.
+
+### Open questions for whoever picks this up
+
+- What does the owner see for a pre-generation approval? A deterministic card built from structured
+  data has no generated copy in it, which is a different (and possibly better) review surface than
+  today's "approve this draft".
+- Does an early approval remain valid once the model produces content that changes the action's
+  shape? Probably not — which suggests the early approval authorizes an *intent*, and the final check
+  still authorizes the *action*.
+- Preflight needs the same policy inputs as the engine. Sharing that evaluation path is what stops
+  the two drifting apart and quietly disagreeing.
+
+## #52 — APPROVAL-PARK OBSERVABILITY: log successful run parking at the mediation gate (OPEN — observability only)
+
+**Recorded** 2026-08-16. **Not implemented.** Not causal to any physical test — the runtime behaved
+correctly in every observed case; only the record of it was silent.
+
+### Problem
+
+A real Priya execution went event → Priya → DeepSeek → planner → `messages.send` policy evaluation →
+Tier-2 approval park, entirely correctly. The worker log ended at:
+
+```
+INFO:core.runtime.planner:planner: routed intent=greeting -> concierge/qualify
+```
+
+and said nothing further. Nothing recorded that the run had **deliberately** parked.
+
+A healthy approval park is therefore visually indistinguishable from a worker crash, a runtime hang,
+a mediation failure, or a dispatch failure. All five produce the same thing in the log: silence after
+the planner line. Establishing which had actually happened took database forensics across
+`agent_runs`, `agent_steps`, `approvals`, `event_outbox`, `messages` and a read-only re-run of the
+approval engine — to confirm the system had done exactly the right thing.
+
+That is the cost being paid here: the most common *correct* outcome of the mediation gate is the one
+the log cannot distinguish from a failure.
+
+### Desired behaviour
+
+One structured INFO line at the point a run intentionally parks, carrying safe identifiers only:
+
+```
+run parked for approval: run_id=… approval_id=… tool=… tier=…
+```
+
+Optionally the action family or a reason category, if it can be obtained safely at that point.
+
+**Never log:** message bodies, prompts, model output, phone numbers, access tokens, secrets, or raw
+approval payloads. The line exists so an operator can tell "parked" from "died" — it needs
+identifiers to look things up with, not content.
+
+### Scope boundary
+
+Observability only. This ticket must not alter approval semantics, tier computation, quiet hours,
+the autonomy overlay, #50 `matched_rules` behaviour, or anything about how `messages.send` executes.
+If implementing it requires changing any of those, that is a different ticket.
+
+---
+
+### PILOT-1D-L evidence note — 2026-08-16
+
+The latest real execution (run `a46f2d71-4c66-4b58-9d6d-0d1e7c6dda31`, event
+`8ba85018-9acc-4bf7-be15-3652a4f363c2`) proved:
+
+- the repaired jewelry reply rules resolve **Tier 1** — all three matched as contributors
+- the autonomy **quiet-hours** floor correctly raised the effective tier to **2**
+- an approval was created (`6888072e-a9ee-4f3c-aeca-e6dccb9a79bd`, pending)
+- **no** outbound message row was created
+- Meta was correctly **not** called — zero Graph API requests
+- all services (worker, API, webhook ingress, cloudflared, Postgres, Redis) remained healthy
+
+Ratna's timezone is `Asia/Kolkata` with a quiet window of **21:00–08:00**. The run landed at
+20:22:33 UTC = **01:52 IST**, inside that window, so parking was correct rather than a defect.
+
+**The physical autonomous send must be repeated outside the 21:00–08:00 Asia/Kolkata quiet window.**
+
+**Correction on the record:** the "gold pendant" message was **not** present in `webhook_events` —
+a search for `%pendant%` returned zero rows, and the newest actual event still carried
+`"Hi, can someone help me?"`. No pendant test occurred; nothing in this repository should be read as
+claiming one did. Whether that message was never sent or never delivered by Meta is unresolved and
+is the one fact in this trace that cannot be established from the machine.
+
+---
+
+# PILOT-1D-L — PHYSICAL PROOF RECORD (2026-08-17)
+
+**The loop is closed.** A real customer message from a real handset was answered autonomously by
+Priya, sent through Meta, and received on the handset. Confirmed visually by the founder and
+independently by Meta's own delivery receipts.
+
+## The proven chain
+
+```
+real handset
+  → Meta
+  → Cloudflare tunnel
+  → webhook ingress (webhook-only, 404 on everything else)
+  → webhook_events (Postgres)
+  → automatic WhatsApp normalizer (worker-owned, no manual call)
+  → msg.received.v1 → outbox → Redis
+  → worker → planner
+  → Priya → DeepSeek V4 Flash (thinking disabled)
+  → communication_mode = reactive → effective Tier 1 → NO approval
+  → mediation → messages.send
+  → Meta Graph API → HTTP 200 + wamid
+  → real handset receipt CONFIRMED
+```
+
+## Evidence
+
+| Stage | Value |
+|---|---|
+| Inbound webhook | `fabc6e5b-3c86-4f25-acf6-7ab69403e155`, received 01:48:11.336 UTC |
+| Normalized | `processed_at` 01:48:12.256 — 0.9s later, automatic |
+| Event | `msg.received.v1` `a254f4de-6ec7-4a34-87c4-ad9aa1d0be7f`, published + consumed |
+| Run | `c63ca8d5-9ece-487b-85d3-c12de539f297` — **succeeded**, 4 steps, 3.1s, `error = None` |
+| Trigger | `msg.received` |
+| communication_mode | **reactive** (derived from the trigger, not from any model output) |
+| Quiet hours | **ACTIVE** — 01:48 UTC = 07:18 IST, inside Ratna's 21:00–08:00 Asia/Kolkata window |
+| Effective tier | **1** — `reply_standard` fired; the quiet-hours floor contributed nothing |
+| Approval | **none created** |
+| Model | deepseek/deepseek-v4-flash, 1388ms, 594/22 tokens |
+| Reply | "VAYLORN PROOF 002 — Yes, I'm here. How can I help you today?" |
+| Outbound row | `status = sent`, wamid stored |
+| Meta | `POST /<version>/<phone_number_id>/messages` → **HTTP 200 OK** |
+| Handset | **CONFIRMED BY FOUNDER** |
+
+The same run evaluated as `proactive` returns tier 2 — so this is a direct, same-store, same-window
+demonstration that the reactive/proactive distinction is what made autonomous delivery possible.
+
+## Additional evidence — Meta delivery receipts
+
+Meta subsequently reported the full lifecycle for **both** successful sends:
+
+```
+wamid …NzA1MTMA   sent → delivered → read
+wamid …RDBFQ0MA   sent → delivered → read
+```
+
+`read` is machine confirmation that the message was opened on the handset, corroborating the
+founder's visual confirmation. A second message at 01:50 also completed the whole chain, so the
+result is reproducible rather than a single lucky run.
+
+## What this closes
+
+- **#37** — a real message has physically reached a phone. Closed.
+- **#47** — normalization ran automatically; no manual `normalize_pending()` call.
+- **#48** — reasoning explicitly disabled, deadlines correct, 1388ms against a 20s budget.
+- **Reactive quiet-hours semantics** — proven in the only way that counts: live, inside the window.
+
+## What it does NOT close
+
+**#43** remains open — see its entry. The corruption incident is contained; shared-test-database
+isolation is not solved. Also still open: **#45** (a run reports `succeeded` even when the external
+action failed — now with live evidence from PROOF 001's 401), **#46**, **#49**, **#50**, **#51**,
+**#52**, and **#53** below.
+
+## #53 — Delivery status never reaches the message row (OPEN — discovered 2026-08-17)
+
+**Found while recording the proof, pre-existing, NOT introduced by the PILOT-1D-L branch.**
+
+Meta sent `delivered` and `read` webhooks; the normalizer stored and processed them
+(`processed_at` set); and `messages.status` is still `sent` for both proven messages.
+
+Cause, from the code: `core/channels/whatsapp/normalizer.py::_apply_statuses` runs
+
+```sql
+UPDATE messages SET status = :st WHERE provider_message_id = :pm AND status <> :st RETURNING org_id
+```
+
+**before** any `set_org_context`, and `messages` has `FORCE ROW LEVEL SECURITY`. With no
+`app.org_id` set the row is invisible, the UPDATE matches zero rows, `org_id` comes back `None`, and
+the loop `continue`s — so the status is never applied and `recovery_attempts.mark_delivered` is
+never reached either. The tenant-safety reasoning in that docstring is sound; the ordering defeats
+it.
+
+Consequences: `delivered`/`read` are invisible to the owner UI and to ROI reporting, and ghost
+recovery cannot observe a delivery it depends on. Not a merge blocker for PILOT-1D-L — the send path
+itself is proven — but it should be fixed before delivery data is trusted for anything.

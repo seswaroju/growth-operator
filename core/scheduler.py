@@ -21,6 +21,7 @@ from redis.asyncio import Redis
 from core.common.config import get_settings
 from core.customers import recovery
 from core.events import scheduler as sched
+from core.events.redis_client import event_redis
 
 logger = logging.getLogger("core.scheduler")
 
@@ -64,7 +65,7 @@ async def run_scheduler_process(
 ) -> None:
     """Install jobs and tick the scheduler until `stop` is set."""
     _install_jobs()
-    redis = redis or Redis.from_url(get_settings().redis_url)
+    redis = redis or event_redis()
     logger.info("scheduler starting: %d job(s)", len(sched.registered()))
     try:
         await sched.run_scheduler(redis, stop, tick_s=tick_s)
@@ -87,7 +88,7 @@ def main() -> None:
     # The worker and scheduler hold the same signing keys and reach the same database as the API,
     # and the worker is the process that actually messages customers — guarding only the API would
     # leave the loudest external effect unguarded.
-    from core.common.config import assert_secrets_available, get_settings
+    from core.common.config import assert_secrets_available
     from core.common.safety import assert_environment_safe
 
     _settings = get_settings()

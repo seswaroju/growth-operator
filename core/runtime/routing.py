@@ -136,10 +136,35 @@ class RoutingModel:
                         "provider failover: %s failed on %s (%s)",
                         provider_name, node_key, error_class)
                 continue
+            provider_ms = int((time.monotonic() - started) * 1000)
+            # Emitted BEFORE the telemetry write, not after. A single log line after `_log_cost`
+            # cannot describe a run in which `_log_cost` never returns: if the node deadline
+            # cancels this task mid-write, that line is never reached and the record is silent
+            # about how far the turn actually got. Two observations make the absence itself
+            # informative — see `_log_cost` below for how to read them.
+            #
+            # Identifiers and durations only: no prompt, no customer text, no model output, no
+            # tokens, no credentials, no request body.
+            logger.info(
+                "model provider complete: node=%s provider=%s model=%s attempt=%d provider_ms=%d",
+                node_key, provider_name, model_name, attempt_index, provider_ms,
+            )
+            telemetry_started = time.monotonic()
             await self._log_cost(
                 node_key, provider_name, model_name, result.tokens_in, result.tokens_out, "ok",
-                latency_ms=int((time.monotonic() - started) * 1000),
-                attempt_index=attempt_index,
+                latency_ms=provider_ms, attempt_index=attempt_index,
+            )
+            telemetry_ms = int((time.monotonic() - telemetry_started) * 1000)
+            # Reading the pair:
+            #   both lines        → the turn got past telemetry; look later in the chain
+            #   provider only     → cancellation fell between the vendor returning and telemetry
+            #                       finishing, implicating the telemetry/cancellation boundary
+            #   neither           → `provider.complete` did not return before cancellation
+            logger.info(
+                "model telemetry complete: node=%s provider=%s model=%s attempt=%d "
+                "telemetry_ms=%d total_ms=%d",
+                node_key, provider_name, model_name, attempt_index,
+                telemetry_ms, provider_ms + telemetry_ms,
             )
             return result
         # Every provider failed → holding template (no tool call, zero successful LLM output).

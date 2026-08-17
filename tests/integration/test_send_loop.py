@@ -59,10 +59,15 @@ async def _no_kill(org_id: uuid.UUID) -> bool:
 
 
 class Scene:
-    def __init__(self, org: uuid.UUID, conversation: uuid.UUID, instance: uuid.UUID) -> None:
+    def __init__(self, org: uuid.UUID, conversation: uuid.UUID, instance: uuid.UUID,
+                 pack: uuid.UUID) -> None:
         self.org = org
         self.conversation = conversation
         self.instance = instance
+        #: This fixture's OWN pack. Carried so a test that changes an approval tier can say which
+        #: pack it means. Without it the only way to write the UPDATE below was unscoped, and on a
+        #: shared development database that rewrote a live pilot store's policies (#43).
+        self.pack = pack
         self.run_id = uuid.uuid4()
 
     def ctx(self) -> RunContext:
@@ -128,7 +133,7 @@ async def scene() -> AsyncIterator[Scene]:
         await store_credentials(
             s, org_id=org, channel_id=channel_id,
             credentials={"waba_id": "w1", "phone_number_id": pnid, "access_token": "tok"})
-    yield Scene(org, conversation, instance)
+    yield Scene(org, conversation, instance, pack)
     conn = await asyncpg.connect(_dsn())
     try:
         await conn.execute("ALTER TABLE audit_log DISABLE TRIGGER trg_audit_log_immutable")
@@ -248,8 +253,15 @@ async def test_priced_reply_parks_then_sends_on_approve(scene: Scene) -> None:
     # Make the reply tier-2 so the send parks; approving it re-runs the run and the reply goes out.
     conn = await asyncpg.connect(_dsn())
     try:
-        await conn.execute(
-            "UPDATE approval_policies SET tier=2 WHERE action_type='action.message.send'")
+        # Scoped to THIS fixture's pack. Unscoped, this rewrote every pack's message.send tier in
+        # whatever database the suite happened to be pointed at — which on the founder's shared
+        # development database silently moved a live pilot store's ordinary replies from tier 1 to
+        # tier 2, and parked a real customer's WhatsApp greeting for approval (#43).
+        updated = await conn.execute(
+            "UPDATE approval_policies SET tier=2 "
+            "WHERE pack_id=$1 AND scope='pack' AND action_type='action.message.send'",
+            scene.pack)
+        assert updated == "UPDATE 1", f"expected to retier exactly this pack's rule, got {updated}"
     finally:
         await conn.close()
     parked = await start_run(

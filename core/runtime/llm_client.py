@@ -24,6 +24,7 @@ from core.common.config import get_settings
 from core.common.errors import GrowthOperatorError
 from core.runtime.adapters import ADAPTERS
 from core.runtime.adapters.base import NormalizedRequest, NormalizedResult
+from core.runtime.inference_policy import PROVIDER_ATTEMPT_TIMEOUT_S, ReasoningMode
 from core.runtime.model_registry import get_model, require_capabilities
 from core.runtime.providers import (
     ProviderNotConfigured,
@@ -74,12 +75,23 @@ def _classify(exc: Exception) -> str:
 
 async def call_provider(
     *, provider: str, model: str, system: str, user: str,
-    max_tokens: int | None = None, timeout: float = 30.0,
+    max_tokens: int | None = None, timeout: float = PROVIDER_ATTEMPT_TIMEOUT_S,
+    reasoning: ReasoningMode = ReasoningMode.DEFAULT,
     required_capabilities: frozenset[str] | None = None,
     transport: Any = None,
 ) -> NormalizedResult:
     """One inference call against **the named provider**, using that provider's own adapter,
     endpoint and credential.
+
+    `timeout` bounds **one attempt**, and its default comes from `inference_policy` rather than
+    being a number written here. It used to be 30.0, the same value as the executor's node
+    deadline, which left a provider able to consume the entire enclosing budget with nothing
+    remaining for parsing, telemetry or fallback. The two constants are now derived from one
+    another (#48). That collision is a defect established from the code; whether it explains the
+    live run that exposed it is not established.
+
+    `reasoning` is Vaylorn's platform policy for the calling node, translated to a wire field by
+    the selected provider's adapter — never merged from route params or tenant input.
 
     Raises `ProviderNotConfigured` when the setup is wrong — an unknown or disabled provider, no
     key for it, an unknown or disabled model, or a capability the model lacks. Raises
@@ -102,8 +114,12 @@ async def call_provider(
     request = NormalizedRequest(
         system=system, user=user, model=model,
         max_tokens=max_tokens or get_settings().llm_max_tokens,
+        reasoning=reasoning,
     )
-    call = adapter.build(request, endpoint=definition.endpoint, key=key)
+    call = adapter.build(
+        request, endpoint=definition.endpoint, key=key,
+        reasoning_control=definition.reasoning_control,
+    )
 
     try:
         if transport is not None:
@@ -129,7 +145,12 @@ async def complete(
     """Back-compatible entry point for callers that do not route (e.g. the diagnosis path).
 
     `provider`/`model` default to the configured single-provider settings so existing callers keep
-    working; routed callers pass both explicitly."""
+    working; routed callers pass both explicitly.
+
+    `timeout` keeps its own 30.0 default rather than borrowing the routed attempt budget. That
+    budget is sized against the `model_turn` node deadline, and these callers are not inside it —
+    giving them a number derived from a deadline they do not run under would be tidiness standing
+    in for a reason. Callers that need a different bound pass one."""
     settings = get_settings()
     try:
         result = await call_provider(

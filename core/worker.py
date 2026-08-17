@@ -1,9 +1,13 @@
 """Stream-consumer worker process (MVP-026 consumer framework + #16 entrypoint wiring).
 
 Boots the event plane. Importing the consumer modules runs their module-level `@consumer`
-decorators, registering the handlers; this process then runs the **outbox publisher** (relays the
-transactional outbox to Redis streams) plus one **consumer loop per registered handler**, until
-SIGTERM/SIGINT. Everything downstream stays gated-simulated (notifier, embedder) — the worker
+decorators, registering the handlers; this process then runs the **WhatsApp normalizer** (turns raw
+webhooks into messages and `msg.received.v1`), the **outbox publisher** (relays the transactional
+outbox to Redis streams) and one **consumer loop per registered handler**, until SIGTERM/SIGINT.
+
+The normalizer joined this list at PILOT-1D-L. It had no production caller at all, so the worker was
+consuming events that nothing produced — physical Meta ingress landed webhooks in Postgres and the
+chain stopped there. Everything downstream stays gated-simulated (notifier, embedder) — the worker
 performs no real external action. Shutdown is graceful: `run_consumer`/`run_publisher` finish the
 in-flight batch and ack before exiting, so no message is lost or double-acked.
 
@@ -20,9 +24,11 @@ import signal
 
 from redis.asyncio import Redis
 
+from core.channels.whatsapp.normalizer import run_normalizer
 from core.common.config import get_settings
 from core.events import consumer as consumer_mod
 from core.events.outbox import run_publisher
+from core.events.redis_client import event_redis
 
 logger = logging.getLogger("core.worker")
 
@@ -45,11 +51,20 @@ async def run_worker(
 ) -> None:
     """Run the outbox publisher + every registered consumer until `stop` is set."""
     _install_consumers()
-    redis = redis or Redis.from_url(get_settings().redis_url)
+    # One decoding contract for the event plane — see core/events/redis_client.py. Without it
+    # redis-py returns bytes keys and every consumer fails on `fields["data"]`.
+    redis = redis or event_redis()
     name = consumer_name or f"worker-{os.getpid()}"
     specs = consumer_mod.registered()
-    logger.info("worker starting: outbox publisher + %d consumer(s)", len(specs))
-    tasks = [asyncio.create_task(run_publisher(stop), name="outbox-publisher")]
+    logger.info(
+        "worker starting: whatsapp normalizer + outbox publisher + %d consumer(s)", len(specs)
+    )
+    tasks = [
+        # First link in the live chain. Without it the process consumed events nobody was
+        # producing: raw webhooks landed in `webhook_events` and stopped there (PILOT-1D-L).
+        asyncio.create_task(run_normalizer(stop), name="whatsapp-normalizer"),
+        asyncio.create_task(run_publisher(stop), name="outbox-publisher"),
+    ]
     tasks += [
         asyncio.create_task(
             consumer_mod.run_consumer(redis, spec, name, stop), name=f"consumer:{spec.name}"
@@ -77,7 +92,7 @@ def main() -> None:
     # The worker and scheduler hold the same signing keys and reach the same database as the API,
     # and the worker is the process that actually messages customers — guarding only the API would
     # leave the loudest external effect unguarded.
-    from core.common.config import assert_secrets_available, get_settings
+    from core.common.config import assert_secrets_available
     from core.common.safety import assert_environment_safe
 
     _settings = get_settings()
