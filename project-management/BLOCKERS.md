@@ -1105,7 +1105,54 @@ isolation is not solved. Also still open: **#45** (a run reports `succeeded` eve
 action failed — now with live evidence from PROOF 001's 401), **#46**, **#49**, **#50**, **#51**,
 **#52**, and **#53** below.
 
-## #53 — Delivery status never reaches the message row (OPEN — discovered 2026-08-17)
+## #53 — Delivery status never reaches the message row (RESOLVED 2026-08-17 — PHYSICALLY PROVEN)
+
+**Closed 2026-08-17.** Fixed in `62bf7ec` and proven by a real Meta webhook, not by a manual update.
+
+### Physical proof
+
+Message "VAYLORN PROOF 003" produced outbound row `4d77fc11-7519-4123-822f-8282955a5f9f`
+(wamid `…YzMDAyRkMA`), sent to Meta with **HTTP 200**. Meta's `delivered` webhook
+`abdc8057-68b4-4cf2-8b6d-9078c9bc2308` then arrived and the row moved **`sent` → `delivered`** on its
+own: the webhook carried `metadata.phone_number_id`, that number resolved through `channels` to the
+owning org, `set_org_context` ran before the mutation, and the UPDATE matched. **No manual UPDATE was
+issued at any point** — the row was deliberately left untouched so the corrected path had to prove
+itself.
+
+### Edge cases exercised by live traffic, not only by tests
+
+Four status webhooks arrived for that one wamid, out of order and with a duplicate:
+
+```
+21:47:13.061  sent
+21:47:13.597  read        <- arrived BEFORE delivered
+21:47:13.622  delivered
+21:47:14.103  delivered   <- duplicate
+```
+
+The row ended `delivered`. So production confirmed three properties directly:
+
+- **`read` remains intentionally unrecorded.** It arrived, was processed, and changed nothing — it
+  neither blocked the later `delivered` nor moved the row backwards. Whether a customer opened a
+  message is still not collected.
+- **A duplicate `delivered` is idempotent** — absorbed by `status <> :st`, so no rewrite and no
+  second lifecycle effect.
+- **Out-of-order statuses did not corrupt state** — a late `sent` on an already-`sent` row was inert.
+
+A second post-restart send (`be6957dc`, 21:47:49) also reached `delivered`, so the result is
+reproducible rather than a single observation. One row (`e5bb4855`, 21:45:05) remains `sent`: it was
+sent sixty seconds *before* the worker restarted onto the fix, so its `delivered` webhook hit the old
+code. It is the last artifact of the defect and a clean before/after boundary.
+
+### Not proven here
+
+**The recovery-attempt linkage remains test-proven only.** `recovery_attempts.mark_delivered` is
+covered by the integration tests, but the outbound message in this proof was an ordinary
+conversation reply with no linked attempt, and nothing was fabricated to create one. That linkage
+will be physically exercised during PILOT-1C ghost recovery.
+
+### Original finding
+
 
 **Found while recording the proof, pre-existing, NOT introduced by the PILOT-1D-L branch.**
 
